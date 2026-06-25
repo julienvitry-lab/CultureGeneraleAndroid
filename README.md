@@ -1,16 +1,14 @@
 # Culture Générale Android V2.0 Alpha
 
-Version de jeu alpha.
+Première vraie interface de jeu :
 
-Fonctions incluses :
-
-- validation du dossier `/storage/emulated/0/Culture Générale/` ;
+- accès au dossier `/storage/emulated/0/Culture Générale` ;
 - lecture de `questions_base.sqlite` ;
-- menu des 8 mégathèmes ;
-- tirage d’une vraie question jouable ;
-- affichage texte et image locale ;
-- affichage des 4 propositions ;
+- menu des 8 mégathèmes avec comptage des questions jouables ;
+- tirage aléatoire d'une question ;
+- affichage question / détail ;
+- écran propositions ;
 - mode mental en deux temps ;
-- mise à jour du statut SQLite : `A` ou `R` ;
-- statistiques de session ;
-- touches clavier : ESPACE, ENTRÉE, Q, D, K, M.
+- écriture du statut `A` ou `R` dans SQLite.
+
+Les images seront ajoutées dans une version suivante.
