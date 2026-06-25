@@ -1,11 +1,12 @@
-# Culture Générale Android V0.3 - Sprint 3
+# Culture Générale Android Sprint 4
 
-Objectif : choix du mégathème et affichage d'une vraie question issue de `questions_base.sqlite`.
+Première APK réellement jouable côté texte :
 
-Fonctions :
-- vérification du dossier `/storage/emulated/0/Culture Générale/` ;
-- lecture des domaines depuis SQLite ;
-- affichage du nombre de questions jouables par domaine ;
-- tirage d'une vraie question ;
-- bouton question suivante ;
-- retour domaines.
+- lecture de `questions_base.sqlite` ;
+- choix du mégathème ;
+- tirage d'une question ;
+- affichage des 4 propositions ;
+- réponse mentale en 2 temps ;
+- mise à jour du statut SQLite : `A` ou `R`.
+
+Les images seront affichées au sprint suivant.
