@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -e
 
-GRADLE_VERSION=8.7
+GRADLE_VERSION=8.9
 GRADLE_DIR="$HOME/.gradle-lite"
 GRADLE_ZIP="$GRADLE_DIR/gradle-${GRADLE_VERSION}-bin.zip"
 GRADLE_HOME="$GRADLE_DIR/gradle-${GRADLE_VERSION}"
