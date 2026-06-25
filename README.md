@@ -1,5 +1,16 @@
-# Culture Générale Android V1.0 Base
+# Culture Générale Android V2.0 Alpha
 
-Version de base fonctionnelle : domaines, vraie question SQLite, propositions, images locales, mode mental A/R, statistiques et retour arrière.
+Version de jeu alpha.
 
-Données attendues sur tablette : `/storage/emulated/0/Culture Générale/questions_base.sqlite` et `/storage/emulated/0/Culture Générale/Images/`.
+Fonctions incluses :
+
+- validation du dossier `/storage/emulated/0/Culture Générale/` ;
+- lecture de `questions_base.sqlite` ;
+- menu des 8 mégathèmes ;
+- tirage d’une vraie question jouable ;
+- affichage texte et image locale ;
+- affichage des 4 propositions ;
+- mode mental en deux temps ;
+- mise à jour du statut SQLite : `A` ou `R` ;
+- statistiques de session ;
+- touches clavier : ESPACE, ENTRÉE, Q, D, K, M.
