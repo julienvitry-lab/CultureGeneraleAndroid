@@ -1,12 +1,5 @@
-# Culture Générale Android Sprint 4
+# Culture Générale Android V1.0 Base
 
-Première APK réellement jouable côté texte :
+Version de base fonctionnelle : domaines, vraie question SQLite, propositions, images locales, mode mental A/R, statistiques et retour arrière.
 
-- lecture de `questions_base.sqlite` ;
-- choix du mégathème ;
-- tirage d'une question ;
-- affichage des 4 propositions ;
-- réponse mentale en 2 temps ;
-- mise à jour du statut SQLite : `A` ou `R`.
-
-Les images seront affichées au sprint suivant.
+Données attendues sur tablette : `/storage/emulated/0/Culture Générale/questions_base.sqlite` et `/storage/emulated/0/Culture Générale/Images/`.
