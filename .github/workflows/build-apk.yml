@@ -1,0 +1,33 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Télécharger le dépôt
+        uses: actions/checkout@v4
+
+      - name: Installer Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Donner les droits à Gradle
+        run: chmod +x ./gradlew || true
+
+      - name: Compiler APK debug
+        run: ./gradlew assembleDebug
+
+      - name: Publier APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CultureGenerale-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
