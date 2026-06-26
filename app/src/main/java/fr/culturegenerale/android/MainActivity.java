@@ -166,8 +166,8 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         base();
-        add(tv("Culture Générale Android V5.0 Alpha", 28, Color.WHITE, Gravity.CENTER, true));
-        add(tv("Mode image en 2 temps · session sans répétition · P/I/T", 17, Color.LTGRAY, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V6.0 Alpha", 28, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Écran de fin · stats session · base A/R/P/I/T", 17, Color.LTGRAY, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 22, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 20);
@@ -329,6 +329,7 @@ public class MainActivity extends Activity {
         b.setOnClickListener(v -> showQuestion());
         add(b);
         addFlagButtons();
+        addEndButton();
         Button prev = btn("Question précédente", 17);
         prev.setOnClickListener(v -> previousQuestion());
         add(prev);
@@ -353,6 +354,7 @@ public class MainActivity extends Activity {
         b.setOnClickListener(v -> showChoices(false, 0));
         add(b);
         addFlagButtons();
+        addEndButton();
         Button prev = btn("Question précédente", 17);
         prev.setOnClickListener(v -> previousQuestion());
         add(prev);
@@ -430,6 +432,7 @@ public class MainActivity extends Activity {
             add(ko);
         }
         addFlagButtons();
+        addEndButton();
         Button back = btn("Revoir la question", 17);
         back.setOnClickListener(v -> showQuestion());
         add(back);
@@ -448,6 +451,41 @@ public class MainActivity extends Activity {
         row.addView(i, new LinearLayout.LayoutParams(0, dp(44), 1));
         row.addView(t, new LinearLayout.LayoutParams(0, dp(44), 1));
         root.addView(row, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    private void addEndButton() {
+        Button end = btn("Fin de partie / statistiques", 16);
+        end.setOnClickListener(v -> showEndScreen());
+        add(end);
+    }
+
+    private void showEndScreen() {
+        phase = "end";
+        base();
+        band("Fin de partie", RED, Color.WHITE, 26, 72);
+        band("Répondues : " + answered + "\nAssimilées mentalement : " + mentalOk + "\nÀ revoir : " + revised + "\nSérie juste : " + goodStreak + " / record " + bestGoodStreak + "\nSérie mentale : " + mentalStreak + " / record " + bestMentalStreak, DARK, Color.WHITE, 21, 150);
+        try {
+            band("Base actuelle\nA : " + countStatus("A") + "   R : " + countStatus("R") + "   P : " + countStatus("P") + "   I : " + countStatus("I") + "   T : " + countStatus("T") + "   X : " + countStatus("X"), BLUE, Color.WHITE, 18, 100);
+        } catch (Exception e) {
+            band("Statistiques base indisponibles : " + e.getMessage(), DARK, Color.WHITE, 16, 70);
+        }
+        if (current != null) {
+            Button resume = btn("Reprendre la partie", 20);
+            resume.setOnClickListener(v -> { if (current.isImage) showImageIntro(); else showQuestion(); });
+            add(resume);
+        }
+        Button domains = btn("Retour domaines", 20);
+        domains.setOnClickListener(v -> showHome());
+        add(domains);
+    }
+
+    private long countStatus(String status) {
+        SQLiteDatabase db = openDb();
+        try {
+            Cursor c = db.rawQuery("SELECT COUNT(*) FROM " + TABLE + " WHERE UPPER(TRIM(status))=?", new String[]{status});
+            try { return c.moveToFirst() ? c.getLong(0) : 0; }
+            finally { c.close(); }
+        } finally { db.close(); }
     }
 
     private void flagAndNext(String status, String msg) {
@@ -507,6 +545,7 @@ public class MainActivity extends Activity {
     @Override public boolean dispatchKeyEvent(KeyEvent e) {
         if (e.getAction() != KeyEvent.ACTION_DOWN || current == null) return super.dispatchKeyEvent(e);
         int k = e.getKeyCode();
+        if (k == KeyEvent.KEYCODE_ESCAPE) { showEndScreen(); return true; }
         if ("image".equals(phase)) {
             if (k == KeyEvent.KEYCODE_SPACE || k == KeyEvent.KEYCODE_Q || k == KeyEvent.KEYCODE_ENTER) { showQuestion(); return true; }
             if (k == KeyEvent.KEYCODE_P) { flagAndNext("P", "Problème noté"); return true; }

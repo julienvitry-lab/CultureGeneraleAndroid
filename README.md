@@ -1,10 +1,10 @@
-# Culture Générale Android V5.0 Alpha
+# Culture Générale Android V6.0 Alpha
 
 Ajouts :
 
-- mode image en deux temps ;
-- écran image avant l’écran question ;
-- ESPACE / Q / ENTRÉE depuis l’image pour afficher la question ;
-- P / I / T disponibles depuis l’écran image ;
-- question précédente conserve le mode image si nécessaire ;
-- image plus grande sur le premier écran image.
+- écran de fin de partie ;
+- statistiques de session ;
+- comptage des statuts A/R/P/I/T/X dans la base ;
+- bouton Fin de partie / statistiques depuis les écrans de jeu ;
+- touche Échap pour afficher les statistiques si clavier disponible ;
+- conservation des fonctions V5 : image en 2 temps, P/I/T, question précédente, mode mental.

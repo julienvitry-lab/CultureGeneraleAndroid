@@ -8,7 +8,7 @@ android {
         applicationId 'fr.culturegenerale.android'
         minSdk 23
         targetSdk 35
-        versionCode 50
-        versionName '5.0-alpha'
+        versionCode 60
+        versionName '6.0-alpha'
     }
 }
