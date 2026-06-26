@@ -2,6 +2,7 @@ package fr.culturegenerale.android;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
@@ -9,13 +10,13 @@ import android.database.sqlite.SQLiteDatabase;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings;
 import android.view.Gravity;
-import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -46,6 +47,9 @@ public class MainActivity extends Activity {
             "Géographie", "Histoire", "Sciences et Techniques", "Sport"
     };
     private static final String[] IMG_EXT = new String[]{".jpg", ".jpeg", ".png", ".webp", ".bmp"};
+    private static final String[] FONT_CANDIDATES = new String[]{
+            "Comfortaa-Bold.ttf", "Comfortaa.ttf", "Conformtaa-Bold.ttf", "Conformtaa.ttf"
+    };
 
     private final int BLUE = Color.rgb(0, 86, 180);
     private final int GREEN = Color.rgb(0, 135, 60);
@@ -53,9 +57,13 @@ public class MainActivity extends Activity {
     private final int YELLOW = Color.rgb(245, 205, 40);
     private final int DARK = Color.rgb(35, 35, 35);
     private final int GREY = Color.rgb(85, 85, 85);
+    private final int LIGHT_GREY = Color.rgb(130, 130, 130);
 
     private File appFolder, dbFile, imagesFolder;
+    private LinearLayout screenRoot;
     private LinearLayout root;
+    private LinearLayout bottomBar;
+    private Typeface appFont = Typeface.DEFAULT_BOLD;
     private final Random random = new Random();
     private Question current;
     private String currentDomain = null;
@@ -88,6 +96,7 @@ public class MainActivity extends Activity {
         appFolder = new File(Environment.getExternalStorageDirectory(), APP_FOLDER);
         dbFile = new File(appFolder, DB_NAME);
         imagesFolder = new File(appFolder, "Images");
+        loadFont();
         showHome();
     }
 
@@ -96,7 +105,23 @@ public class MainActivity extends Activity {
         if ("home".equals(phase)) showHome();
     }
 
-    private void base() {
+    private void loadFont() {
+        for (String name : FONT_CANDIDATES) {
+            try {
+                File f = new File(appFolder, name);
+                if (f.exists()) {
+                    appFont = Typeface.createFromFile(f);
+                    return;
+                }
+            } catch (Exception ignored) { }
+        }
+    }
+
+    private void baseScrollable() {
+        screenRoot = new LinearLayout(this);
+        screenRoot.setOrientation(LinearLayout.VERTICAL);
+        screenRoot.setBackgroundColor(Color.BLACK);
+
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         root = new LinearLayout(this);
@@ -104,7 +129,33 @@ public class MainActivity extends Activity {
         root.setPadding(dp(10), dp(6), dp(10), dp(8));
         root.setBackgroundColor(Color.BLACK);
         scroll.addView(root);
-        setContentView(scroll);
+        screenRoot.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        bottomBar = new LinearLayout(this);
+        bottomBar.setOrientation(LinearLayout.HORIZONTAL);
+        bottomBar.setGravity(Gravity.CENTER);
+        bottomBar.setVisibility(View.GONE);
+        screenRoot.addView(bottomBar, new LinearLayout.LayoutParams(-1, dp(64)));
+        setContentView(screenRoot);
+    }
+
+    private void baseFixed() {
+        screenRoot = new LinearLayout(this);
+        screenRoot.setOrientation(LinearLayout.VERTICAL);
+        screenRoot.setBackgroundColor(Color.BLACK);
+
+        root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(10), dp(6), dp(10), dp(8));
+        root.setBackgroundColor(Color.BLACK);
+        screenRoot.addView(root, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        bottomBar = new LinearLayout(this);
+        bottomBar.setOrientation(LinearLayout.HORIZONTAL);
+        bottomBar.setGravity(Gravity.CENTER);
+        bottomBar.setVisibility(View.GONE);
+        screenRoot.addView(bottomBar, new LinearLayout.LayoutParams(-1, dp(64)));
+        setContentView(screenRoot);
     }
 
     private TextView tv(String text, int sp, int color, int gravity, boolean bold) {
@@ -114,7 +165,7 @@ public class MainActivity extends Activity {
         v.setTextColor(color);
         v.setGravity(gravity);
         v.setPadding(dp(8), dp(5), dp(8), dp(5));
-        if (bold) v.setTypeface(null, 1);
+        v.setTypeface(appFont, bold ? Typeface.BOLD : Typeface.NORMAL);
         return v;
     }
 
@@ -125,6 +176,7 @@ public class MainActivity extends Activity {
         b.setAllCaps(false);
         b.setGravity(Gravity.CENTER);
         b.setPadding(dp(8), dp(8), dp(8), dp(8));
+        b.setTypeface(appFont, Typeface.BOLD);
         return b;
     }
 
@@ -165,9 +217,9 @@ public class MainActivity extends Activity {
     private void showHome() {
         phase = "home";
         current = null;
-        base();
-        add(tv("Culture Générale Android V6.0 Alpha", 28, Color.WHITE, Gravity.CENTER, true));
-        add(tv("Écran de fin · stats session · base A/R/P/I/T", 17, Color.LTGRAY, Gravity.CENTER, true));
+        baseScrollable();
+        add(tv("Culture Générale Android V7.0", 28, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Interface tactile · question et propositions séparées", 17, Color.LTGRAY, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 22, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 20);
@@ -241,9 +293,9 @@ public class MainActivity extends Activity {
         try {
             Question q = loadFreshQuestion(currentDomain);
             if (q == null) {
-                base();
+                baseScrollable();
                 band("Aucune question jouable", RED, Color.WHITE, 24, 70);
-                Button b = btn("Retour domaines", 20);
+                Button b = btn("Nouvelle partie", 20);
                 b.setOnClickListener(v -> showHome());
                 add(b);
                 return;
@@ -255,11 +307,11 @@ public class MainActivity extends Activity {
             }
             history.add(q);
             historyIndex = history.size() - 1;
-            if (q.isImage) showImageIntro(); else showQuestion();
+            showQuestion();
         } catch (Exception e) {
-            base();
+            baseScrollable();
             band("Erreur : " + e.getMessage(), RED, Color.WHITE, 18, 90);
-            Button b = btn("Retour domaines", 20);
+            Button b = btn("Nouvelle partie", 20);
             b.setOnClickListener(v -> showHome());
             add(b);
         }
@@ -307,60 +359,159 @@ public class MainActivity extends Activity {
         } finally { db.close(); }
     }
 
-    private void stats() {
-        String s = "Répondues : " + answered + "   🧠 " + mentalOk + "   R " + revised + "   Série " + goodStreak + "/" + bestGoodStreak + "   Mental " + mentalStreak + "/" + bestMentalStreak + "   Historique " + (historyIndex + 1) + "/" + history.size();
-        TextView v = tv(s, 15, Color.WHITE, Gravity.CENTER, true);
-        v.setBackgroundColor(DARK);
-        add(v);
-    }
-
-
-    private void showImageIntro() {
-        phase = "image";
-        base();
-        stats();
-        band(current.domain, BLUE, Color.WHITE, 22, 46);
-        band(current.theme, GREEN, Color.WHITE, 20, 44);
-        band(current.question, RED, Color.WHITE, 22, 52);
-        if (!showImage(470)) {
-            band("Image introuvable : " + current.imageFile, RED, Color.WHITE, 20, 70);
-        }
-        Button b = btn("Afficher la question", 20);
-        b.setOnClickListener(v -> showQuestion());
-        add(b);
-        addFlagButtons();
-        addEndButton();
-        Button prev = btn("Question précédente", 17);
-        prev.setOnClickListener(v -> previousQuestion());
-        add(prev);
-        Button ret = btn("Retour domaines", 17);
-        ret.setOnClickListener(v -> showHome());
-        add(ret);
-    }
-
     private void showQuestion() {
         phase = "question";
-        base();
-        stats();
-        band(current.domain, BLUE, Color.WHITE, 22, 46);
-        band(current.theme, GREEN, Color.WHITE, 20, 44);
-        band(current.question, RED, Color.WHITE, 24, 58);
-        if (current.isImage && showImage(300)) {
-            // image shown
-        } else {
-            band(current.detail.length() == 0 ? " " : current.detail, YELLOW, Color.BLACK, 22, 90);
+        baseScrollable();
+        band(current.domain + " · " + current.theme, BLUE, Color.WHITE, 21, 48);
+        band(current.question, RED, Color.WHITE, 23, 58);
+        if (current.detail.length() > 0) {
+            band(current.detail, YELLOW, Color.BLACK, 21, 62);
         }
-        Button b = btn("Afficher les propositions", 20);
-        b.setOnClickListener(v -> showChoices(false, 0));
-        add(b);
-        addFlagButtons();
-        addEndButton();
-        Button prev = btn("Question précédente", 17);
-        prev.setOnClickListener(v -> previousQuestion());
-        add(prev);
-        Button ret = btn("Retour domaines", 17);
-        ret.setOnClickListener(v -> showHome());
-        add(ret);
+        if (current.isImage) {
+            if (!showImage(240)) {
+                band("Image introuvable : " + current.imageFile, RED, Color.WHITE, 18, 60);
+            }
+        }
+        setQuestionBottomBar();
+    }
+
+    private void showChoices() {
+        phase = "choices";
+        baseFixed();
+        TextView title = tv("Propositions", 22, Color.WHITE, Gravity.CENTER, true);
+        title.setBackgroundColor(DARK);
+        root.addView(title, new LinearLayout.LayoutParams(-1, dp(46)));
+        for (int i = 1; i <= 4; i++) {
+            final int idx = i;
+            Button b = btn(current.props[i - 1], 22);
+            b.setBackgroundColor(GREY);
+            b.setTextColor(Color.WHITE);
+            b.setOnClickListener(v -> answerChoice(idx));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 0, 1);
+            lp.setMargins(0, dp(5), 0, dp(5));
+            root.addView(b, lp);
+        }
+        setChoicesBottomBar();
+    }
+
+    private void revealMental() {
+        phase = "reveal";
+        baseFixed();
+        TextView title = tv("Réponse", 22, Color.WHITE, Gravity.CENTER, true);
+        title.setBackgroundColor(DARK);
+        root.addView(title, new LinearLayout.LayoutParams(-1, dp(46)));
+        for (int i = 1; i <= 4; i++) {
+            Button b = btn(current.props[i - 1], 22);
+            b.setEnabled(false);
+            b.setTextColor(Color.WHITE);
+            b.setBackgroundColor(i == current.correct ? Color.rgb(0, 165, 65) : GREY);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 0, 1);
+            lp.setMargins(0, dp(5), 0, dp(5));
+            root.addView(b, lp);
+        }
+        setRevealBottomBar();
+    }
+
+    private void showChoiceResult(int wrongChoice) {
+        phase = "result";
+        baseFixed();
+        TextView title = tv(wrongChoice == current.correct ? "Bonne réponse · à réviser" : "Réponse à revoir", 21, Color.WHITE, Gravity.CENTER, true);
+        title.setBackgroundColor(RED);
+        root.addView(title, new LinearLayout.LayoutParams(-1, dp(46)));
+        for (int i = 1; i <= 4; i++) {
+            Button b = btn(current.props[i - 1], 22);
+            b.setEnabled(false);
+            b.setTextColor(Color.WHITE);
+            if (i == current.correct) b.setBackgroundColor(Color.rgb(0, 165, 65));
+            else if (i == wrongChoice) b.setBackgroundColor(Color.rgb(190, 25, 25));
+            else b.setBackgroundColor(GREY);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 0, 1);
+            lp.setMargins(0, dp(5), 0, dp(5));
+            root.addView(b, lp);
+        }
+    }
+
+    private void setQuestionBottomBar() {
+        bottomBar.setVisibility(View.VISIBLE);
+        bottomBar.removeAllViews();
+        addBottomButton("Signaler", RED, v -> showProblemMenu());
+        addBottomButton("Statistiques", BLUE, v -> showStatsMenu());
+        addBottomButton("Propositions", GREEN, v -> showChoices());
+    }
+
+    private void setChoicesBottomBar() {
+        bottomBar.setVisibility(View.VISIBLE);
+        bottomBar.removeAllViews();
+        addBottomButton("Signaler", RED, v -> showProblemMenu());
+        addBottomButton("Statistiques", BLUE, v -> showStatsMenu());
+        addBottomButton("Révéler", GREEN, v -> revealMental());
+    }
+
+    private void setRevealBottomBar() {
+        bottomBar.setVisibility(View.VISIBLE);
+        bottomBar.removeAllViews();
+        addBottomButton("À revoir", RED, v -> finish("R"));
+        addBottomButton("Statistiques", BLUE, v -> showStatsMenu());
+        addBottomButton("Assimilée", GREEN, v -> finish("A"));
+    }
+
+    private void addBottomButton(String text, int color, View.OnClickListener listener) {
+        Button b = btn(text, 16);
+        b.setBackgroundColor(color);
+        b.setTextColor(Color.WHITE);
+        b.setOnClickListener(listener);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1);
+        lp.setMargins(dp(3), dp(3), dp(3), dp(3));
+        bottomBar.addView(b, lp);
+    }
+
+    private void showProblemMenu() {
+        String[] options = new String[]{
+                "P · Problème général",
+                "I · Problème d'image",
+                "T · Thème à exclure"
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("Signaler")
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) flagAndNext("P", "Problème général noté");
+                    else if (which == 1) flagAndNext("I", "Problème d'image noté");
+                    else flagAndNext("T", "Thème à exclure noté");
+                })
+                .setNegativeButton("Annuler", null)
+                .show();
+    }
+
+    private void showStatsMenu() {
+        String message;
+        try {
+            message = "Session\n" +
+                    "Répondues : " + answered + "\n" +
+                    "Assimilées mentalement : " + mentalOk + "\n" +
+                    "À revoir : " + revised + "\n" +
+                    "Série juste : " + goodStreak + " / record " + bestGoodStreak + "\n" +
+                    "Série mentale : " + mentalStreak + " / record " + bestMentalStreak + "\n" +
+                    "Historique : " + (historyIndex + 1) + " / " + history.size() + "\n\n" +
+                    "Base\n" +
+                    "A : " + countStatus("A") + "   R : " + countStatus("R") + "\n" +
+                    "P : " + countStatus("P") + "   I : " + countStatus("I") + "\n" +
+                    "T : " + countStatus("T") + "   X : " + countStatus("X");
+        } catch (Exception e) {
+            message = "Statistiques base indisponibles : " + e.getMessage();
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle("Statistiques")
+                .setMessage(message)
+                .setPositiveButton("Fermer", null)
+                .setNegativeButton("Fin de partie", (dialog, which) -> showEndScreen());
+
+        if ("choices".equals(phase) || "reveal".equals(phase) || "result".equals(phase)) {
+            builder.setNeutralButton("Revoir la question", (dialog, which) -> showQuestion());
+        } else if (historyIndex > 0) {
+            builder.setNeutralButton("Question précédente", (dialog, which) -> previousQuestion());
+        }
+        builder.show();
     }
 
     private boolean showImage(int heightDp) {
@@ -373,7 +524,9 @@ public class MainActivity extends Activity {
         iv.setAdjustViewBounds(true);
         iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
         iv.setBackgroundColor(Color.BLACK);
-        add(iv, heightDp);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(heightDp));
+        lp.setMargins(0, dp(4), 0, dp(4));
+        root.addView(iv, lp);
         return true;
     }
 
@@ -404,64 +557,9 @@ public class MainActivity extends Activity {
         } catch (Exception e) { return null; }
     }
 
-    private void showChoices(boolean reveal, int wrongChoice) {
-        phase = reveal ? "reveal" : "choices";
-        base();
-        stats();
-        band(reveal ? "Réponse révélée" : "Propositions", RED, Color.WHITE, 24, 55);
-        for (int i = 1; i <= 4; i++) {
-            Button b = btn(label(i) + " · " + current.props[i - 1], 22);
-            if (reveal && i == current.correct) b.setBackgroundColor(Color.rgb(0, 165, 65));
-            if (wrongChoice == i && wrongChoice != current.correct) b.setBackgroundColor(Color.rgb(190, 25, 25));
-            final int idx = i;
-            b.setOnClickListener(v -> {
-                if (!reveal) answerChoice(idx);
-            });
-            add(b, 78);
-        }
-        if (!reveal) {
-            Button mental = btn("Je pense connaître la réponse", 20);
-            mental.setOnClickListener(v -> showChoices(true, 0));
-            add(mental);
-        } else {
-            Button ok = btn("C'était ma réponse → A", 20);
-            ok.setOnClickListener(v -> finish("A"));
-            add(ok);
-            Button ko = btn("Ce n'était pas ma réponse → R", 20);
-            ko.setOnClickListener(v -> finish("R"));
-            add(ko);
-        }
-        addFlagButtons();
-        addEndButton();
-        Button back = btn("Revoir la question", 17);
-        back.setOnClickListener(v -> showQuestion());
-        add(back);
-    }
-
-    private void addFlagButtons() {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        Button p = btn("P", 15);
-        p.setOnClickListener(v -> flagAndNext("P", "Problème noté"));
-        Button i = btn("I", 15);
-        i.setOnClickListener(v -> flagAndNext("I", "Image à revoir notée"));
-        Button t = btn("T", 15);
-        t.setOnClickListener(v -> flagAndNext("T", "Thème à exclure noté"));
-        row.addView(p, new LinearLayout.LayoutParams(0, dp(44), 1));
-        row.addView(i, new LinearLayout.LayoutParams(0, dp(44), 1));
-        row.addView(t, new LinearLayout.LayoutParams(0, dp(44), 1));
-        root.addView(row, new LinearLayout.LayoutParams(-1, -2));
-    }
-
-    private void addEndButton() {
-        Button end = btn("Fin de partie / statistiques", 16);
-        end.setOnClickListener(v -> showEndScreen());
-        add(end);
-    }
-
     private void showEndScreen() {
         phase = "end";
-        base();
+        baseScrollable();
         band("Fin de partie", RED, Color.WHITE, 26, 72);
         band("Répondues : " + answered + "\nAssimilées mentalement : " + mentalOk + "\nÀ revoir : " + revised + "\nSérie juste : " + goodStreak + " / record " + bestGoodStreak + "\nSérie mentale : " + mentalStreak + " / record " + bestMentalStreak, DARK, Color.WHITE, 21, 150);
         try {
@@ -471,12 +569,12 @@ public class MainActivity extends Activity {
         }
         if (current != null) {
             Button resume = btn("Reprendre la partie", 20);
-            resume.setOnClickListener(v -> { if (current.isImage) showImageIntro(); else showQuestion(); });
+            resume.setOnClickListener(v -> showQuestion());
             add(resume);
         }
-        Button domains = btn("Retour domaines", 20);
-        domains.setOnClickListener(v -> showHome());
-        add(domains);
+        Button newGame = btn("Nouvelle partie", 20);
+        newGame.setOnClickListener(v -> showHome());
+        add(newGame);
     }
 
     private long countStatus(String status) {
@@ -491,7 +589,7 @@ public class MainActivity extends Activity {
     private void flagAndNext(String status, String msg) {
         updateStatus(status);
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
-        root.postDelayed(this::nextQuestion, 350);
+        screenRoot.postDelayed(this::nextQuestion, 350);
     }
 
     private void answerChoice(int choice) {
@@ -505,8 +603,8 @@ public class MainActivity extends Activity {
         }
         mentalStreak = 0;
         updateStatus("R");
-        showChoices(true, choice);
-        root.postDelayed(this::nextQuestion, 650);
+        showChoiceResult(choice);
+        screenRoot.postDelayed(this::nextQuestion, 650);
     }
 
     private void finish(String status) {
@@ -536,43 +634,12 @@ public class MainActivity extends Activity {
         if (historyIndex > 0) {
             historyIndex--;
             current = history.get(historyIndex);
-            if (current.isImage) showImageIntro(); else showQuestion();
+            showQuestion();
         } else {
             Toast.makeText(this, "Pas de question précédente", Toast.LENGTH_SHORT).show();
         }
     }
 
-    @Override public boolean dispatchKeyEvent(KeyEvent e) {
-        if (e.getAction() != KeyEvent.ACTION_DOWN || current == null) return super.dispatchKeyEvent(e);
-        int k = e.getKeyCode();
-        if (k == KeyEvent.KEYCODE_ESCAPE) { showEndScreen(); return true; }
-        if ("image".equals(phase)) {
-            if (k == KeyEvent.KEYCODE_SPACE || k == KeyEvent.KEYCODE_Q || k == KeyEvent.KEYCODE_ENTER) { showQuestion(); return true; }
-            if (k == KeyEvent.KEYCODE_P) { flagAndNext("P", "Problème noté"); return true; }
-            if (k == KeyEvent.KEYCODE_I) { flagAndNext("I", "Image à revoir notée"); return true; }
-            if (k == KeyEvent.KEYCODE_T) { flagAndNext("T", "Thème à exclure noté"); return true; }
-        } else if ("question".equals(phase)) {
-            if (k == KeyEvent.KEYCODE_SPACE || k == KeyEvent.KEYCODE_Q) { showChoices(false, 0); return true; }
-            if (k == KeyEvent.KEYCODE_ENTER) { previousQuestion(); return true; }
-            if (k == KeyEvent.KEYCODE_P) { flagAndNext("P", "Problème noté"); return true; }
-            if (k == KeyEvent.KEYCODE_I) { flagAndNext("I", "Image à revoir notée"); return true; }
-            if (k == KeyEvent.KEYCODE_T) { flagAndNext("T", "Thème à exclure noté"); return true; }
-        } else if ("choices".equals(phase)) {
-            if (k == KeyEvent.KEYCODE_SPACE) { showChoices(true, 0); return true; }
-            if (k == KeyEvent.KEYCODE_Q) { answerChoice(1); return true; }
-            if (k == KeyEvent.KEYCODE_D) { answerChoice(2); return true; }
-            if (k == KeyEvent.KEYCODE_K) { answerChoice(3); return true; }
-            if (k == KeyEvent.KEYCODE_M) { answerChoice(4); return true; }
-            if (k == KeyEvent.KEYCODE_ENTER) { showQuestion(); return true; }
-        } else if ("reveal".equals(phase)) {
-            if (k == KeyEvent.KEYCODE_SPACE) { finish("A"); return true; }
-            if (k == KeyEvent.KEYCODE_Q) { finish("R"); return true; }
-            if (k == KeyEvent.KEYCODE_ENTER) { showQuestion(); return true; }
-        }
-        return super.dispatchKeyEvent(e);
-    }
-
-    private String label(int i) { return i == 1 ? "Q" : i == 2 ? "D" : i == 3 ? "K" : "M"; }
     private String safe(String s) { return s == null ? "" : s.trim(); }
     private int dp(int n) { return (int)(n * getResources().getDisplayMetrics().density + 0.5f); }
     private String normalize(String raw) {
