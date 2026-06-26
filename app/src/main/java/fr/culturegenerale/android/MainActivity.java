@@ -47,12 +47,6 @@ public class MainActivity extends Activity {
             "Géographie", "Histoire", "Sciences et Techniques", "Sport"
     };
     private static final String[] IMG_EXT = new String[]{".jpg", ".jpeg", ".png", ".webp", ".bmp"};
-    private static final String[] FONT_CANDIDATES = new String[]{
-            "Comfortaa-Bold.ttf", "Comfortaa.ttf",
-            "Confortaa-Bold.ttf", "Confortaa.ttf",
-            "Conformtaa-Bold.ttf", "Conformtaa.ttf"
-    };
-
     private final int BLUE = Color.rgb(0, 86, 180);
     private final int GREEN = Color.rgb(0, 135, 60);
     private final int RED = Color.rgb(185, 0, 0);
@@ -108,41 +102,12 @@ public class MainActivity extends Activity {
     }
 
     private void loadFont() {
-        // 1. Noms les plus probables.
-        for (String name : FONT_CANDIDATES) {
-            try {
-                File f = new File(appFolder, name);
-                if (f.isFile()) {
-                    appFont = Typeface.createFromFile(f);
-                    if (appFont != null) return;
-                }
-            } catch (Exception ignored) { }
-        }
-
-        // 2. Recherche tolérante : Comfortaa / Confortaa / Conformtaa, sans tenir compte de la casse.
         try {
-            File[] files = appFolder.listFiles();
-            if (files != null) {
-                for (File f : files) {
-                    String n = f.getName().toLowerCase(Locale.ROOT);
-                    boolean matchingName = n.contains("comfortaa") || n.contains("confortaa") || n.contains("conformtaa");
-                    if (f.isFile() && n.endsWith(".ttf") && matchingName) {
-                        appFont = Typeface.createFromFile(f);
-                        if (appFont != null) return;
-                    }
-                }
-                // 3. Ultime secours : premier fichier TTF présent dans le dossier.
-                for (File f : files) {
-                    String n = f.getName().toLowerCase(Locale.ROOT);
-                    if (f.isFile() && n.endsWith(".ttf")) {
-                        appFont = Typeface.createFromFile(f);
-                        if (appFont != null) return;
-                    }
-                }
-            }
-        } catch (Exception ignored) { }
-
-        appFont = Typeface.DEFAULT_BOLD;
+            appFont = getResources().getFont(R.font.comfortaa_bold);
+        } catch (Exception e) {
+            appFont = Typeface.DEFAULT_BOLD;
+            Toast.makeText(this, "Erreur : la police Comfortaa intégrée n'a pas été trouvée", Toast.LENGTH_LONG).show();
+        }
     }
 
     private void baseScrollable() {
@@ -246,7 +211,7 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseScrollable();
-        add(tv("Culture Générale Android V8.0", 28, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V8.1", 28, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 22, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 20);
