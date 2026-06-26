@@ -5,28 +5,35 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.Space;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.PopupWindow;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -60,6 +67,8 @@ public class MainActivity extends Activity {
     private LinearLayout root;
     private LinearLayout bottomBar;
     private Typeface appFont = Typeface.DEFAULT_BOLD;
+    private final Button[] choiceButtons = new Button[4];
+    private PopupWindow transientPopup;
     private final Random random = new Random();
     private Question current;
     private String currentDomain = null;
@@ -99,6 +108,13 @@ public class MainActivity extends Activity {
     @Override public void onResume() {
         super.onResume();
         if ("home".equals(phase)) showHome();
+    }
+
+    @Override public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        // Les vues utilisent des poids et des tailles adaptatives : elles se redimensionnent
+        // sans redémarrer la partie lors du passage paysage / portrait.
+        if (transientPopup != null && transientPopup.isShowing()) transientPopup.dismiss();
     }
 
     private void loadFont() {
@@ -159,6 +175,7 @@ public class MainActivity extends Activity {
         v.setGravity(gravity);
         v.setPadding(dp(8), dp(5), dp(8), dp(5));
         v.setTypeface(appFont);
+        v.setIncludeFontPadding(false);
         return v;
     }
 
@@ -170,7 +187,20 @@ public class MainActivity extends Activity {
         b.setGravity(Gravity.CENTER);
         b.setPadding(dp(8), dp(8), dp(8), dp(8));
         b.setTypeface(appFont);
+        b.setTextColor(Color.WHITE);
+        b.setBackground(roundedBackground(GREY, 16));
         return b;
+    }
+
+    private GradientDrawable roundedBackground(int color, int radiusDp) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(color);
+        drawable.setCornerRadius(dp(radiusDp));
+        return drawable;
+    }
+
+    private void setRoundedBackground(View view, int color, int radiusDp) {
+        view.setBackground(roundedBackground(color, radiusDp));
     }
 
     private void add(View v) { root.addView(v, new LinearLayout.LayoutParams(-1, -2)); }
@@ -178,11 +208,39 @@ public class MainActivity extends Activity {
 
     private void band(String text, int color, int textColor, int sp, int minHeightDp) {
         TextView v = tv(text, sp, textColor, Gravity.CENTER, true);
-        v.setBackgroundColor(color);
+        setRoundedBackground(v, color, 14);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.setMargins(0, dp(3), 0, dp(3));
         v.setMinHeight(dp(minHeightDp));
         root.addView(v, lp);
+    }
+
+    private void singleLineBand(String text, int color, int textColor, int maxSp, int minSp, int minHeightDp) {
+        TextView v = tv(text, maxSp - 2, textColor, Gravity.CENTER, true);
+        v.setSingleLine(true);
+        v.setMaxLines(1);
+        v.setHorizontallyScrolling(false);
+        setRoundedBackground(v, color, 14);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(minHeightDp));
+        lp.setMargins(0, dp(3), 0, dp(3));
+        root.addView(v, lp);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            v.setAutoSizeTextTypeUniformWithConfiguration(minSp, maxSp, 1, TypedValue.COMPLEX_UNIT_SP);
+        } else {
+            v.post(() -> fitSingleLineLegacy(v, text, maxSp, minSp));
+        }
+    }
+
+    private void fitSingleLineLegacy(TextView v, String text, int maxSp, int minSp) {
+        int available = v.getWidth() - v.getPaddingLeft() - v.getPaddingRight();
+        if (available <= 0) return;
+        float size = maxSp;
+        v.setTextSize(TypedValue.COMPLEX_UNIT_SP, size);
+        while (size > minSp && v.getPaint().measureText(text == null ? "" : text) > available) {
+            size -= 1f;
+            v.setTextSize(TypedValue.COMPLEX_UNIT_SP, size);
+        }
     }
 
     private boolean hasAccess() {
@@ -211,7 +269,7 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseScrollable();
-        add(tv("Culture Générale Android V8.1", 28, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V9.1", 28, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 22, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 20);
@@ -346,16 +404,17 @@ public class MainActivity extends Activity {
 
     private void showQuestion() {
         phase = "question";
-        baseScrollable();
-        band(current.domain + " · " + current.theme, BLUE, Color.WHITE, 21, 48);
-        band(current.question, RED, Color.WHITE, 23, 58);
+        baseFixed();
+        singleLineBand(current.domain + " · " + current.theme, BLUE, Color.WHITE, 23, 10, 48);
+        singleLineBand(current.question, RED, Color.WHITE, 25, 8, 58);
         if (current.detail.length() > 0) {
             band(current.detail, YELLOW, Color.BLACK, 21, 62);
         }
         if (current.isImage) {
-            if (!showImage(240)) {
-                band("Image introuvable : " + current.imageFile, RED, Color.WHITE, 18, 60);
-            }
+            showImageCentered();
+        } else {
+            Space spacer = new Space(this);
+            root.addView(spacer, new LinearLayout.LayoutParams(-1, 0, 1));
         }
         setQuestionBottomBar();
     }
@@ -366,9 +425,10 @@ public class MainActivity extends Activity {
         for (int i = 1; i <= 4; i++) {
             final int idx = i;
             Button b = btn(current.props[i - 1], 22);
-            b.setBackgroundColor(GREY);
+            setRoundedBackground(b, GREY, 18);
             b.setTextColor(Color.WHITE);
             b.setOnClickListener(v -> answerChoice(idx));
+            choiceButtons[i - 1] = b;
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 0, 1);
             lp.setMargins(0, dp(5), 0, dp(5));
             root.addView(b, lp);
@@ -380,13 +440,15 @@ public class MainActivity extends Activity {
         phase = "reveal";
         baseFixed();
         TextView title = tv("Réponse", 22, Color.WHITE, Gravity.CENTER, true);
-        title.setBackgroundColor(DARK);
-        root.addView(title, new LinearLayout.LayoutParams(-1, dp(46)));
+        setRoundedBackground(title, DARK, 14);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-1, dp(46));
+        titleLp.setMargins(0, dp(3), 0, dp(3));
+        root.addView(title, titleLp);
         for (int i = 1; i <= 4; i++) {
             Button b = btn(current.props[i - 1], 22);
             b.setEnabled(false);
             b.setTextColor(Color.WHITE);
-            b.setBackgroundColor(i == current.correct ? Color.rgb(0, 165, 65) : GREY);
+            setRoundedBackground(b, i == current.correct ? Color.rgb(0, 165, 65) : GREY, 18);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 0, 1);
             lp.setMargins(0, dp(5), 0, dp(5));
             root.addView(b, lp);
@@ -394,23 +456,19 @@ public class MainActivity extends Activity {
         setRevealBottomBar();
     }
 
-    private void showChoiceResult(int wrongChoice) {
+    private void showChoiceResult(int chosenChoice) {
         phase = "result";
-        baseFixed();
-        TextView title = tv(wrongChoice == current.correct ? "Bonne réponse · à réviser" : "Réponse à revoir", 21, Color.WHITE, Gravity.CENTER, true);
-        title.setBackgroundColor(RED);
-        root.addView(title, new LinearLayout.LayoutParams(-1, dp(46)));
         for (int i = 1; i <= 4; i++) {
-            Button b = btn(current.props[i - 1], 22);
+            Button b = choiceButtons[i - 1];
+            if (b == null) continue;
             b.setEnabled(false);
-            b.setTextColor(Color.WHITE);
-            if (i == current.correct) b.setBackgroundColor(Color.rgb(0, 165, 65));
-            else if (i == wrongChoice) b.setBackgroundColor(Color.rgb(190, 25, 25));
-            else b.setBackgroundColor(GREY);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 0, 1);
-            lp.setMargins(0, dp(5), 0, dp(5));
-            root.addView(b, lp);
+            if (i == current.correct) setRoundedBackground(b, Color.rgb(0, 165, 65), 18);
+            else if (i == chosenChoice) setRoundedBackground(b, Color.rgb(190, 25, 25), 18);
+            else setRoundedBackground(b, GREY, 18);
         }
+        setBottomBarEnabled(false);
+        String message = chosenChoice == current.correct ? "Bonne réponse · à réviser" : "Réponse à revoir";
+        showTransientMessage(message, chosenChoice == current.correct ? GREEN : RED);
     }
 
     private void setQuestionBottomBar() {
@@ -439,7 +497,7 @@ public class MainActivity extends Activity {
 
     private void addBottomButton(String text, int color, View.OnClickListener listener) {
         Button b = btn(text, 16);
-        b.setBackgroundColor(color);
+        setRoundedBackground(b, color, 16);
         b.setTextColor(Color.WHITE);
         b.setOnClickListener(listener);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1);
@@ -447,21 +505,69 @@ public class MainActivity extends Activity {
         bottomBar.addView(b, lp);
     }
 
+    private void setBottomBarEnabled(boolean enabled) {
+        if (bottomBar == null) return;
+        for (int i = 0; i < bottomBar.getChildCount(); i++) {
+            bottomBar.getChildAt(i).setEnabled(enabled);
+        }
+    }
+
+    private void showTransientMessage(String message, int color) {
+        if (transientPopup != null && transientPopup.isShowing()) transientPopup.dismiss();
+        TextView label = tv(message, 18, Color.WHITE, Gravity.CENTER, true);
+        label.setPadding(dp(22), dp(12), dp(22), dp(12));
+        setRoundedBackground(label, color, 16);
+        transientPopup = new PopupWindow(label, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, false);
+        transientPopup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        transientPopup.setOutsideTouchable(false);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) transientPopup.setElevation(dp(10));
+        transientPopup.showAtLocation(screenRoot, Gravity.CENTER, 0, 0);
+        screenRoot.postDelayed(() -> {
+            if (transientPopup != null && transientPopup.isShowing()) transientPopup.dismiss();
+        }, 750);
+    }
+
     private void showProblemMenu() {
-        String[] options = new String[]{
-                "P · Problème général",
-                "I · Problème d'image",
-                "T · Thème à exclure"
-        };
-        new AlertDialog.Builder(this)
-                .setTitle("Signaler")
-                .setItems(options, (dialog, which) -> {
-                    if (which == 0) flagAndNext("P", "Problème général noté");
-                    else if (which == 1) flagAndNext("I", "Problème d'image noté");
-                    else flagAndNext("T", "Thème à exclure noté");
-                })
-                .setNegativeButton("Annuler", null)
-                .show();
+        final AlertDialog dialog = new AlertDialog.Builder(this).create();
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(10), dp(10), dp(10), dp(10));
+        setRoundedBackground(panel, DARK, 20);
+
+        TextView title = tv("Signaler", 20, Color.WHITE, Gravity.CENTER, true);
+        panel.addView(title, new LinearLayout.LayoutParams(-1, dp(44)));
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER);
+        String[] codes = new String[]{"P", "I", "T"};
+        String[] labels = new String[]{"Problème général", "Problème image", "Thème à exclure"};
+        String[] messages = new String[]{"Problème général noté", "Problème d'image noté", "Thème à exclure noté"};
+        for (int i = 0; i < 3; i++) {
+            final int idx = i;
+            Button b = btn(codes[i] + "\n" + labels[i], 14);
+            setRoundedBackground(b, RED, 16);
+            b.setTextColor(Color.WHITE);
+            b.setOnClickListener(v -> {
+                dialog.dismiss();
+                flagAndNext(codes[idx], messages[idx]);
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, cmToPx(2.0f), 1);
+            lp.setMargins(dp(4), dp(4), dp(4), dp(4));
+            row.addView(b, lp);
+        }
+        panel.addView(row, new LinearLayout.LayoutParams(-1, -2));
+
+        dialog.setView(panel);
+        dialog.setCanceledOnTouchOutside(true);
+        dialog.setOnShowListener(d -> {
+            Window w = dialog.getWindow();
+            if (w != null) {
+                w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+                w.setLayout(getResources().getDisplayMetrics().widthPixels - dp(20), ViewGroup.LayoutParams.WRAP_CONTENT);
+            }
+        });
+        dialog.show();
     }
 
     private void showStatsMenu() {
@@ -496,20 +602,31 @@ public class MainActivity extends Activity {
         builder.show();
     }
 
-    private boolean showImage(int heightDp) {
+    private void showImageCentered() {
+        FrameLayout imageArea = new FrameLayout(this);
+        imageArea.setBackgroundColor(Color.BLACK);
+        imageArea.setPadding(dp(6), dp(6), dp(6), dp(6));
+        LinearLayout.LayoutParams areaLp = new LinearLayout.LayoutParams(-1, 0, 1);
+        areaLp.setMargins(0, dp(4), 0, dp(4));
+        root.addView(imageArea, areaLp);
+
         File f = imageFile(current.imageFile);
-        if (f == null || !f.exists()) return false;
-        Bitmap bm = decode(f);
-        if (bm == null) return false;
+        Bitmap bm = (f != null && f.exists()) ? decode(f) : null;
+        if (bm == null) {
+            TextView missing = tv("Image introuvable : " + current.imageFile, 18, Color.WHITE, Gravity.CENTER, true);
+            setRoundedBackground(missing, RED, 14);
+            FrameLayout.LayoutParams missingLp = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
+            missingLp.setMargins(dp(12), dp(12), dp(12), dp(12));
+            imageArea.addView(missing, missingLp);
+            return;
+        }
+
         ImageView iv = new ImageView(this);
         iv.setImageBitmap(bm);
-        iv.setAdjustViewBounds(true);
         iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
         iv.setBackgroundColor(Color.BLACK);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(heightDp));
-        lp.setMargins(0, dp(4), 0, dp(4));
-        root.addView(iv, lp);
-        return true;
+        FrameLayout.LayoutParams ivLp = new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER);
+        imageArea.addView(iv, ivLp);
     }
 
     private File imageFile(String name) {
@@ -586,7 +703,7 @@ public class MainActivity extends Activity {
         mentalStreak = 0;
         updateStatus("R");
         showChoiceResult(choice);
-        screenRoot.postDelayed(this::nextQuestion, 650);
+        screenRoot.postDelayed(this::nextQuestion, 900);
     }
 
     private void finish(String status) {
