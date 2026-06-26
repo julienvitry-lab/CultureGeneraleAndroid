@@ -217,11 +217,14 @@ public class MainActivity extends Activity {
 
     private void singleLineBand(String text, int color, int textColor, int maxSp, int minSp, int minHeightDp) {
         TextView v = tv(text, maxSp - 2, textColor, Gravity.CENTER, true);
+        int innerMargin = cmToPx(0.5f); // 5 mm autour du texte
+        v.setPadding(innerMargin, innerMargin, innerMargin, innerMargin);
         v.setSingleLine(true);
         v.setMaxLines(1);
         v.setHorizontallyScrolling(false);
+        v.setMinHeight(dp(minHeightDp));
         setRoundedBackground(v, color, 14);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(minHeightDp));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.setMargins(0, dp(3), 0, dp(3));
         root.addView(v, lp);
 
@@ -230,6 +233,17 @@ public class MainActivity extends Activity {
         } else {
             v.post(() -> fitSingleLineLegacy(v, text, maxSp, minSp));
         }
+    }
+
+    private void upperBand(String text, int color, int textColor, int sp, int minHeightDp) {
+        TextView v = tv(text, sp, textColor, Gravity.CENTER, true);
+        int innerMargin = cmToPx(0.5f); // 5 mm en haut, bas, gauche et droite
+        v.setPadding(innerMargin, innerMargin, innerMargin, innerMargin);
+        v.setMinHeight(dp(minHeightDp));
+        setRoundedBackground(v, color, 14);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(0, dp(3), 0, dp(3));
+        root.addView(v, lp);
     }
 
     private void fitSingleLineLegacy(TextView v, String text, int maxSp, int minSp) {
@@ -269,7 +283,7 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseScrollable();
-        add(tv("Culture Générale Android V9.1", 28, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V9.2", 28, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 22, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 20);
@@ -408,7 +422,7 @@ public class MainActivity extends Activity {
         singleLineBand(current.domain + " · " + current.theme, BLUE, Color.WHITE, 23, 10, 48);
         singleLineBand(current.question, RED, Color.WHITE, 25, 8, 58);
         if (current.detail.length() > 0) {
-            band(current.detail, YELLOW, Color.BLACK, 21, 62);
+            upperBand(current.detail, YELLOW, Color.BLACK, 21, 62);
         }
         if (current.isImage) {
             showImageCentered();
@@ -439,11 +453,6 @@ public class MainActivity extends Activity {
     private void revealMental() {
         phase = "reveal";
         baseFixed();
-        TextView title = tv("Réponse", 22, Color.WHITE, Gravity.CENTER, true);
-        setRoundedBackground(title, DARK, 14);
-        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-1, dp(46));
-        titleLp.setMargins(0, dp(3), 0, dp(3));
-        root.addView(title, titleLp);
         for (int i = 1; i <= 4; i++) {
             Button b = btn(current.props[i - 1], 22);
             b.setEnabled(false);
@@ -467,8 +476,7 @@ public class MainActivity extends Activity {
             else setRoundedBackground(b, GREY, 18);
         }
         setBottomBarEnabled(false);
-        String message = chosenChoice == current.correct ? "Bonne réponse · à réviser" : "Réponse à revoir";
-        showTransientMessage(message, chosenChoice == current.correct ? GREEN : RED);
+        // La couleur des propositions constitue désormais l'unique retour visuel.
     }
 
     private void setQuestionBottomBar() {
