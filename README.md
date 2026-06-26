@@ -1,15 +1,11 @@
-# Culture Générale Android V7.0
+# Culture Générale Android V8.0
 
-Nouvelle interface tactile :
+Améliorations visuelles :
 
-- police Comfortaa chargée depuis le dossier `Culture Générale` ;
-- fusion mégathème + thème ;
-- bandeaux question et détail séparés ;
-- image plafonnée pour éviter les débordements ;
-- question et propositions sur deux écrans distincts ;
-- bandeau inférieur fixe : Signaler / Statistiques / Propositions ;
-- menu Signaler avec P / I / T ;
-- statistiques sans bandeau supérieur ;
-- fin de partie depuis le menu Statistiques ;
-- suppression du bouton Retour domaines ;
-- interface tactile sans rappels des touches PC.
+- chargement renforcé de la police Comfortaa / Confortaa depuis le dossier `Culture Générale` ;
+- taille de police augmentée sur toute l’interface ;
+- bandeau inférieur porté à 2 cm de haut ;
+- suppression du titre redondant `Propositions` ;
+- écran d’accueil épuré ;
+- suppression des totaux et nombres par domaine ;
+- suppression de la numérotation devant les domaines.

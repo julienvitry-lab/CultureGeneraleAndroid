@@ -48,7 +48,9 @@ public class MainActivity extends Activity {
     };
     private static final String[] IMG_EXT = new String[]{".jpg", ".jpeg", ".png", ".webp", ".bmp"};
     private static final String[] FONT_CANDIDATES = new String[]{
-            "Comfortaa-Bold.ttf", "Comfortaa.ttf", "Conformtaa-Bold.ttf", "Conformtaa.ttf"
+            "Comfortaa-Bold.ttf", "Comfortaa.ttf",
+            "Confortaa-Bold.ttf", "Confortaa.ttf",
+            "Conformtaa-Bold.ttf", "Conformtaa.ttf"
     };
 
     private final int BLUE = Color.rgb(0, 86, 180);
@@ -106,15 +108,41 @@ public class MainActivity extends Activity {
     }
 
     private void loadFont() {
+        // 1. Noms les plus probables.
         for (String name : FONT_CANDIDATES) {
             try {
                 File f = new File(appFolder, name);
-                if (f.exists()) {
+                if (f.isFile()) {
                     appFont = Typeface.createFromFile(f);
-                    return;
+                    if (appFont != null) return;
                 }
             } catch (Exception ignored) { }
         }
+
+        // 2. Recherche tolérante : Comfortaa / Confortaa / Conformtaa, sans tenir compte de la casse.
+        try {
+            File[] files = appFolder.listFiles();
+            if (files != null) {
+                for (File f : files) {
+                    String n = f.getName().toLowerCase(Locale.ROOT);
+                    boolean matchingName = n.contains("comfortaa") || n.contains("confortaa") || n.contains("conformtaa");
+                    if (f.isFile() && n.endsWith(".ttf") && matchingName) {
+                        appFont = Typeface.createFromFile(f);
+                        if (appFont != null) return;
+                    }
+                }
+                // 3. Ultime secours : premier fichier TTF présent dans le dossier.
+                for (File f : files) {
+                    String n = f.getName().toLowerCase(Locale.ROOT);
+                    if (f.isFile() && n.endsWith(".ttf")) {
+                        appFont = Typeface.createFromFile(f);
+                        if (appFont != null) return;
+                    }
+                }
+            }
+        } catch (Exception ignored) { }
+
+        appFont = Typeface.DEFAULT_BOLD;
     }
 
     private void baseScrollable() {
@@ -135,7 +163,7 @@ public class MainActivity extends Activity {
         bottomBar.setOrientation(LinearLayout.HORIZONTAL);
         bottomBar.setGravity(Gravity.CENTER);
         bottomBar.setVisibility(View.GONE);
-        screenRoot.addView(bottomBar, new LinearLayout.LayoutParams(-1, dp(64)));
+        screenRoot.addView(bottomBar, new LinearLayout.LayoutParams(-1, cmToPx(2.0f)));
         setContentView(screenRoot);
     }
 
@@ -154,29 +182,29 @@ public class MainActivity extends Activity {
         bottomBar.setOrientation(LinearLayout.HORIZONTAL);
         bottomBar.setGravity(Gravity.CENTER);
         bottomBar.setVisibility(View.GONE);
-        screenRoot.addView(bottomBar, new LinearLayout.LayoutParams(-1, dp(64)));
+        screenRoot.addView(bottomBar, new LinearLayout.LayoutParams(-1, cmToPx(2.0f)));
         setContentView(screenRoot);
     }
 
     private TextView tv(String text, int sp, int color, int gravity, boolean bold) {
         TextView v = new TextView(this);
         v.setText(text == null ? "" : text);
-        v.setTextSize(sp);
+        v.setTextSize(sp + 2);
         v.setTextColor(color);
         v.setGravity(gravity);
         v.setPadding(dp(8), dp(5), dp(8), dp(5));
-        v.setTypeface(appFont, bold ? Typeface.BOLD : Typeface.NORMAL);
+        v.setTypeface(appFont);
         return v;
     }
 
     private Button btn(String text, int sp) {
         Button b = new Button(this);
         b.setText(text);
-        b.setTextSize(sp);
+        b.setTextSize(sp + 2);
         b.setAllCaps(false);
         b.setGravity(Gravity.CENTER);
         b.setPadding(dp(8), dp(8), dp(8), dp(8));
-        b.setTypeface(appFont, Typeface.BOLD);
+        b.setTypeface(appFont);
         return b;
     }
 
@@ -218,8 +246,7 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseScrollable();
-        add(tv("Culture Générale Android V7.0", 28, Color.WHITE, Gravity.CENTER, true));
-        add(tv("Interface tactile · question et propositions séparées", 17, Color.LTGRAY, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V8.0", 28, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 22, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 20);
@@ -231,18 +258,11 @@ public class MainActivity extends Activity {
             band("Base SQLite introuvable : " + dbFile.getAbsolutePath(), RED, Color.WHITE, 18, 60);
             return;
         }
-        Map<String, Long> counts = countDomains();
-        long total = 0;
-        for (long n : counts.values()) total += n;
-        long images = countSql("SELECT COUNT(*) FROM " + TABLE + " WHERE is_image=1");
-        add(tv("Questions jouables : " + total + " · Images : " + images, 18, Color.rgb(160, 220, 255), Gravity.CENTER, true));
-        Button all = btn("0. Tous les domaines · " + total, 21);
+        Button all = btn("Tous les domaines", 21);
         all.setOnClickListener(v -> startDomain(null));
         add(all);
-        for (int i = 0; i < DOMAINS.length; i++) {
-            String d = DOMAINS[i];
-            long c = counts.containsKey(d) ? counts.get(d) : 0;
-            Button b = btn((i + 1) + ". " + d + " · " + c, 20);
+        for (String d : DOMAINS) {
+            Button b = btn(d, 20);
             b.setOnClickListener(v -> startDomain(d));
             add(b);
         }
@@ -378,9 +398,6 @@ public class MainActivity extends Activity {
     private void showChoices() {
         phase = "choices";
         baseFixed();
-        TextView title = tv("Propositions", 22, Color.WHITE, Gravity.CENTER, true);
-        title.setBackgroundColor(DARK);
-        root.addView(title, new LinearLayout.LayoutParams(-1, dp(46)));
         for (int i = 1; i <= 4; i++) {
             final int idx = i;
             Button b = btn(current.props[i - 1], 22);
@@ -641,6 +658,11 @@ public class MainActivity extends Activity {
     }
 
     private String safe(String s) { return s == null ? "" : s.trim(); }
+    private int cmToPx(float cm) {
+        float ydpi = getResources().getDisplayMetrics().ydpi;
+        return Math.round((cm / 2.54f) * ydpi);
+    }
+
     private int dp(int n) { return (int)(n * getResources().getDisplayMetrics().density + 0.5f); }
     private String normalize(String raw) {
         String s = safe(raw).replace('\u00A0', ' ');
