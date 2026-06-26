@@ -166,8 +166,8 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         base();
-        add(tv("Culture Générale Android V4.0 Alpha", 28, Color.WHITE, Gravity.CENTER, true));
-        add(tv("Session sans répétition · retour arrière · P/I/T", 17, Color.LTGRAY, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V5.0 Alpha", 28, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Mode image en 2 temps · session sans répétition · P/I/T", 17, Color.LTGRAY, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 22, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 20);
@@ -255,7 +255,7 @@ public class MainActivity extends Activity {
             }
             history.add(q);
             historyIndex = history.size() - 1;
-            showQuestion();
+            if (q.isImage) showImageIntro(); else showQuestion();
         } catch (Exception e) {
             base();
             band("Erreur : " + e.getMessage(), RED, Color.WHITE, 18, 90);
@@ -314,6 +314,29 @@ public class MainActivity extends Activity {
         add(v);
     }
 
+
+    private void showImageIntro() {
+        phase = "image";
+        base();
+        stats();
+        band(current.domain, BLUE, Color.WHITE, 22, 46);
+        band(current.theme, GREEN, Color.WHITE, 20, 44);
+        band(current.question, RED, Color.WHITE, 22, 52);
+        if (!showImage(470)) {
+            band("Image introuvable : " + current.imageFile, RED, Color.WHITE, 20, 70);
+        }
+        Button b = btn("Afficher la question", 20);
+        b.setOnClickListener(v -> showQuestion());
+        add(b);
+        addFlagButtons();
+        Button prev = btn("Question précédente", 17);
+        prev.setOnClickListener(v -> previousQuestion());
+        add(prev);
+        Button ret = btn("Retour domaines", 17);
+        ret.setOnClickListener(v -> showHome());
+        add(ret);
+    }
+
     private void showQuestion() {
         phase = "question";
         base();
@@ -321,7 +344,7 @@ public class MainActivity extends Activity {
         band(current.domain, BLUE, Color.WHITE, 22, 46);
         band(current.theme, GREEN, Color.WHITE, 20, 44);
         band(current.question, RED, Color.WHITE, 24, 58);
-        if (current.isImage && showImage()) {
+        if (current.isImage && showImage(300)) {
             // image shown
         } else {
             band(current.detail.length() == 0 ? " " : current.detail, YELLOW, Color.BLACK, 22, 90);
@@ -338,7 +361,7 @@ public class MainActivity extends Activity {
         add(ret);
     }
 
-    private boolean showImage() {
+    private boolean showImage(int heightDp) {
         File f = imageFile(current.imageFile);
         if (f == null || !f.exists()) return false;
         Bitmap bm = decode(f);
@@ -348,7 +371,7 @@ public class MainActivity extends Activity {
         iv.setAdjustViewBounds(true);
         iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
         iv.setBackgroundColor(Color.BLACK);
-        add(iv, 300);
+        add(iv, heightDp);
         return true;
     }
 
@@ -475,7 +498,7 @@ public class MainActivity extends Activity {
         if (historyIndex > 0) {
             historyIndex--;
             current = history.get(historyIndex);
-            showQuestion();
+            if (current.isImage) showImageIntro(); else showQuestion();
         } else {
             Toast.makeText(this, "Pas de question précédente", Toast.LENGTH_SHORT).show();
         }
@@ -484,7 +507,12 @@ public class MainActivity extends Activity {
     @Override public boolean dispatchKeyEvent(KeyEvent e) {
         if (e.getAction() != KeyEvent.ACTION_DOWN || current == null) return super.dispatchKeyEvent(e);
         int k = e.getKeyCode();
-        if ("question".equals(phase)) {
+        if ("image".equals(phase)) {
+            if (k == KeyEvent.KEYCODE_SPACE || k == KeyEvent.KEYCODE_Q || k == KeyEvent.KEYCODE_ENTER) { showQuestion(); return true; }
+            if (k == KeyEvent.KEYCODE_P) { flagAndNext("P", "Problème noté"); return true; }
+            if (k == KeyEvent.KEYCODE_I) { flagAndNext("I", "Image à revoir notée"); return true; }
+            if (k == KeyEvent.KEYCODE_T) { flagAndNext("T", "Thème à exclure noté"); return true; }
+        } else if ("question".equals(phase)) {
             if (k == KeyEvent.KEYCODE_SPACE || k == KeyEvent.KEYCODE_Q) { showChoices(false, 0); return true; }
             if (k == KeyEvent.KEYCODE_ENTER) { previousQuestion(); return true; }
             if (k == KeyEvent.KEYCODE_P) { flagAndNext("P", "Problème noté"); return true; }

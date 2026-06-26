@@ -1,8 +1,10 @@
-# Culture Générale Android V4.0 Alpha
+# Culture Générale Android V5.0 Alpha
 
 Ajouts :
-- pas de répétition dans la session ;
-- historique et question précédente ;
-- boutons P / I / T avec pop-up ;
-- image un peu moins haute pour éviter de masquer le bouton propositions ;
-- statistiques enrichies.
+
+- mode image en deux temps ;
+- écran image avant l’écran question ;
+- ESPACE / Q / ENTRÉE depuis l’image pour afficher la question ;
+- P / I / T disponibles depuis l’écran image ;
+- question précédente conserve le mode image si nécessaire ;
+- image plus grande sur le premier écran image.
