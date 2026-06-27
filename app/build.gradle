@@ -8,7 +8,7 @@ android {
         applicationId 'fr.culturegenerale.android'
         minSdk 23
         targetSdk 35
-        versionCode 94
-        versionName '9.4-p-t-export'
+        versionCode 941
+        versionName '9.4.1-base-v9.4-corrigee'
     }
 }
