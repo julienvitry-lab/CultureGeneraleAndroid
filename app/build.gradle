@@ -8,7 +8,7 @@ android {
         applicationId 'fr.culturegenerale.android'
         minSdk 23
         targetSdk 35
-        versionCode 942
-        versionName '9.4.2-accueil-theme-stats-t-corrige'
+        versionCode 943
+        versionName '9.4.3-t-theme-question'
     }
 }

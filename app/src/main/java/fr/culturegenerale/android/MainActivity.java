@@ -361,7 +361,7 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseFixed();
-        add(tv("Culture Générale Android V9.4.2", 28, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V9.4.3", 28, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 22, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 20);
@@ -866,39 +866,29 @@ public class MainActivity extends Activity {
         SQLiteDatabase db = openDb();
         Cursor c = null;
         SQLiteStatement update = null;
-        ArrayList<Long> rowsToExclude = new ArrayList<>();
+        int newlyExcluded = 0;
         String targetTheme = comparisonKey(current.theme);
         String targetQuestion = comparisonKey(current.question);
-        String targetDetail = comparisonKey(current.detail);
 
         try {
             db.beginTransaction();
-
-            // Lecture de toute la table pour neutraliser les différences invisibles
-            // (espaces multiples, retours à la ligne, tabulations et espaces insécables).
-            // Le rapprochement reste strictement limité au triplet thème + question + détail.
+            // Une exclusion T concerne toutes les lignes ayant le même thème
+            // et la même question. Le détail n'entre plus dans la comparaison.
             c = db.rawQuery(
-                    "SELECT row_number, theme, question, detail, status FROM " + TABLE,
+                    "SELECT row_number, theme, question, status FROM " + TABLE,
                     null
             );
+            update = db.compileStatement("UPDATE " + TABLE + " SET status='T' WHERE row_number=?");
 
             while (c.moveToNext()) {
                 if (!targetTheme.equals(comparisonKey(c.getString(1)))) continue;
                 if (!targetQuestion.equals(comparisonKey(c.getString(2)))) continue;
-                if (!targetDetail.equals(comparisonKey(c.getString(3)))) continue;
 
-                String existingStatus = safe(c.getString(4)).toUpperCase(Locale.ROOT);
+                String existingStatus = safe(c.getString(3)).toUpperCase(Locale.ROOT);
                 if ("X".equals(existingStatus) || "T".equals(existingStatus)) continue;
-                rowsToExclude.add(c.getLong(0));
-            }
-            c.close();
-            c = null;
 
-            update = db.compileStatement("UPDATE " + TABLE + " SET status='T' WHERE row_number=?");
-            int newlyExcluded = 0;
-            for (Long rowNumber : rowsToExclude) {
                 update.clearBindings();
-                update.bindLong(1, rowNumber);
+                update.bindLong(1, c.getLong(0));
                 newlyExcluded += update.executeUpdateDelete();
             }
 
