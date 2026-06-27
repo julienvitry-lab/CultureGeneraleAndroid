@@ -8,6 +8,7 @@ import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteStatement;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -192,13 +193,14 @@ public class MainActivity extends Activity {
     }
 
     private void addCompactStatsBar() {
-        long[] counts = countMainStatuses();
+        int historyPosition = historyIndex >= 0 ? historyIndex + 1 : 0;
         TextView stats = tv(
-                "Répondues " + answered +
-                "   A " + counts[0] +
-                "   R " + counts[1] +
-                "   P " + counts[2] +
-                "   T " + counts[3],
+                "Historique " + historyPosition + "/" + history.size() +
+                "   ·   Répondues " + answered +
+                "   ·   Assimilées " + mentalOk +
+                "   ·   À revoir " + revised +
+                "   ·   Série " + goodStreak + "/" + bestGoodStreak +
+                "   ·   Mentale " + mentalStreak + "/" + bestMentalStreak,
                 10, Color.WHITE, Gravity.CENTER, true
         );
         stats.setSingleLine(true);
@@ -207,7 +209,7 @@ public class MainActivity extends Activity {
         stats.setMinHeight(0);
         setRoundedBackground(stats, Color.rgb(24, 24, 24), 8);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            stats.setAutoSizeTextTypeUniformWithConfiguration(8, 12, 1, TypedValue.COMPLEX_UNIT_SP);
+            stats.setAutoSizeTextTypeUniformWithConfiguration(7, 12, 1, TypedValue.COMPLEX_UNIT_SP);
         }
         root.addView(stats, new LinearLayout.LayoutParams(-1, cmToPx(0.7f)));
     }
@@ -358,8 +360,8 @@ public class MainActivity extends Activity {
     private void showHome() {
         phase = "home";
         current = null;
-        baseScrollable();
-        add(tv("Culture Générale Android V9.4.1", 28, Color.WHITE, Gravity.CENTER, true));
+        baseFixed();
+        add(tv("Culture Générale Android V9.4.2", 28, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 22, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 20);
@@ -373,31 +375,40 @@ public class MainActivity extends Activity {
         }
         migrateLegacyImageFlags();
         exportProblemsP(false);
-        LinearLayout grid = new LinearLayout(this);
-        grid.setOrientation(LinearLayout.VERTICAL);
+
+        int gap = cmToPx(0.2f); // 2 mm exactement entre les rubriques
+        int halfGap = cmToPx(0.1f);
+
+        LinearLayout selector = new LinearLayout(this);
+        selector.setOrientation(LinearLayout.VERTICAL);
+        selector.setGravity(Gravity.CENTER);
+        root.addView(selector, new LinearLayout.LayoutParams(-1, 0, 1));
+
         for (int rowIndex = 0; rowIndex < 4; rowIndex++) {
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER);
+
             for (int col = 0; col < 2; col++) {
                 String d = DOMAINS[rowIndex * 2 + col];
                 Button b = btn(d, 18);
                 b.setSingleLine(false);
                 b.setMaxLines(2);
                 b.setOnClickListener(v -> startDomain(d));
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, cmToPx(1.55f), 1);
-                lp.setMargins(dp(5), dp(5), dp(5), dp(5));
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1);
+                if (col == 0) lp.setMargins(0, 0, halfGap, 0);
+                else lp.setMargins(halfGap, 0, 0, 0);
                 row.addView(b, lp);
             }
-            grid.addView(row, new LinearLayout.LayoutParams(-1, -2));
+
+            selector.addView(row, new LinearLayout.LayoutParams(-1, 0, 1));
+            Space verticalGap = new Space(this);
+            selector.addView(verticalGap, new LinearLayout.LayoutParams(-1, gap));
         }
-        root.addView(grid, new LinearLayout.LayoutParams(-1, -2));
 
         Button all = btn("Tous les domaines", 21);
         all.setOnClickListener(v -> startDomain(null));
-        LinearLayout.LayoutParams allLp = new LinearLayout.LayoutParams(-1, cmToPx(1.55f));
-        allLp.setMargins(dp(5), dp(8), dp(5), dp(5));
-        root.addView(all, allLp);
+        selector.addView(all, new LinearLayout.LayoutParams(-1, 0, 1));
     }
 
     private Map<String, Long> countDomains() {
@@ -516,7 +527,7 @@ public class MainActivity extends Activity {
         baseFixed();
         addCompactStatsBar();
         addOneMillimeterGap();
-        singleLineBand(current.domain + " · " + current.theme, domainBandColor(current.domain), domainBandTextColor(current.domain), 23, 10, 48, 0, dp(3));
+        singleLineBand(current.theme, GREEN, Color.WHITE, 23, 10, 48, 0, dp(3));
         singleLineBand(current.question, RED, Color.WHITE, 25, 8, 58);
         if (current.detail.length() > 0) {
             upperBand(current.detail, YELLOW, Color.BLACK, 21, 62);
@@ -717,16 +728,12 @@ public class MainActivity extends Activity {
     private void showStatsMenu() {
         String message;
         try {
-            message = "Session\n" +
-                    "Répondues : " + answered + "\n" +
-                    "Assimilées mentalement : " + mentalOk + "\n" +
-                    "À revoir : " + revised + "\n" +
-                    "Série juste : " + goodStreak + " / record " + bestGoodStreak + "\n" +
-                    "Série mentale : " + mentalStreak + " / record " + bestMentalStreak + "\n" +
-                    "Historique : " + (historyIndex + 1) + " / " + history.size() + "\n\n" +
-                    "Base\n" +
-                    "A : " + countStatus("A") + "   R : " + countStatus("R") + "\n" +
-                    "P : " + countStatus("P") + "   T : " + countStatus("T") + "   X : " + countStatus("X");
+            message = "Base en temps réel\n" +
+                    "Assimilées (A) : " + countStatus("A") + "\n" +
+                    "À revoir (R) : " + countStatus("R") + "\n" +
+                    "Problèmes (P) : " + countStatus("P") + "\n" +
+                    "Contenus analogues exclus (T) : " + countStatus("T") + "\n" +
+                    "Exclusions manuelles (X) : " + countStatus("X");
         } catch (Exception e) {
             message = "Statistiques base indisponibles : " + e.getMessage();
         }
@@ -796,12 +803,24 @@ public class MainActivity extends Activity {
         phase = "end";
         baseScrollable();
         band("Fin de partie", RED, Color.WHITE, 26, 72);
-        band("Répondues : " + answered + "\nAssimilées mentalement : " + mentalOk + "\nÀ revoir : " + revised + "\nSérie juste : " + goodStreak + " / record " + bestGoodStreak + "\nSérie mentale : " + mentalStreak + " / record " + bestMentalStreak, DARK, Color.WHITE, 21, 150);
-        try {
-            band("Base actuelle\nA : " + countStatus("A") + "   R : " + countStatus("R") + "   P : " + countStatus("P") + "   T : " + countStatus("T") + "   X : " + countStatus("X"), BLUE, Color.WHITE, 18, 100);
-        } catch (Exception e) {
-            band("Statistiques base indisponibles : " + e.getMessage(), DARK, Color.WHITE, 16, 70);
+        band("Répondues : " + answered +
+                "\nAssimilées mentalement : " + mentalOk +
+                "\nÀ revoir : " + revised +
+                "\nSérie juste : " + goodStreak + " / record " + bestGoodStreak +
+                "\nSérie mentale : " + mentalStreak + " / record " + bestMentalStreak,
+                DARK, Color.WHITE, 21, 150);
+
+        int exportedProblems = exportProblemsP(false);
+        if (exportedProblems >= 0) {
+            band(exportedProblems + " problème" + (exportedProblems > 1 ? "s" : "") +
+                            " P répertorié" + (exportedProblems > 1 ? "s" : "") +
+                            " et envoyé" + (exportedProblems > 1 ? "s" : "") +
+                            " vers PROBLEMES_P.csv",
+                    BLUE, Color.WHITE, 18, 76);
+        } else {
+            band("Le fichier PROBLEMES_P.csv n'a pas pu être actualisé", RED, Color.WHITE, 17, 70);
         }
+
         if (current != null) {
             Button resume = btn("Reprendre la partie", 20);
             resume.setOnClickListener(v -> showQuestion());
@@ -810,6 +829,11 @@ public class MainActivity extends Activity {
         Button newGame = btn("Nouvelle partie", 20);
         newGame.setOnClickListener(v -> showHome());
         add(newGame);
+
+        Button quit = btn("Quitter la partie", 20);
+        setRoundedBackground(quit, RED, 16);
+        quit.setOnClickListener(v -> finishAffinity());
+        add(quit);
     }
 
     private long countStatus(String status) {
@@ -841,31 +865,63 @@ public class MainActivity extends Activity {
     private int updateAnalogousQuestionsToT() {
         SQLiteDatabase db = openDb();
         Cursor c = null;
-        try {
-            String identical =
-                    "LOWER(TRIM(COALESCE(theme,'')))=LOWER(TRIM(COALESCE(?,''))) " +
-                    "AND LOWER(TRIM(COALESCE(question,'')))=LOWER(TRIM(COALESCE(?,''))) " +
-                    "AND LOWER(TRIM(COALESCE(detail,'')))=LOWER(TRIM(COALESCE(?,''))) ";
-            String eligible = "AND (status IS NULL OR UPPER(TRIM(status)) NOT IN ('X','T'))";
-            String[] args = new String[]{current.theme, current.question, current.detail};
+        SQLiteStatement update = null;
+        ArrayList<Long> rowsToExclude = new ArrayList<>();
+        String targetTheme = comparisonKey(current.theme);
+        String targetQuestion = comparisonKey(current.question);
+        String targetDetail = comparisonKey(current.detail);
 
+        try {
+            db.beginTransaction();
+
+            // Lecture de toute la table pour neutraliser les différences invisibles
+            // (espaces multiples, retours à la ligne, tabulations et espaces insécables).
+            // Le rapprochement reste strictement limité au triplet thème + question + détail.
             c = db.rawQuery(
-                    "SELECT COUNT(*) FROM " + TABLE + " WHERE " + identical + eligible,
-                    args
+                    "SELECT row_number, theme, question, detail, status FROM " + TABLE,
+                    null
             );
-            int newlyExcluded = c.moveToFirst() ? c.getInt(0) : 0;
+
+            while (c.moveToNext()) {
+                if (!targetTheme.equals(comparisonKey(c.getString(1)))) continue;
+                if (!targetQuestion.equals(comparisonKey(c.getString(2)))) continue;
+                if (!targetDetail.equals(comparisonKey(c.getString(3)))) continue;
+
+                String existingStatus = safe(c.getString(4)).toUpperCase(Locale.ROOT);
+                if ("X".equals(existingStatus) || "T".equals(existingStatus)) continue;
+                rowsToExclude.add(c.getLong(0));
+            }
             c.close();
             c = null;
 
-            db.execSQL(
-                    "UPDATE " + TABLE + " SET status='T' WHERE " + identical + eligible,
-                    new Object[]{current.theme, current.question, current.detail}
-            );
+            update = db.compileStatement("UPDATE " + TABLE + " SET status='T' WHERE row_number=?");
+            int newlyExcluded = 0;
+            for (Long rowNumber : rowsToExclude) {
+                update.clearBindings();
+                update.bindLong(1, rowNumber);
+                newlyExcluded += update.executeUpdateDelete();
+            }
+
+            db.setTransactionSuccessful();
             return newlyExcluded;
         } finally {
             if (c != null) c.close();
+            if (update != null) update.close();
+            if (db.inTransaction()) db.endTransaction();
             db.close();
         }
+    }
+
+    private String comparisonKey(String value) {
+        String s = value == null ? "" : value;
+        s = s.replace('\u00A0', ' ')
+                .replace('\r', ' ')
+                .replace('\n', ' ')
+                .replace('\t', ' ')
+                .trim()
+                .toLowerCase(Locale.ROOT);
+        while (s.contains("  ")) s = s.replace("  ", " ");
+        return s;
     }
 
     private void answerChoice(int choice) {
