@@ -36,6 +36,9 @@ import android.widget.Toast;
 import android.widget.PopupWindow;
 
 import java.io.File;
+import java.io.BufferedWriter;
+import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -62,7 +65,7 @@ public class MainActivity extends Activity {
     private final int GREY = Color.rgb(85, 85, 85);
     private final int LIGHT_GREY = Color.rgb(130, 130, 130);
 
-    private File appFolder, dbFile, imagesFolder;
+    private File appFolder, dbFile, imagesFolder, problemsFile;
     private LinearLayout screenRoot;
     private LinearLayout root;
     private LinearLayout bottomBar;
@@ -101,6 +104,7 @@ public class MainActivity extends Activity {
         appFolder = new File(Environment.getExternalStorageDirectory(), APP_FOLDER);
         dbFile = new File(appFolder, DB_NAME);
         imagesFolder = new File(appFolder, "Images");
+        problemsFile = new File(appFolder, "PROBLEMES_P.csv");
         loadFont();
         showHome();
     }
@@ -283,7 +287,7 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseScrollable();
-        add(tv("Culture Générale Android V9.2", 28, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V9.4", 28, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 22, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 20);
@@ -295,14 +299,33 @@ public class MainActivity extends Activity {
             band("Base SQLite introuvable : " + dbFile.getAbsolutePath(), RED, Color.WHITE, 18, 60);
             return;
         }
+        migrateLegacyImageFlags();
+        exportProblemsP(false);
+        LinearLayout grid = new LinearLayout(this);
+        grid.setOrientation(LinearLayout.VERTICAL);
+        for (int rowIndex = 0; rowIndex < 4; rowIndex++) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER);
+            for (int col = 0; col < 2; col++) {
+                String d = DOMAINS[rowIndex * 2 + col];
+                Button b = btn(d, 18);
+                b.setSingleLine(false);
+                b.setMaxLines(2);
+                b.setOnClickListener(v -> startDomain(d));
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, cmToPx(1.55f), 1);
+                lp.setMargins(dp(5), dp(5), dp(5), dp(5));
+                row.addView(b, lp);
+            }
+            grid.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        }
+        root.addView(grid, new LinearLayout.LayoutParams(-1, -2));
+
         Button all = btn("Tous les domaines", 21);
         all.setOnClickListener(v -> startDomain(null));
-        add(all);
-        for (String d : DOMAINS) {
-            Button b = btn(d, 20);
-            b.setOnClickListener(v -> startDomain(d));
-            add(b);
-        }
+        LinearLayout.LayoutParams allLp = new LinearLayout.LayoutParams(-1, cmToPx(1.55f));
+        allLp.setMargins(dp(5), dp(8), dp(5), dp(5));
+        root.addView(all, allLp);
     }
 
     private Map<String, Long> countDomains() {
@@ -419,7 +442,7 @@ public class MainActivity extends Activity {
     private void showQuestion() {
         phase = "question";
         baseFixed();
-        singleLineBand(current.domain + " · " + current.theme, BLUE, Color.WHITE, 23, 10, 48);
+        singleLineBand(current.domain + " · " + current.theme, domainBandColor(current.domain), domainBandTextColor(current.domain), 23, 10, 48);
         singleLineBand(current.question, RED, Color.WHITE, 25, 8, 58);
         if (current.detail.length() > 0) {
             upperBand(current.detail, YELLOW, Color.BLACK, 21, 62);
@@ -548,10 +571,10 @@ public class MainActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER);
-        String[] codes = new String[]{"P", "I", "T"};
-        String[] labels = new String[]{"Problème général", "Problème image", "Thème à exclure"};
-        String[] messages = new String[]{"Problème général noté", "Problème d'image noté", "Thème à exclure noté"};
-        for (int i = 0; i < 3; i++) {
+        String[] codes = new String[]{"P", "T"};
+        String[] labels = new String[]{"Problème ponctuel", "Contenu analogue à exclure"};
+        String[] messages = new String[]{"Problème noté", "Contenu analogue exclu"};
+        for (int i = 0; i < 2; i++) {
             final int idx = i;
             Button b = btn(codes[i] + "\n" + labels[i], 14);
             setRoundedBackground(b, RED, 16);
@@ -590,8 +613,7 @@ public class MainActivity extends Activity {
                     "Historique : " + (historyIndex + 1) + " / " + history.size() + "\n\n" +
                     "Base\n" +
                     "A : " + countStatus("A") + "   R : " + countStatus("R") + "\n" +
-                    "P : " + countStatus("P") + "   I : " + countStatus("I") + "\n" +
-                    "T : " + countStatus("T") + "   X : " + countStatus("X");
+                    "P : " + countStatus("P") + "   T : " + countStatus("T") + "   X : " + countStatus("X");
         } catch (Exception e) {
             message = "Statistiques base indisponibles : " + e.getMessage();
         }
@@ -599,13 +621,15 @@ public class MainActivity extends Activity {
         AlertDialog.Builder builder = new AlertDialog.Builder(this)
                 .setTitle("Statistiques")
                 .setMessage(message)
-                .setPositiveButton("Fermer", null)
+                .setPositiveButton("EXPORT PROBLEMES_P", (dialog, which) -> exportProblemsP(true))
                 .setNegativeButton("Fin de partie", (dialog, which) -> showEndScreen());
 
         if ("choices".equals(phase) || "reveal".equals(phase) || "result".equals(phase)) {
             builder.setNeutralButton("Revoir la question", (dialog, which) -> showQuestion());
         } else if (historyIndex > 0) {
             builder.setNeutralButton("Question précédente", (dialog, which) -> previousQuestion());
+        } else {
+            builder.setNeutralButton("Fermer", null);
         }
         builder.show();
     }
@@ -670,10 +694,15 @@ public class MainActivity extends Activity {
         band("Fin de partie", RED, Color.WHITE, 26, 72);
         band("Répondues : " + answered + "\nAssimilées mentalement : " + mentalOk + "\nÀ revoir : " + revised + "\nSérie juste : " + goodStreak + " / record " + bestGoodStreak + "\nSérie mentale : " + mentalStreak + " / record " + bestMentalStreak, DARK, Color.WHITE, 21, 150);
         try {
-            band("Base actuelle\nA : " + countStatus("A") + "   R : " + countStatus("R") + "   P : " + countStatus("P") + "   I : " + countStatus("I") + "   T : " + countStatus("T") + "   X : " + countStatus("X"), BLUE, Color.WHITE, 18, 100);
+            band("Base actuelle\nA : " + countStatus("A") + "   R : " + countStatus("R") + "   P : " + countStatus("P") + "   T : " + countStatus("T") + "   X : " + countStatus("X"), BLUE, Color.WHITE, 18, 100);
         } catch (Exception e) {
             band("Statistiques base indisponibles : " + e.getMessage(), DARK, Color.WHITE, 16, 70);
         }
+        Button exportP = btn("EXPORT PROBLEMES_P", 20);
+        setRoundedBackground(exportP, BLUE, 16);
+        exportP.setOnClickListener(v -> exportProblemsP(true));
+        add(exportP);
+
         if (current != null) {
             Button resume = btn("Reprendre la partie", 20);
             resume.setOnClickListener(v -> showQuestion());
@@ -694,9 +723,34 @@ public class MainActivity extends Activity {
     }
 
     private void flagAndNext(String status, String msg) {
-        updateStatus(status);
-        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+        if ("T".equals(status)) {
+            int affected = updateAnalogousQuestionsToT();
+            String text = affected <= 1
+                    ? "Question exclue"
+                    : affected + " questions analogues exclues";
+            Toast.makeText(this, text, Toast.LENGTH_SHORT).show();
+        } else {
+            updateStatus(status);
+            exportProblemsP(false);
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+        }
         screenRoot.postDelayed(this::nextQuestion, 350);
+    }
+
+    private int updateAnalogousQuestionsToT() {
+        SQLiteDatabase db = openDb();
+        try {
+            db.execSQL(
+                    "UPDATE " + TABLE + " SET status='T' " +
+                    "WHERE TRIM(COALESCE(question,''))=TRIM(COALESCE(?,'')) " +
+                    "AND TRIM(COALESCE(detail,''))=TRIM(COALESCE(?,'')) " +
+                    "AND (status IS NULL OR UPPER(TRIM(status))<>'X')",
+                    new Object[]{current.question, current.detail}
+            );
+            Cursor c = db.rawQuery("SELECT changes()", null);
+            try { return c.moveToFirst() ? c.getInt(0) : 0; }
+            finally { c.close(); }
+        } finally { db.close(); }
     }
 
     private void answerChoice(int choice) {
@@ -745,6 +799,97 @@ public class MainActivity extends Activity {
         } else {
             Toast.makeText(this, "Pas de question précédente", Toast.LENGTH_SHORT).show();
         }
+    }
+
+
+    private void migrateLegacyImageFlags() {
+        SQLiteDatabase db = openDb();
+        try {
+            db.execSQL("UPDATE " + TABLE + " SET status='P' WHERE UPPER(TRIM(status))='I'");
+        } finally {
+            db.close();
+        }
+    }
+
+    private int exportProblemsP(boolean notifyUser) {
+        int exported = 0;
+        SQLiteDatabase db = openDb();
+        Cursor c = null;
+        BufferedWriter writer = null;
+        try {
+            if (!appFolder.exists() && !appFolder.mkdirs()) {
+                throw new Exception("Impossible de créer le dossier " + appFolder.getAbsolutePath());
+            }
+            c = db.rawQuery(
+                    "SELECT row_number, original_id, megatheme, theme, question, detail, " +
+                    "proposition_a, proposition_b, proposition_c, proposition_d, correct_index, " +
+                    "url_quizypedia, url_internet, image_file, non_trouve, status, is_image " +
+                    "FROM " + TABLE + " WHERE UPPER(TRIM(status))='P' ORDER BY row_number",
+                    null
+            );
+
+            writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(problemsFile, false), "UTF-8"));
+            writer.write('\uFEFF');
+            writer.write("row_number;original_id;megatheme;theme;question;detail;proposition_a;proposition_b;proposition_c;proposition_d;correct_index;url_quizypedia;url_internet;image_file;non_trouve;status;is_image");
+            writer.newLine();
+
+            while (c.moveToNext()) {
+                StringBuilder line = new StringBuilder();
+                for (int i = 0; i < c.getColumnCount(); i++) {
+                    if (i > 0) line.append(';');
+                    line.append(csv(c.isNull(i) ? "" : c.getString(i)));
+                }
+                writer.write(line.toString());
+                writer.newLine();
+                exported++;
+            }
+            writer.flush();
+
+            if (notifyUser) {
+                Toast.makeText(
+                        this,
+                        exported + " signalement(s) exporté(s) dans " + problemsFile.getAbsolutePath(),
+                        Toast.LENGTH_LONG
+                ).show();
+            }
+            return exported;
+        } catch (Exception e) {
+            if (notifyUser) {
+                Toast.makeText(this, "Échec de l'export : " + e.getMessage(), Toast.LENGTH_LONG).show();
+            }
+            return -1;
+        } finally {
+            try { if (writer != null) writer.close(); } catch (Exception ignored) { }
+            if (c != null) c.close();
+            db.close();
+        }
+    }
+
+    private String csv(String value) {
+        String s = value == null ? "" : value;
+        return "\"" + s.replace("\"", "\"\"").replace("\r", " ").replace("\n", " ") + "\"";
+    }
+
+    private int domainBandColor(String domain) {
+        String d = normalize(domain);
+        if ("Animaux et Plantes".equals(d)) return Color.rgb(20, 85, 45);
+        if ("Sport".equals(d)) return Color.rgb(190, 25, 25);
+        if ("Histoire".equals(d)) return Color.rgb(115, 72, 42);
+        if ("Géographie".equals(d)) return Color.rgb(105, 190, 235);
+        if ("Culture Classique".equals(d)) return Color.rgb(30, 90, 190);
+        if ("Culture Moderne".equals(d)) return Color.rgb(235, 130, 30);
+        if ("Culture Générale".equals(d)) return Color.rgb(135, 205, 105);
+        if ("Sciences et Techniques".equals(d)) return Color.rgb(245, 205, 40);
+        return BLUE;
+    }
+
+    private int domainBandTextColor(String domain) {
+        String d = normalize(domain);
+        if ("Géographie".equals(d) || "Culture Moderne".equals(d) ||
+                "Culture Générale".equals(d) || "Sciences et Techniques".equals(d)) {
+            return Color.BLACK;
+        }
+        return Color.WHITE;
     }
 
     private String safe(String s) { return s == null ? "" : s.trim(); }
