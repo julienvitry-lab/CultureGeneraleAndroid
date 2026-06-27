@@ -33,6 +33,7 @@ import android.widget.ScrollView;
 import android.widget.Space;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.PopupWindow;
 
 import java.io.File;
 import java.io.BufferedWriter;
@@ -68,9 +69,11 @@ public class MainActivity extends Activity {
     private LinearLayout screenRoot;
     private LinearLayout root;
     private LinearLayout bottomBar;
-    private TextView statsBar;
+    private TextView topStatsBar;
     private Typeface appFont = Typeface.DEFAULT_BOLD;
     private final Button[] choiceButtons = new Button[4];
+    private PopupWindow transientPopup;
+    private PopupWindow actionPopup;
     private final Random random = new Random();
     private Question current;
     private String currentDomain = null;
@@ -117,6 +120,8 @@ public class MainActivity extends Activity {
         super.onConfigurationChanged(newConfig);
         // Les vues utilisent des poids et des tailles adaptatives : elles se redimensionnent
         // sans redémarrer la partie lors du passage paysage / portrait.
+        if (transientPopup != null && transientPopup.isShowing()) transientPopup.dismiss();
+        dismissActionPopup();
     }
 
     private void loadFont() {
@@ -129,10 +134,11 @@ public class MainActivity extends Activity {
     }
 
     private void baseScrollable() {
-        statsBar = null;
+        dismissActionPopup();
         screenRoot = new LinearLayout(this);
         screenRoot.setOrientation(LinearLayout.VERTICAL);
         screenRoot.setBackgroundColor(Color.BLACK);
+        createTopStatsBar();
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
@@ -152,9 +158,11 @@ public class MainActivity extends Activity {
     }
 
     private void baseFixed() {
+        dismissActionPopup();
         screenRoot = new LinearLayout(this);
         screenRoot.setOrientation(LinearLayout.VERTICAL);
         screenRoot.setBackgroundColor(Color.BLACK);
+        createTopStatsBar();
 
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -162,23 +170,44 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(Color.BLACK);
         screenRoot.addView(root, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        statsBar = tv("", 12, Color.WHITE, Gravity.CENTER, true);
-        statsBar.setSingleLine(true);
-        statsBar.setMaxLines(1);
-        statsBar.setPadding(dp(8), dp(2), dp(8), dp(2));
-        setRoundedBackground(statsBar, DARK, 10);
-        statsBar.setVisibility(View.GONE);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            statsBar.setAutoSizeTextTypeUniformWithConfiguration(8, 16, 1, TypedValue.COMPLEX_UNIT_SP);
-        }
-        screenRoot.addView(statsBar, new LinearLayout.LayoutParams(-1, cmToPx(1.0f)));
-
         bottomBar = new LinearLayout(this);
         bottomBar.setOrientation(LinearLayout.HORIZONTAL);
         bottomBar.setGravity(Gravity.CENTER);
         bottomBar.setVisibility(View.GONE);
         screenRoot.addView(bottomBar, new LinearLayout.LayoutParams(-1, cmToPx(2.0f)));
         setContentView(screenRoot);
+    }
+
+    private void createTopStatsBar() {
+        topStatsBar = tv("", 15, Color.WHITE, Gravity.CENTER, true);
+        topStatsBar.setPadding(dp(8), dp(4), dp(8), dp(4));
+        topStatsBar.setSingleLine(true);
+        topStatsBar.setMaxLines(1);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            topStatsBar.setAutoSizeTextTypeUniformWithConfiguration(9, 17, 1, TypedValue.COMPLEX_UNIT_SP);
+        }
+        topStatsBar.setBackgroundColor(Color.rgb(20, 20, 20));
+        topStatsBar.setVisibility(View.GONE);
+        screenRoot.addView(topStatsBar, new LinearLayout.LayoutParams(-1, cmToPx(1.05f)));
+    }
+
+    private void showTopStatsBar() {
+        if (topStatsBar == null) return;
+        topStatsBar.setVisibility(View.VISIBLE);
+        updateTopStatsBar();
+    }
+
+    private void updateTopStatsBar() {
+        if (topStatsBar == null) return;
+        int historyPos = history.isEmpty() ? 0 : historyIndex + 1;
+        topStatsBar.setText(
+                "Répondues : " + answered +
+                "   A " + mentalOk +
+                "   R " + revised +
+                "   Série " + goodStreak + "/" + bestGoodStreak +
+                "   Mental " + mentalStreak + "/" + bestMentalStreak +
+                "   Historique " + historyPos + "/" + history.size()
+        );
     }
 
     private TextView tv(String text, int sp, int color, int gravity, boolean bold) {
@@ -452,7 +481,8 @@ public class MainActivity extends Activity {
     private void showQuestion() {
         phase = "question";
         baseFixed();
-        singleLineBand(current.domain + " · " + current.theme, GREEN, Color.WHITE, 23, 10, 48);
+        showTopStatsBar();
+        singleLineBand(current.domain + " · " + current.theme, domainBandColor(current.domain), domainBandTextColor(current.domain), 23, 10, 48);
         singleLineBand(current.question, RED, Color.WHITE, 25, 8, 58);
         if (current.detail.length() > 0) {
             upperBand(current.detail, YELLOW, Color.BLACK, 21, 62);
@@ -469,7 +499,7 @@ public class MainActivity extends Activity {
     private void showChoices() {
         phase = "choices";
         baseFixed();
-        LinearLayout choicesPanel = createChoicesPanel();
+        showTopStatsBar();
         for (int i = 1; i <= 4; i++) {
             final int idx = i;
             Button b = btn(current.props[i - 1], 22);
@@ -478,8 +508,8 @@ public class MainActivity extends Activity {
             b.setOnClickListener(v -> answerChoice(idx));
             choiceButtons[i - 1] = b;
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 0, 1);
-            lp.setMargins(0, dp(4), 0, dp(4));
-            choicesPanel.addView(b, lp);
+            lp.setMargins(0, dp(5), 0, dp(5));
+            root.addView(b, lp);
         }
         setChoicesBottomBar();
     }
@@ -487,33 +517,17 @@ public class MainActivity extends Activity {
     private void revealMental() {
         phase = "reveal";
         baseFixed();
-        LinearLayout choicesPanel = createChoicesPanel();
+        showTopStatsBar();
         for (int i = 1; i <= 4; i++) {
             Button b = btn(current.props[i - 1], 22);
             b.setEnabled(false);
             b.setTextColor(Color.WHITE);
             setRoundedBackground(b, i == current.correct ? Color.rgb(0, 165, 65) : GREY, 18);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 0, 1);
-            lp.setMargins(0, dp(4), 0, dp(4));
-            choicesPanel.addView(b, lp);
+            lp.setMargins(0, dp(5), 0, dp(5));
+            root.addView(b, lp);
         }
         setRevealBottomBar();
-    }
-
-    private LinearLayout createChoicesPanel() {
-        LinearLayout panel = new LinearLayout(this);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setGravity(Gravity.CENTER);
-        if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
-            Space top = new Space(this);
-            root.addView(top, new LinearLayout.LayoutParams(-1, 0, 1));
-            root.addView(panel, new LinearLayout.LayoutParams(-1, 0, 2));
-            Space bottom = new Space(this);
-            root.addView(bottom, new LinearLayout.LayoutParams(-1, 0, 1));
-        } else {
-            root.addView(panel, new LinearLayout.LayoutParams(-1, 0, 1));
-        }
-        return panel;
     }
 
     private void showChoiceResult(int chosenChoice) {
@@ -526,49 +540,33 @@ public class MainActivity extends Activity {
             else if (i == chosenChoice) setRoundedBackground(b, Color.rgb(190, 25, 25), 18);
             else setRoundedBackground(b, GREY, 18);
         }
-        showStatsBar();
+        updateTopStatsBar();
         setBottomBarEnabled(false);
         // La couleur des propositions constitue désormais l'unique retour visuel.
     }
 
     private void setQuestionBottomBar() {
-        showStatsBar();
         bottomBar.setVisibility(View.VISIBLE);
         bottomBar.removeAllViews();
-        addBottomButton("Menu", BLUE, v -> showMenu());
         addBottomButton("Signaler", RED, v -> showProblemMenu());
+        addBottomButton("Menu", BLUE, v -> showMainMenu());
         addBottomButton("Propositions", GREEN, v -> showChoices());
     }
 
     private void setChoicesBottomBar() {
-        showStatsBar();
         bottomBar.setVisibility(View.VISIBLE);
         bottomBar.removeAllViews();
-        addBottomButton("Menu", BLUE, v -> showMenu());
         addBottomButton("Signaler", RED, v -> showProblemMenu());
+        addBottomButton("Menu", BLUE, v -> showMainMenu());
         addBottomButton("Révéler", GREEN, v -> revealMental());
     }
 
     private void setRevealBottomBar() {
-        showStatsBar();
         bottomBar.setVisibility(View.VISIBLE);
         bottomBar.removeAllViews();
-        addBottomButton("Menu", BLUE, v -> showMenu());
         addBottomButton("À revoir", RED, v -> finish("R"));
+        addBottomButton("Menu", BLUE, v -> showMainMenu());
         addBottomButton("Assimilée", GREEN, v -> finish("A"));
-    }
-
-    private void showStatsBar() {
-        if (statsBar == null) return;
-        statsBar.setText(
-                "Répondues : " + answered +
-                "   A : " + mentalOk +
-                "   R : " + revised +
-                "   Série : " + goodStreak + "/" + bestGoodStreak +
-                "   Mental : " + mentalStreak + "/" + bestMentalStreak +
-                "   Historique : " + (historyIndex + 1) + "/" + history.size()
-        );
-        statsBar.setVisibility(View.VISIBLE);
     }
 
     private void addBottomButton(String text, int color, View.OnClickListener listener) {
@@ -588,93 +586,137 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void showProblemMenu() {
-        final AlertDialog dialog = new AlertDialog.Builder(this).create();
-        LinearLayout panel = new LinearLayout(this);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(10), dp(10), dp(10), dp(10));
-        setRoundedBackground(panel, DARK, 20);
-
-        TextView title = tv("Signaler", 20, Color.WHITE, Gravity.CENTER, true);
-        panel.addView(title, new LinearLayout.LayoutParams(-1, dp(44)));
-
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER);
-        String[] codes = new String[]{"P", "T"};
-        String[] labels = new String[]{"Problème ponctuel", "Contenu analogue à exclure"};
-        String[] messages = new String[]{"Problème noté", "Contenu analogue exclu"};
-        for (int i = 0; i < 2; i++) {
-            final int idx = i;
-            Button b = btn(codes[i] + "\n" + labels[i], 14);
-            setRoundedBackground(b, RED, 16);
-            b.setTextColor(Color.WHITE);
-            b.setOnClickListener(v -> {
-                dialog.dismiss();
-                flagAndNext(codes[idx], messages[idx]);
-            });
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, cmToPx(2.0f), 1);
-            lp.setMargins(dp(4), dp(4), dp(4), dp(4));
-            row.addView(b, lp);
-        }
-        panel.addView(row, new LinearLayout.LayoutParams(-1, -2));
-
-        dialog.setView(panel);
-        dialog.setCanceledOnTouchOutside(true);
-        dialog.setOnShowListener(d -> {
-            Window w = dialog.getWindow();
-            if (w != null) {
-                w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-                w.setLayout(getResources().getDisplayMetrics().widthPixels - dp(20), ViewGroup.LayoutParams.WRAP_CONTENT);
-            }
-        });
-        dialog.show();
+    private void showTransientMessage(String message, int color) {
+        if (transientPopup != null && transientPopup.isShowing()) transientPopup.dismiss();
+        TextView label = tv(message, 18, Color.WHITE, Gravity.CENTER, true);
+        label.setPadding(dp(22), dp(12), dp(22), dp(12));
+        setRoundedBackground(label, color, 16);
+        transientPopup = new PopupWindow(label, ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, false);
+        transientPopup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        transientPopup.setOutsideTouchable(false);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) transientPopup.setElevation(dp(10));
+        transientPopup.showAtLocation(screenRoot, Gravity.CENTER, 0, 0);
+        screenRoot.postDelayed(() -> {
+            if (transientPopup != null && transientPopup.isShowing()) transientPopup.dismiss();
+        }, 750);
     }
 
-    private void showMenu() {
-        final AlertDialog dialog = new AlertDialog.Builder(this).create();
-        LinearLayout panel = new LinearLayout(this);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(10), dp(10), dp(10), dp(10));
-        setRoundedBackground(panel, DARK, 20);
-
-        TextView title = tv("Menu", 20, Color.WHITE, Gravity.CENTER, true);
-        panel.addView(title, new LinearLayout.LayoutParams(-1, dp(44)));
-
-        Button back = btn("Retour arrière", 18);
-        setRoundedBackground(back, BLUE, 16);
-        back.setOnClickListener(v -> {
-            dialog.dismiss();
-            if ("choices".equals(phase) || "reveal".equals(phase) || "result".equals(phase)) {
-                showQuestion();
-            } else {
-                previousQuestion();
-            }
+    private void showProblemMenu() {
+        LinearLayout panel = popupPanel();
+        addPopupButton(panel, "P\nProblème ponctuel", RED, cmToPx(2.0f), v -> {
+            dismissActionPopup();
+            flagAndNext("P", "Problème noté");
         });
-        LinearLayout.LayoutParams backLp = new LinearLayout.LayoutParams(-1, cmToPx(1.7f));
-        backLp.setMargins(dp(4), dp(4), dp(4), dp(4));
-        panel.addView(back, backLp);
+        addPopupButton(panel, "T\nExclure les analogues", RED, cmToPx(2.0f), v -> {
+            dismissActionPopup();
+            flagAndNext("T", "Contenu analogue exclu");
+        });
+        showBottomRightPopup(panel);
+    }
 
-        Button end = btn("Fin de partie", 18);
-        setRoundedBackground(end, RED, 16);
-        end.setOnClickListener(v -> {
-            dialog.dismiss();
+    private void showMainMenu() {
+        LinearLayout panel = popupPanel();
+        addPopupButton(panel, "Statistiques détaillées", BLUE, cmToPx(1.35f), v -> {
+            dismissActionPopup();
+            showStatsMenu();
+        });
+        addPopupButton(panel, "EXPORT PROBLEMES_P", BLUE, cmToPx(1.35f), v -> {
+            dismissActionPopup();
+            exportProblemsP(true);
+        });
+
+        String navigationLabel;
+        View.OnClickListener navigationAction;
+        if ("choices".equals(phase) || "reveal".equals(phase) || "result".equals(phase)) {
+            navigationLabel = "Revoir la question";
+            navigationAction = v -> {
+                dismissActionPopup();
+                showQuestion();
+            };
+        } else if (historyIndex > 0) {
+            navigationLabel = "Question précédente";
+            navigationAction = v -> {
+                dismissActionPopup();
+                previousQuestion();
+            };
+        } else {
+            navigationLabel = "Question précédente indisponible";
+            navigationAction = v -> dismissActionPopup();
+        }
+        addPopupButton(panel, navigationLabel, GREY, cmToPx(1.35f), navigationAction);
+        addPopupButton(panel, "Fin de partie", RED, cmToPx(1.35f), v -> {
+            dismissActionPopup();
             showEndScreen();
         });
-        LinearLayout.LayoutParams endLp = new LinearLayout.LayoutParams(-1, cmToPx(1.7f));
-        endLp.setMargins(dp(4), dp(4), dp(4), dp(4));
-        panel.addView(end, endLp);
+        showBottomRightPopup(panel);
+    }
 
-        dialog.setView(panel);
-        dialog.setCanceledOnTouchOutside(true);
-        dialog.setOnShowListener(d -> {
-            Window w = dialog.getWindow();
-            if (w != null) {
-                w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-                w.setLayout(getResources().getDisplayMetrics().widthPixels - dp(20), ViewGroup.LayoutParams.WRAP_CONTENT);
-            }
-        });
-        dialog.show();
+    private LinearLayout popupPanel() {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(6), dp(6), dp(6), dp(6));
+        setRoundedBackground(panel, DARK, 18);
+        return panel;
+    }
+
+    private void addPopupButton(LinearLayout panel, String text, int color, int heightPx, View.OnClickListener listener) {
+        Button b = btn(text, 15);
+        b.setSingleLine(false);
+        b.setMaxLines(2);
+        setRoundedBackground(b, color, 15);
+        b.setOnClickListener(listener);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, heightPx);
+        lp.setMargins(dp(3), dp(3), dp(3), dp(3));
+        panel.addView(b, lp);
+    }
+
+    private void showBottomRightPopup(LinearLayout panel) {
+        dismissActionPopup();
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        int popupWidth = Math.max(dp(170), (screenWidth / 3) - dp(10));
+        actionPopup = new PopupWindow(panel, popupWidth, ViewGroup.LayoutParams.WRAP_CONTENT, true);
+        actionPopup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        actionPopup.setOutsideTouchable(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) actionPopup.setElevation(dp(12));
+        actionPopup.showAtLocation(screenRoot, Gravity.BOTTOM | Gravity.RIGHT, dp(6), cmToPx(2.0f) + dp(8));
+    }
+
+    private void dismissActionPopup() {
+        if (actionPopup != null && actionPopup.isShowing()) actionPopup.dismiss();
+        actionPopup = null;
+    }
+
+    private void showStatsMenu() {
+        String message;
+        try {
+            message = "Session\n" +
+                    "Répondues : " + answered + "\n" +
+                    "Assimilées mentalement : " + mentalOk + "\n" +
+                    "À revoir : " + revised + "\n" +
+                    "Série juste : " + goodStreak + " / record " + bestGoodStreak + "\n" +
+                    "Série mentale : " + mentalStreak + " / record " + bestMentalStreak + "\n" +
+                    "Historique : " + (historyIndex + 1) + " / " + history.size() + "\n\n" +
+                    "Base\n" +
+                    "A : " + countStatus("A") + "   R : " + countStatus("R") + "\n" +
+                    "P : " + countStatus("P") + "   T : " + countStatus("T") + "   X : " + countStatus("X");
+        } catch (Exception e) {
+            message = "Statistiques base indisponibles : " + e.getMessage();
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle("Statistiques")
+                .setMessage(message)
+                .setPositiveButton("EXPORT PROBLEMES_P", (dialog, which) -> exportProblemsP(true))
+                .setNegativeButton("Fin de partie", (dialog, which) -> showEndScreen());
+
+        if ("choices".equals(phase) || "reveal".equals(phase) || "result".equals(phase)) {
+            builder.setNeutralButton("Revoir la question", (dialog, which) -> showQuestion());
+        } else if (historyIndex > 0) {
+            builder.setNeutralButton("Question précédente", (dialog, which) -> previousQuestion());
+        } else {
+            builder.setNeutralButton("Fermer", null);
+        }
+        builder.show();
     }
 
     private void showImageCentered() {
@@ -732,7 +774,6 @@ public class MainActivity extends Activity {
     }
 
     private void showEndScreen() {
-        int exported = exportProblemsP(false);
         phase = "end";
         baseScrollable();
         band("Fin de partie", RED, Color.WHITE, 26, 72);
@@ -742,11 +783,10 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             band("Statistiques base indisponibles : " + e.getMessage(), DARK, Color.WHITE, 16, 70);
         }
-        if (exported >= 0) {
-            band("PROBLEMES_P.csv actualisé automatiquement : " + exported + " signalement(s)", GREEN, Color.WHITE, 16, 54);
-        } else {
-            band("Échec de l'actualisation automatique de PROBLEMES_P.csv", RED, Color.WHITE, 16, 54);
-        }
+        Button exportP = btn("EXPORT PROBLEMES_P", 20);
+        setRoundedBackground(exportP, BLUE, 16);
+        exportP.setOnClickListener(v -> exportProblemsP(true));
+        add(exportP);
 
         if (current != null) {
             Button resume = btn("Reprendre la partie", 20);
@@ -769,8 +809,12 @@ public class MainActivity extends Activity {
 
     private void flagAndNext(String status, String msg) {
         if ("T".equals(status)) {
-            updateAnalogousQuestionsToT();
-            Toast.makeText(this, "Questionnaire exclu", Toast.LENGTH_SHORT).show();
+            int affected = updateAnalogousQuestionsToT();
+            String text;
+            if (affected <= 0) text = "Aucune nouvelle question à exclure";
+            else if (affected == 1) text = "1 question exclue";
+            else text = affected + " questions analogues exclues";
+            Toast.makeText(this, text, Toast.LENGTH_SHORT).show();
         } else {
             updateStatus(status);
             exportProblemsP(false);
@@ -781,18 +825,32 @@ public class MainActivity extends Activity {
 
     private int updateAnalogousQuestionsToT() {
         SQLiteDatabase db = openDb();
+        Cursor c = null;
         try {
-            db.execSQL(
-                    "UPDATE " + TABLE + " SET status='T' " +
-                    "WHERE TRIM(COALESCE(question,''))=TRIM(COALESCE(?,'')) " +
-                    "AND TRIM(COALESCE(detail,''))=TRIM(COALESCE(?,'')) " +
-                    "AND (status IS NULL OR UPPER(TRIM(status))<>'X')",
-                    new Object[]{current.question, current.detail}
+            String identical =
+                    "LOWER(TRIM(COALESCE(theme,'')))=LOWER(TRIM(COALESCE(?,''))) " +
+                    "AND LOWER(TRIM(COALESCE(question,'')))=LOWER(TRIM(COALESCE(?,''))) " +
+                    "AND LOWER(TRIM(COALESCE(detail,'')))=LOWER(TRIM(COALESCE(?,''))) ";
+            String eligible = "AND (status IS NULL OR UPPER(TRIM(status)) NOT IN ('X','T'))";
+            String[] args = new String[]{current.theme, current.question, current.detail};
+
+            c = db.rawQuery(
+                    "SELECT COUNT(*) FROM " + TABLE + " WHERE " + identical + eligible,
+                    args
             );
-            Cursor c = db.rawQuery("SELECT changes()", null);
-            try { return c.moveToFirst() ? c.getInt(0) : 0; }
-            finally { c.close(); }
-        } finally { db.close(); }
+            int newlyExcluded = c.moveToFirst() ? c.getInt(0) : 0;
+            c.close();
+            c = null;
+
+            db.execSQL(
+                    "UPDATE " + TABLE + " SET status='T' WHERE " + identical + eligible,
+                    new Object[]{current.theme, current.question, current.detail}
+            );
+            return newlyExcluded;
+        } finally {
+            if (c != null) c.close();
+            db.close();
+        }
     }
 
     private void answerChoice(int choice) {
