@@ -1,3 +1,4 @@
+import android.text.TextUtils;
 package fr.culturegenerale.android;
 
 import android.Manifest;
