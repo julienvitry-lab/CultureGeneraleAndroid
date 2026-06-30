@@ -524,51 +524,49 @@ public class MainActivity extends Activity {
     }
 
     private void showQuestion() {
-        phase = "question";
-        baseFixed();
-        addCompactStatsBar();
-        addOneMillimeterGap();
-	upperBand(current.theme, GREEN, Color.WHITE, 25, 48);
+    phase = "question";
+    baseFixed();
+    addCompactStatsBar();
+    addOneMillimeterGap();
 
-	TextView themeView = (TextView) root.getChildAt(root.getChildCount() - 1);
-	themeView.setSingleLine(false);
-	themeView.setMaxLines(2);
+    // Bandeau vert
+    upperBand(current.theme, GREEN, Color.WHITE, 25, 48);
+    TextView themeView = (TextView) root.getChildAt(root.getChildCount() - 1);
+    themeView.setSingleLine(false);
+    themeView.setMaxLines(2);
+    themeView.setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_UNIFORM);
+    themeView.setAutoSizeTextTypeUniformWithConfiguration(12, 25, 1, TypedValue.COMPLEX_UNIT_SP);
 
-	// Auto‑resize
-	themeView.setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_UNIFORM);
-	themeView.setAutoSizeTextTypeUniformWithConfiguration(12, 25, 1, TypedValue.COMPLEX_UNIT_SP);
+    // Bandeau rouge
+    upperBand(current.question, RED, Color.WHITE, 25, 58);
+    TextView questionView = (TextView) root.getChildAt(root.getChildCount() - 1);
+    questionView.setSingleLine(false);
+    questionView.setMaxLines(2);
+    questionView.setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_UNIFORM);
+    questionView.setAutoSizeTextTypeUniformWithConfiguration(12, 25, 1, TypedValue.COMPLEX_UNIT_SP);
 
-	upperBand(current.question, RED, Color.WHITE, 25, 58);
-
-	TextView questionView = (TextView) root.getChildAt(root.getChildCount() - 1);
-	questionView.setSingleLine(false);
-	questionView.setMaxLines(2);
-
-	// Auto‑resize
-	questionView.setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_UNIFORM);
-	questionView.setAutoSizeTextTypeUniformWithConfiguration(12, 25, 1, TypedValue.COMPLEX_UNIT_SP);
-
-
-      	if (current.detail.length() > 0) {
-   	upperBand(current.detail, YELLOW, Color.BLACK, 25, 62);
-
-   	TextView detailView = (TextView) root.getChildAt(root.getChildCount() - 1);
-    	detailView.setSingleLine(false);
-    	detailView.setMaxLines(Integer.MAX_VALUE);
-
-    	detailView.setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_UNIFORM);
-    	detailView.setAutoSizeTextTypeUniformWithConfiguration(12, 25, 1, TypedValue.COMPLEX_UNIT_SP);
-	}
-
-        }
-        if (current.isImage) {
-            showImageCentered();
-        } else {
-            Space spacer = new Space(this);
-            root.addView(spacer, new LinearLayout.LayoutParams(-1, 0, 1));
-        }
-        setQuestionBottomBar();
+    // Bandeau jaune
+    if (current.detail.length() > 0) {
+        upperBand(current.detail, YELLOW, Color.BLACK, 25, 62);
+        TextView detailView = (TextView) root.getChildAt(root.getChildCount() - 1);
+        detailView.setSingleLine(false);
+        detailView.setMaxLines(Integer.MAX_VALUE);
+        detailView.setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_UNIFORM);
+        detailView.setAutoSizeTextTypeUniformWithConfiguration(12, 25, 1, TypedValue.COMPLEX_UNIT_SP);
     }
+
+    // Image ou espace
+    if (current.isImage) {
+        showImageCentered();
+    } else {
+        Space spacer = new Space(this);
+        root.addView(spacer, new LinearLayout.LayoutParams(-1, 0, 1));
+    }
+
+    // Barre du bas
+    setQuestionBottomBar();
+}
+
 
     private void showChoices() {
         phase = "choices";
