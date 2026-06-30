@@ -1,6 +1,6 @@
-import android.text.TextUtils;
 package fr.culturegenerale.android;
 
+import android.text.TextUtils;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
