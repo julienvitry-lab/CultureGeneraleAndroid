@@ -530,18 +530,24 @@ public class MainActivity extends Activity {
         addOneMillimeterGap();
 	upperBand(current.theme, GREEN, Color.WHITE, 25, 48);
 
-	// Limiter à 2 lignes
 	TextView themeView = (TextView) root.getChildAt(root.getChildCount() - 1);
 	themeView.setSingleLine(false);
 	themeView.setMaxLines(2);
-	themeView.setEllipsize(TextUtils.TruncateAt.END);
+
+	// Auto‑resize
+	themeView.setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_UNIFORM);
+	themeView.setAutoSizeTextTypeUniformWithConfiguration(12, 25, 1, TypedValue.COMPLEX_UNIT_SP);
+
 	upperBand(current.question, RED, Color.WHITE, 25, 58);
 
-	// Limiter à 2 lignes
 	TextView questionView = (TextView) root.getChildAt(root.getChildCount() - 1);
 	questionView.setSingleLine(false);
 	questionView.setMaxLines(2);
-	questionView.setEllipsize(TextUtils.TruncateAt.END);
+
+	// Auto‑resize
+	questionView.setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_UNIFORM);
+	questionView.setAutoSizeTextTypeUniformWithConfiguration(12, 25, 1, TypedValue.COMPLEX_UNIT_SP);
+
 
         if (current.detail.length() > 0) {
             upperBand(current.detail, YELLOW, Color.BLACK, 25, 62);
