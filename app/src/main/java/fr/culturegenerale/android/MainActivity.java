@@ -527,10 +527,23 @@ public class MainActivity extends Activity {
         baseFixed();
         addCompactStatsBar();
         addOneMillimeterGap();
-	upperBand(current.theme, GREEN, Color.WHITE, 23, 48);
+	upperBand(current.theme, GREEN, Color.WHITE, 25, 48);
+
+	// Limiter à 2 lignes
+	TextView themeView = (TextView) root.getChildAt(root.getChildCount() - 1);
+	themeView.setSingleLine(false);
+	themeView.setMaxLines(2);
+	themeView.setEllipsize(TextUtils.TruncateAt.END);
 	upperBand(current.question, RED, Color.WHITE, 25, 58);
+
+	// Limiter à 2 lignes
+	TextView questionView = (TextView) root.getChildAt(root.getChildCount() - 1);
+	questionView.setSingleLine(false);
+	questionView.setMaxLines(2);
+	questionView.setEllipsize(TextUtils.TruncateAt.END);
+
         if (current.detail.length() > 0) {
-            upperBand(current.detail, YELLOW, Color.BLACK, 21, 62);
+            upperBand(current.detail, YELLOW, Color.BLACK, 25, 62);
         }
         if (current.isImage) {
             showImageCentered();
