@@ -527,8 +527,8 @@ public class MainActivity extends Activity {
         baseFixed();
         addCompactStatsBar();
         addOneMillimeterGap();
-        singleLineBand(current.theme, GREEN, Color.WHITE, 23, 10, 48, 0, dp(3));
-        singleLineBand(current.question, RED, Color.WHITE, 25, 8, 58);
+        upperBand(current.theme, GREEN, Color.WHITE, 23, 10, 48, 0, dp(3));
+        upperBand(current.question, RED, Color.WHITE, 25, 8, 58);
         if (current.detail.length() > 0) {
             upperBand(current.detail, YELLOW, Color.BLACK, 21, 62);
         }
