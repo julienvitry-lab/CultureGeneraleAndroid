@@ -549,8 +549,17 @@ public class MainActivity extends Activity {
 	questionView.setAutoSizeTextTypeUniformWithConfiguration(12, 25, 1, TypedValue.COMPLEX_UNIT_SP);
 
 
-        if (current.detail.length() > 0) {
-            upperBand(current.detail, YELLOW, Color.BLACK, 25, 62);
+      	if (current.detail.length() > 0) {
+   	upperBand(current.detail, YELLOW, Color.BLACK, 25, 62);
+
+   	TextView detailView = (TextView) root.getChildAt(root.getChildCount() - 1);
+    	detailView.setSingleLine(false);
+    	detailView.setMaxLines(Integer.MAX_VALUE);
+
+    	detailView.setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_UNIFORM);
+    	detailView.setAutoSizeTextTypeUniformWithConfiguration(12, 25, 1, TypedValue.COMPLEX_UNIT_SP);
+	}
+
         }
         if (current.isImage) {
             showImageCentered();
