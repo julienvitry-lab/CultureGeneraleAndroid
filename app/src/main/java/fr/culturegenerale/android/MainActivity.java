@@ -439,10 +439,10 @@ public class MainActivity extends Activity {
     }
 
     private String playableWhere(boolean domain) {
-        String w = "(status IS NULL OR TRIM(status)='' OR UPPER(TRIM(status))='R')";
-        if (domain) w += " AND LOWER(TRIM(megatheme))=LOWER(TRIM(?))";
-        return w;
-    }
+    String w = "(status IS NULL OR TRIM(status)='' OR UPPER(TRIM(status))='R' OR UPPER(TRIM(status))='A')";
+    if (domain) w += " AND LOWER(TRIM(megatheme))=LOWER(TRIM(?))";
+    return w;
+}
 
     private void startDomain(String domain) {
         currentDomain = domain;
