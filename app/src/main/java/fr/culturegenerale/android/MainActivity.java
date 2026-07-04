@@ -210,14 +210,19 @@ public class MainActivity extends Activity {
         );
         stats.setSingleLine(true);
         stats.setMaxLines(1);
-        stats.setPadding(dp(10), 0, dp(10), 0);
+        stats.setEllipsize(null);
+        stats.setHorizontallyScrolling(false);
+        stats.setPadding(dp(6), 0, dp(6), 0);
         stats.setMinHeight(0);
         setRoundedBackground(stats, Color.rgb(24, 24, 24), 8);
+        // Le bandeau doit toujours contenir toute la ligne : on part grand, puis
+        // on réduit après mesure réelle de la largeur. Cela évite toute troncature
+        // de fin de ligne, notamment sur le compteur M.
+        stats.setTextSize(TypedValue.COMPLEX_UNIT_SP, 26);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            stats.setAutoSizeTextTypeUniformWithConfiguration(9, 30, 1, TypedValue.COMPLEX_UNIT_SP);
-        } else {
-            stats.post(() -> fitSingleLineLegacy(stats, stats.getText().toString(), 30, 9));
+            stats.setAutoSizeTextTypeUniformWithConfiguration(7, 26, 1, TypedValue.COMPLEX_UNIT_SP);
         }
+        stats.post(() -> fitSingleLineLegacy(stats, stats.getText().toString(), 26, 7));
         root.addView(stats, new LinearLayout.LayoutParams(-1, cmToPx(1.1f)));
     }
 
@@ -580,17 +585,17 @@ public class MainActivity extends Activity {
     upperBand(current.theme, GREEN, Color.WHITE, 25, 48);
     TextView themeView = (TextView) root.getChildAt(root.getChildCount() - 1);
     themeView.setSingleLine(false);
-    themeView.setMaxLines(2);
+    themeView.setMaxLines(3);
     themeView.setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_UNIFORM);
-    themeView.setAutoSizeTextTypeUniformWithConfiguration(12, 25, 1, TypedValue.COMPLEX_UNIT_SP);
+    themeView.setAutoSizeTextTypeUniformWithConfiguration(11, 25, 1, TypedValue.COMPLEX_UNIT_SP);
 
     // Bandeau rouge
     upperBand(current.question, RED, Color.WHITE, 25, 58);
     TextView questionView = (TextView) root.getChildAt(root.getChildCount() - 1);
     questionView.setSingleLine(false);
-    questionView.setMaxLines(2);
+    questionView.setMaxLines(3);
     questionView.setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_UNIFORM);
-    questionView.setAutoSizeTextTypeUniformWithConfiguration(12, 25, 1, TypedValue.COMPLEX_UNIT_SP);
+    questionView.setAutoSizeTextTypeUniformWithConfiguration(11, 25, 1, TypedValue.COMPLEX_UNIT_SP);
 
     // Bandeau jaune
     if (current.detail.length() > 0) {
