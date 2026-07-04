@@ -210,15 +210,15 @@ public class MainActivity extends Activity {
         );
         stats.setSingleLine(true);
         stats.setMaxLines(1);
-        stats.setPadding(dp(8), 0, dp(8), 0);
+        stats.setPadding(dp(10), 0, dp(10), 0);
         stats.setMinHeight(0);
         setRoundedBackground(stats, Color.rgb(24, 24, 24), 8);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            stats.setAutoSizeTextTypeUniformWithConfiguration(15, 26, 1, TypedValue.COMPLEX_UNIT_SP);
+            stats.setAutoSizeTextTypeUniformWithConfiguration(9, 30, 1, TypedValue.COMPLEX_UNIT_SP);
         } else {
-            stats.post(() -> fitSingleLineLegacy(stats, stats.getText().toString(), 26, 15));
+            stats.post(() -> fitSingleLineLegacy(stats, stats.getText().toString(), 30, 9));
         }
-        root.addView(stats, new LinearLayout.LayoutParams(-1, cmToPx(1.0f)));
+        root.addView(stats, new LinearLayout.LayoutParams(-1, cmToPx(1.1f)));
     }
 
     private long countRemaining(String domain) {
@@ -280,7 +280,7 @@ public class MainActivity extends Activity {
         b.setPadding(dp(8), dp(8), dp(8), dp(8));
         b.setTypeface(appFont);
         b.setTextColor(Color.WHITE);
-        b.setBackground(roundedBackground(GREY, 16));
+        b.setBackground(roundedBackgroundWithStroke(GREY, 16, Color.WHITE, 1));
         return b;
     }
 
@@ -292,7 +292,7 @@ public class MainActivity extends Activity {
     }
 
     private void setRoundedBackground(View view, int color, int radiusDp) {
-        view.setBackground(roundedBackground(color, radiusDp));
+        view.setBackground(roundedBackgroundWithStroke(color, radiusDp, Color.WHITE, 1));
     }
 
     private GradientDrawable roundedBackgroundWithStroke(int color, int radiusDp, int strokeColor, int strokeDp) {
@@ -389,7 +389,7 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseFixed();
-        add(tv("Culture Générale Android V9.4.4", 28, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V9.4.5", 28, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 22, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 20);
@@ -424,6 +424,8 @@ public class MainActivity extends Activity {
                 Button b = btn(d + "\n(" + n + ")", 17);
                 b.setSingleLine(false);
                 b.setMaxLines(3);
+                setRoundedBackgroundWithStroke(b, domainBandColor(d), 16, Color.WHITE, 1);
+                b.setTextColor(domainBandTextColor(d));
                 b.setOnClickListener(v -> startDomain(d));
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1);
                 if (col == 0) lp.setMargins(0, 0, halfGap, 0);
@@ -441,6 +443,8 @@ public class MainActivity extends Activity {
         Button all = btn("Tous les domaines\n(" + total + ")", 20);
         all.setSingleLine(false);
         all.setMaxLines(3);
+        setRoundedBackgroundWithStroke(all, Color.BLACK, 16, Color.WHITE, 1);
+        all.setTextColor(Color.WHITE);
         all.setOnClickListener(v -> startDomain(null));
         selector.addView(all, new LinearLayout.LayoutParams(-1, 0, 1));
     }
@@ -971,43 +975,22 @@ private void flagAndNext(String status, String msg) {
     }
 
     private boolean showMilestonePopupIfNeeded() {
-        String title = null;
-        String message = null;
-        boolean askContinue = false;
-
-        // Priorité : série mentale, série globale réussie, puis palier de 100 questions.
-        if (mentalStreak > 0 && mentalStreak % 10 == 0 && mentalStreak != lastMentalPopupAt) {
-            lastMentalPopupAt = mentalStreak;
-            title = "Série mentale";
-            message = mentalStreak + " questions assimilées mentalement de suite.";
-        } else if (goodStreak > 0 && goodStreak % 10 == 0 && goodStreak != lastCombinedPopupAt) {
-            lastCombinedPopupAt = goodStreak;
-            title = "Série réussie";
-            message = goodStreak + " questions réussies de suite, classiques et mentales réunies.";
-        } else if (answered > 0 && answered % 100 == 0 && answered != lastQuestionsPopupAt) {
-            lastQuestionsPopupAt = answered;
-            title = "Questions posées";
-            message = answered + " questions posées dans cette session. Continuer ?";
-            askContinue = true;
+        if (answered <= 0 || answered % 100 != 0 || answered == lastQuestionsPopupAt) {
+            return false;
         }
 
-        if (title == null) return false;
+        lastQuestionsPopupAt = answered;
+        final String popupTitle = "Questions posées";
+        final String popupMessage = answered + " questions posées dans cette session. Continuer ?";
 
-        final String popupTitle = title;
-        final String popupMessage = message;
-        final boolean popupAskContinue = askContinue;
         screenRoot.post(() -> {
-            AlertDialog.Builder builder = new AlertDialog.Builder(this)
+            new AlertDialog.Builder(this)
                     .setTitle(popupTitle)
                     .setMessage(popupMessage)
-                    .setCancelable(false);
-            if (popupAskContinue) {
-                builder.setPositiveButton("OUI", (dialog, which) -> nextQuestion())
-                       .setNegativeButton("NON", (dialog, which) -> showEndScreen());
-            } else {
-                builder.setPositiveButton("Continuer", (dialog, which) -> nextQuestion());
-            }
-            builder.show();
+                    .setCancelable(false)
+                    .setPositiveButton("OUI", (dialog, which) -> nextQuestion())
+                    .setNegativeButton("NON", (dialog, which) -> showEndScreen())
+                    .show();
         });
         return true;
     }
