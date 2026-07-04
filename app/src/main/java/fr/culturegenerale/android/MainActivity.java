@@ -1,6 +1,7 @@
 package fr.culturegenerale.android;
 
 import android.text.TextUtils;
+import android.text.Layout;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -212,7 +213,7 @@ public class MainActivity extends Activity {
         stats.setMaxLines(1);
         stats.setEllipsize(null);
         stats.setHorizontallyScrolling(false);
-        stats.setPadding(dp(6), 0, dp(6), 0);
+        stats.setPadding(dp(3), 0, dp(3), 0);
         stats.setMinHeight(0);
         setRoundedBackground(stats, Color.rgb(24, 24, 24), 8);
         // Le bandeau doit toujours contenir toute la ligne : on part grand, puis
@@ -270,9 +271,10 @@ public class MainActivity extends Activity {
         v.setTextSize(sp + 2);
         v.setTextColor(color);
         v.setGravity(gravity);
-        v.setPadding(dp(8), dp(5), dp(8), dp(5));
+        v.setPadding(dp(4), dp(2), dp(4), dp(2));
         v.setTypeface(appFont);
         v.setIncludeFontPadding(false);
+        configureNoWordSplit(v);
         return v;
     }
 
@@ -282,11 +284,28 @@ public class MainActivity extends Activity {
         b.setTextSize(sp + 2);
         b.setAllCaps(false);
         b.setGravity(Gravity.CENTER);
-        b.setPadding(dp(8), dp(8), dp(8), dp(8));
+        b.setPadding(dp(4), dp(4), dp(4), dp(4));
         b.setTypeface(appFont);
         b.setTextColor(Color.WHITE);
+        configureNoWordSplit(b);
         b.setBackground(roundedBackgroundWithStroke(GREY, 16, Color.WHITE, 1));
         return b;
+    }
+
+
+    private void configureNoWordSplit(TextView v) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            v.setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE);
+            v.setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE);
+        }
+    }
+
+    private int halfBandGapPx() {
+        return Math.max(1, cmToPx(0.05f));
+    }
+
+    private int compactBandPaddingPx() {
+        return Math.max(dp(3), cmToPx(0.25f));
     }
 
     private GradientDrawable roundedBackground(int color, int radiusDp) {
@@ -317,18 +336,19 @@ public class MainActivity extends Activity {
         TextView v = tv(text, sp, textColor, Gravity.CENTER, true);
         setRoundedBackground(v, color, 14);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(0, dp(3), 0, dp(3));
+        int gap = halfBandGapPx();
+        lp.setMargins(0, gap, 0, gap);
         v.setMinHeight(dp(minHeightDp));
         root.addView(v, lp);
     }
 
     private void singleLineBand(String text, int color, int textColor, int maxSp, int minSp, int minHeightDp) {
-        singleLineBand(text, color, textColor, maxSp, minSp, minHeightDp, dp(3), dp(3));
+        singleLineBand(text, color, textColor, maxSp, minSp, minHeightDp, halfBandGapPx(), halfBandGapPx());
     }
 
     private void singleLineBand(String text, int color, int textColor, int maxSp, int minSp, int minHeightDp, int topMarginPx, int bottomMarginPx) {
         TextView v = tv(text, maxSp - 2, textColor, Gravity.CENTER, true);
-        int innerMargin = cmToPx(0.5f); // 5 mm autour du texte
+        int innerMargin = compactBandPaddingPx(); // marges internes réduites
         v.setPadding(innerMargin, innerMargin, innerMargin, innerMargin);
         v.setSingleLine(true);
         v.setMaxLines(1);
@@ -348,12 +368,13 @@ public class MainActivity extends Activity {
 
     private void upperBand(String text, int color, int textColor, int sp, int minHeightDp) {
         TextView v = tv(text, sp, textColor, Gravity.CENTER, true);
-        int innerMargin = cmToPx(0.5f); // 5 mm en haut, bas, gauche et droite
+        int innerMargin = compactBandPaddingPx(); // marges internes réduites
         v.setPadding(innerMargin, innerMargin, innerMargin, innerMargin);
         v.setMinHeight(dp(minHeightDp));
         setRoundedBackground(v, color, 14);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(0, dp(3), 0, dp(3));
+        int gap = halfBandGapPx();
+        lp.setMargins(0, gap, 0, gap);
         root.addView(v, lp);
     }
 
@@ -410,8 +431,8 @@ public class MainActivity extends Activity {
         exportProblemsP(false);
 	Map<String, Long> domainCounts = countDomains();
 
-        int gap = cmToPx(0.2f); // 2 mm exactement entre les rubriques
-        int halfGap = cmToPx(0.1f);
+        int gap = cmToPx(0.1f); // 1 mm exactement entre les rubriques
+        int halfGap = cmToPx(0.05f);
 
         LinearLayout selector = new LinearLayout(this);
         selector.setOrientation(LinearLayout.VERTICAL);
@@ -632,7 +653,7 @@ public class MainActivity extends Activity {
             b.setOnClickListener(v -> answerChoice(idx));
             choiceButtons[i - 1] = b;
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 0, 1);
-            lp.setMargins(0, dp(5), 0, dp(5));
+            lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
             root.addView(b, lp);
         }
         setChoicesBottomBar();
@@ -648,7 +669,7 @@ public class MainActivity extends Activity {
             b.setTextColor(Color.WHITE);
             setRoundedBackgroundWithStroke(b, i == current.correct ? Color.rgb(0, 165, 65) : GREY, 18, Color.WHITE, 1);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 0, 1);
-            lp.setMargins(0, dp(5), 0, dp(5));
+            lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
             root.addView(b, lp);
         }
         setRevealBottomBar();
@@ -698,7 +719,7 @@ public class MainActivity extends Activity {
         b.setTextColor(Color.WHITE);
         b.setOnClickListener(listener);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1);
-        lp.setMargins(dp(3), dp(3), dp(3), dp(3));
+        lp.setMargins(halfBandGapPx(), halfBandGapPx(), halfBandGapPx(), halfBandGapPx());
         bottomBar.addView(b, lp);
     }
 
@@ -777,7 +798,7 @@ public class MainActivity extends Activity {
         setRoundedBackground(b, color, 15);
         b.setOnClickListener(listener);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, heightPx);
-        lp.setMargins(dp(3), dp(3), dp(3), dp(3));
+        lp.setMargins(halfBandGapPx(), halfBandGapPx(), halfBandGapPx(), halfBandGapPx());
         panel.addView(b, lp);
     }
 
