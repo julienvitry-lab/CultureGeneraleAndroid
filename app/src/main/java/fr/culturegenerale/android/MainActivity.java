@@ -86,18 +86,15 @@ public class MainActivity extends Activity {
 
     private int answered = 0;
     private int mentalOk = 0;
+    private int classicOk = 0;
     private int revised = 0;
     private int goodStreak = 0;
+    private int classicStreak = 0;
     private int bestGoodStreak = 0;
     private int mentalStreak = 0;
     private int bestMentalStreak = 0;
-    private int classicOk = 0;
-    private int classicStreak = 0;
-    private int bestClassicStreak = 0;
-    private int lastQuestionMilestoneShown = 0;
-    private int lastClassicMilestoneShown = 0;
-    private int lastMentalMilestoneShown = 0;
-    private final Set<String> analogueKeysThisSession = new HashSet<>();
+    private int lastQuestionsPopupAt = 0;
+    private int lastMentalPopupAt = 0;
 
     static class Question {
         long row;
@@ -201,13 +198,13 @@ public class MainActivity extends Activity {
     }
 
     private void addCompactStatsBar() {
-        long remaining = countRemainingForCurrentDomain();
+        long remaining = countRemaining(currentDomain);
         TextView stats = tv(
                 "R:" + remaining +
                 "   H:" + answered +
                 "   C:" + classicStreak + "/" + classicOk +
                 "   M:" + mentalStreak + "/" + mentalOk,
-                8, Color.WHITE, Gravity.CENTER, true
+                14, Color.WHITE, Gravity.CENTER, true
         );
         stats.setSingleLine(true);
         stats.setMaxLines(1);
@@ -215,24 +212,22 @@ public class MainActivity extends Activity {
         stats.setMinHeight(0);
         setRoundedBackground(stats, Color.rgb(24, 24, 24), 8);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            stats.setAutoSizeTextTypeUniformWithConfiguration(6, 10, 1, TypedValue.COMPLEX_UNIT_SP);
+            stats.setAutoSizeTextTypeUniformWithConfiguration(9, 16, 1, TypedValue.COMPLEX_UNIT_SP);
+        } else {
+            stats.post(() -> fitSingleLineLegacy(stats, stats.getText().toString(), 16, 9));
         }
-        root.addView(stats, new LinearLayout.LayoutParams(-1, cmToPx(0.48f)));
+        root.addView(stats, new LinearLayout.LayoutParams(-1, cmToPx(0.75f)));
     }
 
-    private long countRemainingForCurrentDomain() {
+    private long countRemaining(String domain) {
         SQLiteDatabase db = openDb();
         try {
-            String where = playableWhere(currentDomain != null);
-            String[] args = currentDomain == null ? null : new String[]{currentDomain};
+            String where = playableWhere(domain != null);
+            String[] args = domain == null ? null : new String[]{domain};
             Cursor c = db.rawQuery("SELECT COUNT(*) FROM " + TABLE + " WHERE " + where, args);
             try { return c.moveToFirst() ? c.getLong(0) : 0; }
             finally { c.close(); }
-        } catch (Exception e) {
-            return 0;
-        } finally {
-            db.close();
-        }
+        } finally { db.close(); }
     }
 
     private long[] countMainStatuses() {
@@ -414,10 +409,9 @@ public class MainActivity extends Activity {
             for (int col = 0; col < 2; col++) {
                 String d = DOMAINS[rowIndex * 2 + col];
                 long n = domainCounts.getOrDefault(d, 0L);
-                Button b = btn(d + "\n" + n, 17);
+                Button b = btn(d + "\n(" + n + ")", 17);
                 b.setSingleLine(false);
                 b.setMaxLines(3);
-                b.setGravity(Gravity.CENTER);
                 b.setOnClickListener(v -> startDomain(d));
                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1);
                 if (col == 0) lp.setMargins(0, 0, halfGap, 0);
@@ -432,10 +426,9 @@ public class MainActivity extends Activity {
 
         long total = 0;
         for (long v : domainCounts.values()) total += v;
-        Button all = btn("Tous les domaines\n" + total, 20);
+        Button all = btn("Tous les domaines\n(" + total + ")", 20);
         all.setSingleLine(false);
         all.setMaxLines(3);
-        all.setGravity(Gravity.CENTER);
         all.setOnClickListener(v -> startDomain(null));
         selector.addView(all, new LinearLayout.LayoutParams(-1, 0, 1));
     }
@@ -474,11 +467,10 @@ public class MainActivity extends Activity {
 
     private void startDomain(String domain) {
         currentDomain = domain;
-        answered = mentalOk = revised = goodStreak = bestGoodStreak = mentalStreak = bestMentalStreak = 0;
-        classicOk = classicStreak = bestClassicStreak = 0;
-        lastQuestionMilestoneShown = lastClassicMilestoneShown = lastMentalMilestoneShown = 0;
+        answered = mentalOk = classicOk = revised = goodStreak = classicStreak = bestGoodStreak = mentalStreak = bestMentalStreak = 0;
+        lastQuestionsPopupAt = 0;
+        lastMentalPopupAt = 0;
         askedThisSession.clear();
-        analogueKeysThisSession.clear();
         history.clear();
         historyIndex = -1;
         nextQuestion();
@@ -497,7 +489,6 @@ public class MainActivity extends Activity {
             }
             current = q;
             askedThisSession.add(q.row);
-            analogueKeysThisSession.add(analogueSessionKey(q));
             if (historyIndex < history.size() - 1) {
                 while (history.size() > historyIndex + 1) history.remove(history.size() - 1);
             }
@@ -518,7 +509,7 @@ public class MainActivity extends Activity {
         for (int tries = 0; tries < 30; tries++) {
             q = loadRandom(domain);
             if (q == null) return null;
-            if (!askedThisSession.contains(q.row) && !analogueKeysThisSession.contains(analogueSessionKey(q))) return q;
+            if (!askedThisSession.contains(q.row)) return q;
         }
         return q;
     }
@@ -896,58 +887,16 @@ public class MainActivity extends Activity {
 private void flagAndNext(String status, String msg) {
     if ("T".equals(status)) {
         int affected = updateAnalogousQuestionsToT();
-        showBlockingPopup(
-                "Contenu analogue exclu",
-                affected + " question" + (affected > 1 ? "s" : "") +
-                " exclue" + (affected > 1 ? "s" : "") +
-                " au total pour ce même thème et cette même question.",
-                this::nextQuestion
-        );
+        long totalT = countStatus("T");
+        // Toast supprimé
     } else {
         updateStatus(status);
         exportProblemsP(false);
-        screenRoot.postDelayed(this::nextQuestion, 350);
+        long totalP = countStatus("P");
+        // Toast supprimé
     }
+    screenRoot.postDelayed(this::nextQuestion, 350);
 }
-
-    private void showBlockingPopup(String title, String message, final Runnable afterClose) {
-        try {
-            new AlertDialog.Builder(this)
-                    .setTitle(title)
-                    .setMessage(message)
-                    .setPositiveButton("Continuer", (dialog, which) -> { if (afterClose != null) afterClose.run(); })
-                    .setOnCancelListener(dialog -> { if (afterClose != null) afterClose.run(); })
-                    .show();
-        } catch (Exception e) {
-            if (afterClose != null) afterClose.run();
-        }
-    }
-
-    private void showMilestoneThenNext() {
-        String title = null;
-        String message = null;
-
-        int mentalMilestone = (mentalStreak / 10) * 10;
-        int classicMilestone = (classicStreak / 10) * 10;
-        int questionMilestone = (answered / 100) * 100;
-
-        if (mentalMilestone >= 10 && mentalMilestone > lastMentalMilestoneShown) {
-            lastMentalMilestoneShown = mentalMilestone;
-            title = "Palier mental";
-            message = mentalMilestone + " assimilations mentales consécutives.";
-        } else if (classicMilestone >= 10 && classicMilestone > lastClassicMilestoneShown) {
-            lastClassicMilestoneShown = classicMilestone;
-            title = "Palier classique";
-            message = classicMilestone + " assimilations classiques consécutives.";
-        } else if (questionMilestone >= 100 && questionMilestone > lastQuestionMilestoneShown) {
-            lastQuestionMilestoneShown = questionMilestone;
-            title = "Palier de session";
-            message = questionMilestone + " questions jouées dans cette session.";
-        }
-
-        if (title != null) showBlockingPopup(title, message, this::nextQuestion);
-        else nextQuestion();
-    }
 
     private int updateAnalogousQuestionsToT() {
         SQLiteDatabase db = openDb();
@@ -1001,28 +950,54 @@ private void flagAndNext(String status, String msg) {
         return s;
     }
 
-    private String analogueSessionKey(Question q) {
-        if (q == null) return "";
-        return comparisonKey(q.theme) + "§" + comparisonKey(q.question);
+    private boolean showMilestonePopupIfNeeded() {
+        String title = null;
+        String message = null;
+
+        if (mentalStreak > 0 && mentalStreak % 10 == 0 && mentalStreak != lastMentalPopupAt) {
+            lastMentalPopupAt = mentalStreak;
+            title = "Série mentale";
+            message = mentalStreak + " questions assimilées mentalement de suite.";
+        } else if (answered > 0 && answered % 100 == 0 && answered != lastQuestionsPopupAt) {
+            lastQuestionsPopupAt = answered;
+            title = "Questions jouées";
+            message = answered + " questions posées dans cette session.";
+        }
+
+        if (title == null) return false;
+
+        final String popupTitle = title;
+        final String popupMessage = message;
+        screenRoot.post(() -> new AlertDialog.Builder(this)
+                .setTitle(popupTitle)
+                .setMessage(popupMessage)
+                .setPositiveButton("Continuer", (dialog, which) -> nextQuestion())
+                .setOnCancelListener(dialog -> nextQuestion())
+                .show());
+        return true;
+    }
+
+    private void continueAfterAnswer() {
+        if (!showMilestonePopupIfNeeded()) nextQuestion();
     }
 
     private void answerChoice(int choice) {
         answered++;
         revised++;
+        // Toute réponse par propositions relève du classique et coupe la série mentale.
+        mentalStreak = 0;
         if (choice == current.correct) {
-            goodStreak++;
             classicOk++;
             classicStreak++;
+            goodStreak++;
             if (goodStreak > bestGoodStreak) bestGoodStreak = goodStreak;
-            if (classicStreak > bestClassicStreak) bestClassicStreak = classicStreak;
         } else {
-            goodStreak = 0;
             classicStreak = 0;
+            goodStreak = 0;
         }
-        mentalStreak = 0;
         updateStatus("R");
         showChoiceResult(choice);
-        screenRoot.postDelayed(this::showMilestoneThenNext, 900);
+        screenRoot.postDelayed(this::continueAfterAnswer, 900);
     }
 
     private void finish(String status) {
@@ -1031,15 +1006,17 @@ private void flagAndNext(String status, String msg) {
             mentalOk++;
             goodStreak++;
             mentalStreak++;
+            classicStreak = 0;
             if (goodStreak > bestGoodStreak) bestGoodStreak = goodStreak;
             if (mentalStreak > bestMentalStreak) bestMentalStreak = mentalStreak;
         } else {
             revised++;
             goodStreak = 0;
+            classicStreak = 0;
             mentalStreak = 0;
         }
         updateStatus(status);
-        showMilestoneThenNext();
+        continueAfterAnswer();
     }
 
     private void updateStatus(String status) {
