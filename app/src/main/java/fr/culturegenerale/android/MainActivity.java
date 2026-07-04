@@ -95,6 +95,7 @@ public class MainActivity extends Activity {
     private int bestMentalStreak = 0;
     private int lastQuestionsPopupAt = 0;
     private int lastMentalPopupAt = 0;
+    private int lastCombinedPopupAt = 0;
     private long remainingInCurrentDomain = 0;
 
     static class Question {
@@ -201,10 +202,10 @@ public class MainActivity extends Activity {
     private void addCompactStatsBar() {
         long remaining = remainingInCurrentDomain;
         TextView stats = tv(
-                "R:" + remaining +
-                "   H:" + answered +
-                "   C:" + classicStreak + "/" + classicOk +
-                "   M:" + mentalStreak + "/" + mentalOk,
+                "R : " + remaining +
+                "   H : " + answered +
+                "   C : " + classicStreak + "/" + classicOk +
+                "   M : " + mentalStreak + "/" + mentalOk,
                 21, Color.WHITE, Gravity.CENTER, true
         );
         stats.setSingleLine(true);
@@ -292,6 +293,16 @@ public class MainActivity extends Activity {
 
     private void setRoundedBackground(View view, int color, int radiusDp) {
         view.setBackground(roundedBackground(color, radiusDp));
+    }
+
+    private GradientDrawable roundedBackgroundWithStroke(int color, int radiusDp, int strokeColor, int strokeDp) {
+        GradientDrawable drawable = roundedBackground(color, radiusDp);
+        drawable.setStroke(dp(strokeDp), strokeColor);
+        return drawable;
+    }
+
+    private void setRoundedBackgroundWithStroke(View view, int color, int radiusDp, int strokeColor, int strokeDp) {
+        view.setBackground(roundedBackgroundWithStroke(color, radiusDp, strokeColor, strokeDp));
     }
 
     private void add(View v) { root.addView(v, new LinearLayout.LayoutParams(-1, -2)); }
@@ -474,6 +485,7 @@ public class MainActivity extends Activity {
         answered = mentalOk = classicOk = revised = goodStreak = classicStreak = bestGoodStreak = mentalStreak = bestMentalStreak = 0;
         lastQuestionsPopupAt = 0;
         lastMentalPopupAt = 0;
+        lastCombinedPopupAt = 0;
         remainingInCurrentDomain = countRemaining(currentDomain);
         askedThisSession.clear();
         history.clear();
@@ -606,7 +618,7 @@ public class MainActivity extends Activity {
         for (int i = 1; i <= 4; i++) {
             final int idx = i;
             Button b = btn(current.props[i - 1], 22);
-            setRoundedBackground(b, GREY, 18);
+            setRoundedBackgroundWithStroke(b, GREY, 18, Color.WHITE, 1);
             b.setTextColor(Color.WHITE);
             b.setOnClickListener(v -> answerChoice(idx));
             choiceButtons[i - 1] = b;
@@ -625,7 +637,7 @@ public class MainActivity extends Activity {
             Button b = btn(current.props[i - 1], 22);
             b.setEnabled(false);
             b.setTextColor(Color.WHITE);
-            setRoundedBackground(b, i == current.correct ? Color.rgb(0, 165, 65) : GREY, 18);
+            setRoundedBackgroundWithStroke(b, i == current.correct ? Color.rgb(0, 165, 65) : GREY, 18, Color.WHITE, 1);
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, 0, 1);
             lp.setMargins(0, dp(5), 0, dp(5));
             root.addView(b, lp);
@@ -639,9 +651,9 @@ public class MainActivity extends Activity {
             Button b = choiceButtons[i - 1];
             if (b == null) continue;
             b.setEnabled(false);
-            if (i == current.correct) setRoundedBackground(b, Color.rgb(0, 165, 65), 18);
-            else if (i == chosenChoice) setRoundedBackground(b, Color.rgb(190, 25, 25), 18);
-            else setRoundedBackground(b, GREY, 18);
+            if (i == current.correct) setRoundedBackgroundWithStroke(b, Color.rgb(0, 165, 65), 18, Color.WHITE, 1);
+            else if (i == chosenChoice) setRoundedBackgroundWithStroke(b, Color.rgb(190, 25, 25), 18, Color.WHITE, 1);
+            else setRoundedBackgroundWithStroke(b, GREY, 18, Color.WHITE, 1);
         }
         setBottomBarEnabled(false);
         // La couleur des propositions constitue désormais l'unique retour visuel.
@@ -961,27 +973,42 @@ private void flagAndNext(String status, String msg) {
     private boolean showMilestonePopupIfNeeded() {
         String title = null;
         String message = null;
+        boolean askContinue = false;
 
+        // Priorité : série mentale, série globale réussie, puis palier de 100 questions.
         if (mentalStreak > 0 && mentalStreak % 10 == 0 && mentalStreak != lastMentalPopupAt) {
             lastMentalPopupAt = mentalStreak;
             title = "Série mentale";
             message = mentalStreak + " questions assimilées mentalement de suite.";
+        } else if (goodStreak > 0 && goodStreak % 10 == 0 && goodStreak != lastCombinedPopupAt) {
+            lastCombinedPopupAt = goodStreak;
+            title = "Série réussie";
+            message = goodStreak + " questions réussies de suite, classiques et mentales réunies.";
         } else if (answered > 0 && answered % 100 == 0 && answered != lastQuestionsPopupAt) {
             lastQuestionsPopupAt = answered;
-            title = "Questions jouées";
-            message = answered + " questions posées dans cette session.";
+            title = "Questions posées";
+            message = answered + " questions posées dans cette session. Continuer ?";
+            askContinue = true;
         }
 
         if (title == null) return false;
 
         final String popupTitle = title;
         final String popupMessage = message;
-        screenRoot.post(() -> new AlertDialog.Builder(this)
-                .setTitle(popupTitle)
-                .setMessage(popupMessage)
-                .setPositiveButton("Continuer", (dialog, which) -> nextQuestion())
-                .setOnCancelListener(dialog -> nextQuestion())
-                .show());
+        final boolean popupAskContinue = askContinue;
+        screenRoot.post(() -> {
+            AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                    .setTitle(popupTitle)
+                    .setMessage(popupMessage)
+                    .setCancelable(false);
+            if (popupAskContinue) {
+                builder.setPositiveButton("OUI", (dialog, which) -> nextQuestion())
+                       .setNegativeButton("NON", (dialog, which) -> showEndScreen());
+            } else {
+                builder.setPositiveButton("Continuer", (dialog, which) -> nextQuestion());
+            }
+            builder.show();
+        });
         return true;
     }
 
