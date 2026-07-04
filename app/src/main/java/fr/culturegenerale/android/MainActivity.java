@@ -95,6 +95,7 @@ public class MainActivity extends Activity {
     private int bestMentalStreak = 0;
     private int lastQuestionsPopupAt = 0;
     private int lastMentalPopupAt = 0;
+    private long remainingInCurrentDomain = 0;
 
     static class Question {
         long row;
@@ -198,25 +199,25 @@ public class MainActivity extends Activity {
     }
 
     private void addCompactStatsBar() {
-        long remaining = countRemaining(currentDomain);
+        long remaining = remainingInCurrentDomain;
         TextView stats = tv(
                 "R:" + remaining +
                 "   H:" + answered +
                 "   C:" + classicStreak + "/" + classicOk +
                 "   M:" + mentalStreak + "/" + mentalOk,
-                14, Color.WHITE, Gravity.CENTER, true
+                21, Color.WHITE, Gravity.CENTER, true
         );
         stats.setSingleLine(true);
         stats.setMaxLines(1);
-        stats.setPadding(dp(4), 0, dp(4), 0);
+        stats.setPadding(dp(8), 0, dp(8), 0);
         stats.setMinHeight(0);
         setRoundedBackground(stats, Color.rgb(24, 24, 24), 8);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            stats.setAutoSizeTextTypeUniformWithConfiguration(9, 16, 1, TypedValue.COMPLEX_UNIT_SP);
+            stats.setAutoSizeTextTypeUniformWithConfiguration(15, 26, 1, TypedValue.COMPLEX_UNIT_SP);
         } else {
-            stats.post(() -> fitSingleLineLegacy(stats, stats.getText().toString(), 16, 9));
+            stats.post(() -> fitSingleLineLegacy(stats, stats.getText().toString(), 26, 15));
         }
-        root.addView(stats, new LinearLayout.LayoutParams(-1, cmToPx(0.75f)));
+        root.addView(stats, new LinearLayout.LayoutParams(-1, cmToPx(1.0f)));
     }
 
     private long countRemaining(String domain) {
@@ -377,7 +378,7 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseFixed();
-        add(tv("Culture Générale Android V9.4.3", 28, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V9.4.4", 28, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 22, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 20);
@@ -460,7 +461,10 @@ public class MainActivity extends Activity {
     }
 
     private String playableWhere(boolean domain) {
-    String w = "(status IS NULL OR TRIM(status)='' OR UPPER(TRIM(status))='R' OR UPPER(TRIM(status))='A')";
+    // Questions disponibles : tout revient dans le pot commun sauf les statuts
+    // qui excluent proprement la question de la boucle : M, P et T.
+    // X reste également exclu si présent dans une base ancienne.
+    String w = "(status IS NULL OR TRIM(status)='' OR UPPER(TRIM(status)) NOT IN ('M','P','T','X'))";
     if (domain) w += " AND LOWER(TRIM(megatheme))=LOWER(TRIM(?))";
     return w;
 }
@@ -470,6 +474,7 @@ public class MainActivity extends Activity {
         answered = mentalOk = classicOk = revised = goodStreak = classicStreak = bestGoodStreak = mentalStreak = bestMentalStreak = 0;
         lastQuestionsPopupAt = 0;
         lastMentalPopupAt = 0;
+        remainingInCurrentDomain = countRemaining(currentDomain);
         askedThisSession.clear();
         history.clear();
         historyIndex = -1;
@@ -478,6 +483,9 @@ public class MainActivity extends Activity {
 
     private void nextQuestion() {
         try {
+            // Recalcul uniquement au moment du tirage d'une nouvelle question :
+            // R = questions encore disponibles dans le mégathème, hors M/P/T/X.
+            remainingInCurrentDomain = countRemaining(currentDomain);
             Question q = loadFreshQuestion(currentDomain);
             if (q == null) {
                 baseScrollable();
@@ -660,7 +668,7 @@ public class MainActivity extends Activity {
         bottomBar.removeAllViews();
         addBottomButton("À revoir", RED, v -> finish("R"));
         addBottomButton("Menu", BLUE, v -> showMainMenu());
-        addBottomButton("Assimilée", GREEN, v -> finish("A"));
+        addBottomButton("Assimilée", GREEN, v -> finish("M"));
     }
 
     private void addBottomButton(String text, int color, View.OnClickListener listener) {
@@ -768,7 +776,7 @@ public class MainActivity extends Activity {
         String message;
         try {
             message = "Base en temps réel\n" +
-                    "Assimilées (A) : " + countStatus("A") + "\n" +
+                    "Assimilées mentales (M) : " + countStatus("M") + "\n" +
                     "À revoir (R) : " + countStatus("R") + "\n" +
                     "Problèmes (P) : " + countStatus("P") + "\n" +
                     "Contenus analogues exclus (T) : " + countStatus("T") + "\n" +
@@ -1002,7 +1010,7 @@ private void flagAndNext(String status, String msg) {
 
     private void finish(String status) {
         answered++;
-        if ("A".equals(status)) {
+        if ("M".equals(status)) {
             mentalOk++;
             goodStreak++;
             mentalStreak++;
