@@ -202,12 +202,13 @@ public class MainActivity extends Activity {
 
     private void addCompactStatsBar() {
         int goodAnswers = classicOk + mentalOk;
-        int successRate = answered <= 0 ? 0 : Math.round((goodAnswers * 100f) / answered);
+        float successRate = answered <= 0 ? 0f : (goodAnswers * 100f) / answered;
+        String successText = String.format(Locale.FRANCE, "%.2f%%", successRate);
         TextView stats = tv(
                 "H : " + answered +
-                "   B : " + successRate + "%" +
+                "   B : " + successText +
                 "   S : " + bestGoodStreak,
-                24, Color.WHITE, Gravity.CENTER, true
+                25, Color.WHITE, Gravity.CENTER, true
         );
         stats.setSingleLine(true);
         stats.setMaxLines(1);
@@ -216,20 +217,19 @@ public class MainActivity extends Activity {
         stats.setPadding(dp(3), 0, dp(3), 0);
         stats.setMinHeight(0);
         setRoundedBackground(stats, Color.rgb(24, 24, 24), 8);
-        // Le bandeau doit contenir toute la ligne : police haute au départ,
-        // puis réduction automatique si nécessaire.
-        stats.setTextSize(TypedValue.COMPLEX_UNIT_SP, 30);
+        // Même taille initiale que les bandeaux de question, puis réduction si nécessaire.
+        stats.setTextSize(TypedValue.COMPLEX_UNIT_SP, 27);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            stats.setAutoSizeTextTypeUniformWithConfiguration(9, 30, 1, TypedValue.COMPLEX_UNIT_SP);
+            stats.setAutoSizeTextTypeUniformWithConfiguration(10, 27, 1, TypedValue.COMPLEX_UNIT_SP);
         }
-        stats.post(() -> fitSingleLineLegacy(stats, stats.getText().toString(), 30, 9));
-        root.addView(stats, new LinearLayout.LayoutParams(-1, cmToPx(1.1f)));
+        stats.post(() -> fitSingleLineLegacy(stats, stats.getText().toString(), 27, 10));
+        root.addView(stats, new LinearLayout.LayoutParams(-1, cmToPx(0.85f)));
     }
 
     private long countRemaining(String domain) {
         SQLiteDatabase db = openDb();
         try {
-            String where = neverAskedWhere(domain != null);
+            String where = availableWhere(domain != null);
             String[] args = domain == null ? null : new String[]{domain};
             Cursor c = db.rawQuery("SELECT COUNT(*) FROM " + TABLE + " WHERE " + where, args);
             try { return c.moveToFirst() ? c.getLong(0) : 0; }
@@ -414,7 +414,7 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseFixed();
-        add(tv("Culture Générale Android V9.4.5", 28, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V9.4.6", 28, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 22, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 20);
@@ -479,7 +479,7 @@ public class MainActivity extends Activity {
         for (String d : DOMAINS) map.put(d, 0L);
         SQLiteDatabase db = openDb();
         try {
-            Cursor c = db.rawQuery("SELECT megatheme, COUNT(*) FROM " + TABLE + " WHERE " + neverAskedWhere(false) + " GROUP BY megatheme", null);
+            Cursor c = db.rawQuery("SELECT megatheme, COUNT(*) FROM " + TABLE + " WHERE " + availableWhere(false) + " GROUP BY megatheme", null);
             try {
                 while (c.moveToNext()) {
                     String d = normalize(c.getString(0));
@@ -500,17 +500,24 @@ public class MainActivity extends Activity {
         } finally { db.close(); }
     }
 
-    private String playableWhere(boolean domain) {
-    // Pot recyclable : utilisé uniquement lorsque toutes les questions jamais posées
-    // du mégathème ont été vues. M, P, T et X restent exclues.
+    private String availableWhere(boolean domain) {
+    // Questions réellement disponibles : non assimilées mentalement et non exclues.
+    // Les questions posées classiquement restent disponibles, mais ne sont reprises
+    // qu'après épuisement des questions jamais posées.
     String w = "(status IS NULL OR TRIM(status)='' OR UPPER(TRIM(status)) NOT IN ('M','P','T','X'))";
     if (domain) w += " AND LOWER(TRIM(megatheme))=LOWER(TRIM(?))";
     return w;
 }
 
+    private String playableWhere(boolean domain) {
+    // Pot recyclable : utilisé uniquement lorsque toutes les questions jamais posées
+    // du mégathème ont été vues. M, P, T et X restent exclues.
+    return availableWhere(domain);
+}
+
     private String neverAskedWhere(boolean domain) {
     // Priorité absolue : tirer uniquement les questions jamais posées.
-    // Les questions M, P, T et X sont exclues par nature car leur statut n'est plus vide.
+    // Les questions déjà vues ne reviennent qu'après épuisement de ce stock.
     String w = "(status IS NULL OR TRIM(status)='')";
     if (domain) w += " AND LOWER(TRIM(megatheme))=LOWER(TRIM(?))";
     return w;
@@ -532,7 +539,7 @@ public class MainActivity extends Activity {
     private void nextQuestion() {
         try {
             // Recalcul uniquement au moment du tirage d'une nouvelle question :
-            // R = questions jamais posées restantes dans le mégathème.
+            // R = questions disponibles non assimilées mentalement, hors P/T/X.
             remainingInCurrentDomain = countRemaining(currentDomain);
             Question q = loadFreshQuestion(currentDomain);
             if (q == null) {
