@@ -201,13 +201,13 @@ public class MainActivity extends Activity {
     }
 
     private void addCompactStatsBar() {
-        long remaining = remainingInCurrentDomain;
+        int goodAnswers = classicOk + mentalOk;
+        int successRate = answered <= 0 ? 0 : Math.round((goodAnswers * 100f) / answered);
         TextView stats = tv(
-                "R : " + remaining +
-                "   H : " + answered +
-                "   C : " + classicStreak + "/" + classicOk +
-                "   M : " + mentalStreak + "/" + mentalOk,
-                21, Color.WHITE, Gravity.CENTER, true
+                "H : " + answered +
+                "   B : " + successRate + "%" +
+                "   S : " + bestGoodStreak,
+                24, Color.WHITE, Gravity.CENTER, true
         );
         stats.setSingleLine(true);
         stats.setMaxLines(1);
@@ -216,21 +216,20 @@ public class MainActivity extends Activity {
         stats.setPadding(dp(3), 0, dp(3), 0);
         stats.setMinHeight(0);
         setRoundedBackground(stats, Color.rgb(24, 24, 24), 8);
-        // Le bandeau doit toujours contenir toute la ligne : on part grand, puis
-        // on réduit après mesure réelle de la largeur. Cela évite toute troncature
-        // de fin de ligne, notamment sur le compteur M.
-        stats.setTextSize(TypedValue.COMPLEX_UNIT_SP, 26);
+        // Le bandeau doit contenir toute la ligne : police haute au départ,
+        // puis réduction automatique si nécessaire.
+        stats.setTextSize(TypedValue.COMPLEX_UNIT_SP, 30);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            stats.setAutoSizeTextTypeUniformWithConfiguration(7, 26, 1, TypedValue.COMPLEX_UNIT_SP);
+            stats.setAutoSizeTextTypeUniformWithConfiguration(9, 30, 1, TypedValue.COMPLEX_UNIT_SP);
         }
-        stats.post(() -> fitSingleLineLegacy(stats, stats.getText().toString(), 26, 7));
+        stats.post(() -> fitSingleLineLegacy(stats, stats.getText().toString(), 30, 9));
         root.addView(stats, new LinearLayout.LayoutParams(-1, cmToPx(1.1f)));
     }
 
     private long countRemaining(String domain) {
         SQLiteDatabase db = openDb();
         try {
-            String where = playableWhere(domain != null);
+            String where = neverAskedWhere(domain != null);
             String[] args = domain == null ? null : new String[]{domain};
             Cursor c = db.rawQuery("SELECT COUNT(*) FROM " + TABLE + " WHERE " + where, args);
             try { return c.moveToFirst() ? c.getLong(0) : 0; }
@@ -480,7 +479,7 @@ public class MainActivity extends Activity {
         for (String d : DOMAINS) map.put(d, 0L);
         SQLiteDatabase db = openDb();
         try {
-            Cursor c = db.rawQuery("SELECT megatheme, COUNT(*) FROM " + TABLE + " WHERE " + playableWhere(false) + " GROUP BY megatheme", null);
+            Cursor c = db.rawQuery("SELECT megatheme, COUNT(*) FROM " + TABLE + " WHERE " + neverAskedWhere(false) + " GROUP BY megatheme", null);
             try {
                 while (c.moveToNext()) {
                     String d = normalize(c.getString(0));
@@ -502,10 +501,17 @@ public class MainActivity extends Activity {
     }
 
     private String playableWhere(boolean domain) {
-    // Questions disponibles : tout revient dans le pot commun sauf les statuts
-    // qui excluent proprement la question de la boucle : M, P et T.
-    // X reste également exclu si présent dans une base ancienne.
+    // Pot recyclable : utilisé uniquement lorsque toutes les questions jamais posées
+    // du mégathème ont été vues. M, P, T et X restent exclues.
     String w = "(status IS NULL OR TRIM(status)='' OR UPPER(TRIM(status)) NOT IN ('M','P','T','X'))";
+    if (domain) w += " AND LOWER(TRIM(megatheme))=LOWER(TRIM(?))";
+    return w;
+}
+
+    private String neverAskedWhere(boolean domain) {
+    // Priorité absolue : tirer uniquement les questions jamais posées.
+    // Les questions M, P, T et X sont exclues par nature car leur statut n'est plus vide.
+    String w = "(status IS NULL OR TRIM(status)='')";
     if (domain) w += " AND LOWER(TRIM(megatheme))=LOWER(TRIM(?))";
     return w;
 }
@@ -526,7 +532,7 @@ public class MainActivity extends Activity {
     private void nextQuestion() {
         try {
             // Recalcul uniquement au moment du tirage d'une nouvelle question :
-            // R = questions encore disponibles dans le mégathème, hors M/P/T/X.
+            // R = questions jamais posées restantes dans le mégathème.
             remainingInCurrentDomain = countRemaining(currentDomain);
             Question q = loadFreshQuestion(currentDomain);
             if (q == null) {
@@ -556,8 +562,18 @@ public class MainActivity extends Activity {
 
     private Question loadFreshQuestion(String domain) {
         Question q = null;
-        for (int tries = 0; tries < 30; tries++) {
-            q = loadRandom(domain);
+
+        // Phase 1 : tant qu'il existe des questions jamais posées, on ne tire que celles-là.
+        for (int tries = 0; tries < 60; tries++) {
+            q = loadRandom(domain, true);
+            if (q == null) break;
+            if (!askedThisSession.contains(q.row)) return q;
+        }
+
+        // Phase 2 : lorsque toutes les questions jamais posées ont été vues,
+        // on remet dans le pot les questions classiques / à revoir, mais jamais M/P/T/X.
+        for (int tries = 0; tries < 60; tries++) {
+            q = loadRandom(domain, false);
             if (q == null) return null;
             if (!askedThisSession.contains(q.row)) return q;
         }
@@ -565,9 +581,13 @@ public class MainActivity extends Activity {
     }
 
     private Question loadRandom(String domain) {
+        return loadRandom(domain, false);
+    }
+
+    private Question loadRandom(String domain, boolean onlyNeverAsked) {
         SQLiteDatabase db = openDb();
         try {
-            String where = playableWhere(domain != null);
+            String where = onlyNeverAsked ? neverAskedWhere(domain != null) : playableWhere(domain != null);
             String[] args = domain == null ? null : new String[]{domain};
             Cursor cc = db.rawQuery("SELECT COUNT(*) FROM " + TABLE + " WHERE " + where, args);
             int count;
@@ -749,7 +769,7 @@ public class MainActivity extends Activity {
             hideActionPanel();
             flagAndNext("T", "Contenu analogue exclu");
         });
-        showRightActionPanel(panel, "problem");
+        showActionPanel(panel, "problem", 0);
     }
 
     private void showMainMenu() {
@@ -759,10 +779,6 @@ public class MainActivity extends Activity {
             return;
         }
         LinearLayout panel = createRightActionPanel();
-        addActionPanelButton(panel, "Statistiques détaillées", BLUE, cmToPx(1.45f), v -> {
-            hideActionPanel();
-            showStatsMenu();
-        });
 
         if ("choices".equals(phase) || "reveal".equals(phase) || "result".equals(phase)) {
             addActionPanelButton(panel, "Revoir la question", GREY, cmToPx(1.45f), v -> {
@@ -780,7 +796,7 @@ public class MainActivity extends Activity {
             hideActionPanel();
             showEndScreen();
         });
-        showRightActionPanel(panel, "menu");
+        showActionPanel(panel, "menu", 1);
     }
 
     private LinearLayout createRightActionPanel() {
@@ -803,13 +819,23 @@ public class MainActivity extends Activity {
     }
 
     private void showRightActionPanel(LinearLayout panel, String tag) {
+        showActionPanel(panel, tag, 2);
+    }
+
+    private void showActionPanel(LinearLayout panel, String tag, int columnIndex) {
         hideActionPanel();
         if (actionPanelHost == null) return;
-        Space leftSpace = new Space(this);
-        actionPanelHost.addView(leftSpace, new LinearLayout.LayoutParams(0, 1, 2));
-        LinearLayout.LayoutParams panelLp = new LinearLayout.LayoutParams(0, -2, 1);
-        panelLp.setMargins(dp(3), 0, dp(3), dp(3));
-        actionPanelHost.addView(panel, panelLp);
+        int safeColumn = Math.max(0, Math.min(2, columnIndex));
+        for (int i = 0; i < 3; i++) {
+            if (i == safeColumn) {
+                LinearLayout.LayoutParams panelLp = new LinearLayout.LayoutParams(0, -2, 1);
+                panelLp.setMargins(halfBandGapPx(), 0, halfBandGapPx(), halfBandGapPx());
+                actionPanelHost.addView(panel, panelLp);
+            } else {
+                Space space = new Space(this);
+                actionPanelHost.addView(space, new LinearLayout.LayoutParams(0, 1, 1));
+            }
+        }
         actionPanelHost.setTag(tag);
         actionPanelHost.setVisibility(View.VISIBLE);
     }
@@ -913,16 +939,22 @@ public class MainActivity extends Activity {
         if (current != null) {
             Button resume = btn("Reprendre la partie", 20);
             resume.setOnClickListener(v -> showQuestion());
-            add(resume);
+            addEndButton(resume);
         }
-        Button newGame = btn("Nouvelle partie", 20);
+        Button newGame = btn("Commencer une nouvelle partie", 20);
         newGame.setOnClickListener(v -> showHome());
-        add(newGame);
+        addEndButton(newGame);
 
         Button quit = btn("Quitter la partie", 20);
         setRoundedBackground(quit, RED, 16);
         quit.setOnClickListener(v -> finishAffinity());
-        add(quit);
+        addEndButton(quit);
+    }
+
+    private void addEndButton(Button button) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+        root.addView(button, lp);
     }
 
     private long countStatus(String status) {
