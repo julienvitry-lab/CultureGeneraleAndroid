@@ -109,12 +109,15 @@ public class MainActivity extends Activity {
     }
 
     static class WrongAnswer {
-        String theme, question, detail, chosenAnswer, correctAnswer;
+        String theme, question, detail, chosenAnswer, correctAnswer, imageFile;
+        boolean isImage;
 
         WrongAnswer(Question q, int chosenChoice) {
             theme = q.theme;
             question = q.question;
             detail = q.detail;
+            imageFile = q.imageFile;
+            isImage = q.isImage;
             if (chosenChoice >= 1 && chosenChoice <= 4) chosenAnswer = q.props[chosenChoice - 1];
             else chosenAnswer = "";
             if (q.correct >= 1 && q.correct <= 4) correctAnswer = q.props[q.correct - 1];
