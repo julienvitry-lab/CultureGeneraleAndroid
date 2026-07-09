@@ -988,20 +988,20 @@ public class MainActivity extends Activity {
     private void showWrongAnswersScreen() {
         phase = "wrong_answers";
         baseScrollable();
-        band("Mauvaises réponses", RED, Color.WHITE, 26, 72);
+        reviewBand("Mauvaises réponses", RED, Color.WHITE);
 
         if (wrongAnswers.isEmpty()) {
-            band("Aucune mauvaise réponse dans cette session", DARK, Color.WHITE, 20, 85);
+            reviewBand("Aucune mauvaise réponse dans cette session", DARK, Color.WHITE);
         } else {
             for (int i = wrongAnswers.size() - 1; i >= 0; i--) {
                 WrongAnswer w = wrongAnswers.get(i);
-                addClickableThemeBand(w.theme);
-                band(w.question, RED, Color.WHITE, 25, 58);
+                addClickableThemeBand(w.theme, w.question);
+                reviewBand(w.question, RED, Color.WHITE);
                 if (w.detail != null && w.detail.length() > 0) {
-                    band(w.detail, YELLOW, Color.BLACK, 22, 62);
+                    reviewBand(w.detail, YELLOW, Color.BLACK);
                 }
-                band("Réponse donnée : " + w.chosenAnswer + "\nBonne réponse : " + w.correctAnswer,
-                        DARK, Color.WHITE, 22, 90);
+                reviewBand("Réponse donnée : " + w.chosenAnswer + "\nBonne réponse : " + w.correctAnswer,
+                        DARK, Color.WHITE);
             }
         }
 
@@ -1014,37 +1014,52 @@ public class MainActivity extends Activity {
         addEndButton(newGame);
     }
 
-    private void addClickableThemeBand(String theme) {
-        TextView v = tv(theme, 25, Color.WHITE, Gravity.CENTER, true);
+    private void reviewBand(String text, int color, int textColor) {
+        TextView v = tv(text, 22, textColor, Gravity.CENTER, true);
         int innerMargin = compactBandPaddingPx();
         v.setPadding(innerMargin, innerMargin, innerMargin, innerMargin);
-        v.setMinHeight(dp(48));
-        v.setMaxLines(3);
-        setRoundedBackground(v, GREEN, 14);
-        v.setOnClickListener(view -> showThemeReview(theme));
+        v.setSingleLine(false);
+        v.setMaxLines(Integer.MAX_VALUE);
+        v.setMinHeight(dp(54));
+        setRoundedBackground(v, color, 14);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         int gap = halfBandGapPx();
         lp.setMargins(0, gap, 0, gap);
         root.addView(v, lp);
     }
 
-    private void showThemeReview(String theme) {
-        phase = "theme_review";
+    private void addClickableThemeBand(String theme, String question) {
+        TextView v = tv(theme, 22, Color.WHITE, Gravity.CENTER, true);
+        int innerMargin = compactBandPaddingPx();
+        v.setPadding(innerMargin, innerMargin, innerMargin, innerMargin);
+        v.setSingleLine(false);
+        v.setMaxLines(Integer.MAX_VALUE);
+        v.setMinHeight(dp(54));
+        setRoundedBackground(v, GREEN, 14);
+        v.setOnClickListener(view -> showThemeQuestionReview(theme, question));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        int gap = halfBandGapPx();
+        lp.setMargins(0, gap, 0, gap);
+        root.addView(v, lp);
+    }
+
+    private void showThemeQuestionReview(String theme, String question) {
+        phase = "theme_question_review";
         baseScrollable();
-        band("Thème", GREEN, Color.WHITE, 24, 58);
-        band(theme, GREEN, Color.WHITE, 24, 70);
-        List<Question> questions = loadThemeQuestions(theme);
+        reviewBand("Duo thème-question", GREEN, Color.WHITE);
+        reviewBand(theme, GREEN, Color.WHITE);
+        reviewBand(question, RED, Color.WHITE);
+        List<Question> questions = loadThemeQuestionQuestions(theme, question);
         if (questions.isEmpty()) {
-            band("Aucune autre question trouvée pour ce thème", DARK, Color.WHITE, 20, 80);
+            reviewBand("Aucune question trouvée pour ce duo thème-question", DARK, Color.WHITE);
         } else {
             for (Question q : questions) {
-                band(q.question, RED, Color.WHITE, 22, 58);
                 if (q.detail != null && q.detail.length() > 0) {
-                    band(q.detail, YELLOW, Color.BLACK, 20, 62);
+                    reviewBand(q.detail, YELLOW, Color.BLACK);
                 }
                 String answer = "";
                 if (q.correct >= 1 && q.correct <= 4) answer = q.props[q.correct - 1];
-                band("Réponse : " + answer, DARK, Color.WHITE, 20, 62);
+                reviewBand("Réponse : " + answer, DARK, Color.WHITE);
             }
         }
 
@@ -1057,7 +1072,7 @@ public class MainActivity extends Activity {
         addEndButton(end);
     }
 
-    private List<Question> loadThemeQuestions(String theme) {
+    private List<Question> loadThemeQuestionQuestions(String theme, String question) {
         List<Question> list = new ArrayList<>();
         SQLiteDatabase db = openDb();
         Cursor c = null;
@@ -1067,9 +1082,11 @@ public class MainActivity extends Activity {
                             "FROM " + TABLE + " ORDER BY row_number",
                     null
             );
-            String target = comparisonKey(theme);
+            String targetTheme = comparisonKey(theme);
+            String targetQuestion = comparisonKey(question);
             while (c.moveToNext()) {
-                if (!target.equals(comparisonKey(c.getString(2)))) continue;
+                if (!targetTheme.equals(comparisonKey(c.getString(2)))) continue;
+                if (!targetQuestion.equals(comparisonKey(c.getString(3)))) continue;
                 Question q = new Question();
                 q.row = c.getLong(0);
                 q.domain = normalize(c.getString(1));
