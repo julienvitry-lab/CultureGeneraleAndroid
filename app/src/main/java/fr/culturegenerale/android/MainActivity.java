@@ -1000,6 +1000,9 @@ public class MainActivity extends Activity {
                 if (w.detail != null && w.detail.length() > 0) {
                     reviewBand(w.detail, YELLOW, Color.BLACK);
                 }
+                if (w.isImage) {
+                    reviewImageBand(w.imageFile);
+                }
                 reviewBand("Réponse donnée : " + w.chosenAnswer + "\nBonne réponse : " + w.correctAnswer,
                         DARK, Color.WHITE);
             }
@@ -1026,6 +1029,39 @@ public class MainActivity extends Activity {
         int gap = halfBandGapPx();
         lp.setMargins(0, gap, 0, gap);
         root.addView(v, lp);
+    }
+
+    private void reviewImageBand(String imageFile) {
+        if (imageFile == null || imageFile.trim().length() == 0) return;
+
+        FrameLayout imageArea = new FrameLayout(this);
+        imageArea.setBackgroundColor(Color.BLACK);
+        int innerMargin = compactBandPaddingPx();
+        imageArea.setPadding(innerMargin, innerMargin, innerMargin, innerMargin);
+        setRoundedBackground(imageArea, DARK, 14);
+
+        LinearLayout.LayoutParams areaLp = new LinearLayout.LayoutParams(-1, cmToPx(5.8f));
+        int gap = halfBandGapPx();
+        areaLp.setMargins(0, gap, 0, gap);
+        root.addView(imageArea, areaLp);
+
+        File f = imageFile(imageFile);
+        Bitmap bm = (f != null && f.exists()) ? decode(f) : null;
+        if (bm == null) {
+            TextView missing = tv("Image introuvable : " + imageFile, 18, Color.WHITE, Gravity.CENTER, true);
+            setRoundedBackground(missing, RED, 14);
+            FrameLayout.LayoutParams missingLp = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
+            missingLp.setMargins(dp(6), dp(6), dp(6), dp(6));
+            imageArea.addView(missing, missingLp);
+            return;
+        }
+
+        ImageView iv = new ImageView(this);
+        iv.setImageBitmap(bm);
+        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        iv.setBackgroundColor(Color.BLACK);
+        FrameLayout.LayoutParams ivLp = new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER);
+        imageArea.addView(iv, ivLp);
     }
 
     private void addClickableThemeBand(String theme, String question) {
@@ -1056,6 +1092,9 @@ public class MainActivity extends Activity {
             for (Question q : questions) {
                 if (q.detail != null && q.detail.length() > 0) {
                     reviewBand(q.detail, YELLOW, Color.BLACK);
+                }
+                if (q.isImage) {
+                    reviewImageBand(q.imageFile);
                 }
                 String answer = "";
                 if (q.correct >= 1 && q.correct <= 4) answer = q.props[q.correct - 1];
