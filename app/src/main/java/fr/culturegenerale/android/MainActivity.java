@@ -219,13 +219,9 @@ public class MainActivity extends Activity {
     }
 
     private void addCompactStatsBar() {
-        int goodAnswers = classicOk + mentalOk;
-        float successRate = answered <= 0 ? 0f : (goodAnswers * 100f) / answered;
-        String successText = String.format(Locale.FRANCE, "%.2f%%", successRate);
+        int correctSinceStart = classicOk + mentalOk;
         TextView stats = tv(
-                "H : " + answered +
-                "   B : " + successText +
-                "   S : " + bestGoodStreak,
+                "Bonnes réponses : " + correctSinceStart,
                 25, Color.WHITE, Gravity.CENTER, true
         );
         stats.setSingleLine(true);
@@ -235,7 +231,6 @@ public class MainActivity extends Activity {
         stats.setPadding(dp(3), 0, dp(3), 0);
         stats.setMinHeight(0);
         setRoundedBackground(stats, Color.rgb(24, 24, 24), 8);
-        // Même taille initiale que les bandeaux de question, puis réduction si nécessaire.
         stats.setTextSize(TypedValue.COMPLEX_UNIT_SP, 27);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             stats.setAutoSizeTextTypeUniformWithConfiguration(10, 27, 1, TypedValue.COMPLEX_UNIT_SP);
@@ -1225,48 +1220,33 @@ private void flagAndNext(String status, String msg) {
     }
 
     private boolean showMilestonePopupIfNeeded() {
-        if (answered <= 0 || answered % 100 != 0 || answered == lastQuestionsPopupAt) {
-            return false;
-        }
-
-        lastQuestionsPopupAt = answered;
-        final String popupTitle = "Questions posées";
-        final String popupMessage = answered + " questions posées dans cette session. Continuer ?";
-
-        screenRoot.post(() -> {
-            new AlertDialog.Builder(this)
-                    .setTitle(popupTitle)
-                    .setMessage(popupMessage)
-                    .setCancelable(false)
-                    .setPositiveButton("OUI", (dialog, which) -> nextQuestion())
-                    .setNegativeButton("NON", (dialog, which) -> showEndScreen())
-                    .show();
-        });
-        return true;
+        return false;
     }
 
     private void continueAfterAnswer() {
-        if (!showMilestonePopupIfNeeded()) nextQuestion();
+        nextQuestion();
     }
 
     private void answerChoice(int choice) {
         answered++;
         revised++;
-        // Toute réponse par propositions relève du classique et coupe la série mentale.
         mentalStreak = 0;
         if (choice == current.correct) {
             classicOk++;
             classicStreak++;
             goodStreak++;
             if (goodStreak > bestGoodStreak) bestGoodStreak = goodStreak;
+            updateStatus("R");
+            showChoiceResult(choice);
+            screenRoot.postDelayed(this::continueAfterAnswer, 900);
         } else {
             wrongAnswers.add(new WrongAnswer(current, choice));
             classicStreak = 0;
             goodStreak = 0;
+            updateStatus("R");
+            showChoiceResult(choice);
+            screenRoot.postDelayed(this::showWrongAnswersScreen, 900);
         }
-        updateStatus("R");
-        showChoiceResult(choice);
-        screenRoot.postDelayed(this::continueAfterAnswer, 900);
     }
 
     private void finish(String status) {
@@ -1278,14 +1258,17 @@ private void flagAndNext(String status, String msg) {
             classicStreak = 0;
             if (goodStreak > bestGoodStreak) bestGoodStreak = goodStreak;
             if (mentalStreak > bestMentalStreak) bestMentalStreak = mentalStreak;
+            updateStatus(status);
+            continueAfterAnswer();
         } else {
             revised++;
             goodStreak = 0;
             classicStreak = 0;
             mentalStreak = 0;
+            wrongAnswers.add(new WrongAnswer(current, 0));
+            updateStatus(status);
+            showWrongAnswersScreen();
         }
-        updateStatus(status);
-        continueAfterAnswer();
     }
 
     private void updateStatus(String status) {
