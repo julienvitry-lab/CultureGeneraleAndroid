@@ -83,6 +83,7 @@ public class MainActivity extends Activity {
 
     private final Set<Long> askedThisSession = new HashSet<>();
     private final List<Question> history = new ArrayList<>();
+    private final List<WrongAnswer> wrongAnswers = new ArrayList<>();
     private int historyIndex = -1;
 
     private int answered = 0;
@@ -105,6 +106,20 @@ public class MainActivity extends Activity {
         String[] props = new String[]{"", "", "", ""};
         int correct;
         boolean isImage;
+    }
+
+    static class WrongAnswer {
+        String theme, question, detail, chosenAnswer, correctAnswer;
+
+        WrongAnswer(Question q, int chosenChoice) {
+            theme = q.theme;
+            question = q.question;
+            detail = q.detail;
+            if (chosenChoice >= 1 && chosenChoice <= 4) chosenAnswer = q.props[chosenChoice - 1];
+            else chosenAnswer = "";
+            if (q.correct >= 1 && q.correct <= 4) correctAnswer = q.props[q.correct - 1];
+            else correctAnswer = "";
+        }
     }
 
     @Override public void onCreate(Bundle b) {
@@ -532,6 +547,7 @@ public class MainActivity extends Activity {
         remainingInCurrentDomain = countRemaining(currentDomain);
         askedThisSession.clear();
         history.clear();
+        wrongAnswers.clear();
         historyIndex = -1;
         nextQuestion();
     }
@@ -943,6 +959,10 @@ public class MainActivity extends Activity {
             band("Le fichier PROBLEMES_P.csv n'a pas pu être actualisé", RED, Color.WHITE, 17, 70);
         }
 
+        Button wrong = btn("Mauvaises réponses" + (wrongAnswers.isEmpty() ? "" : " (" + wrongAnswers.size() + ")"), 20);
+        wrong.setOnClickListener(v -> showWrongAnswersScreen());
+        addEndButton(wrong);
+
         if (current != null) {
             Button resume = btn("Reprendre la partie", 20);
             resume.setOnClickListener(v -> showQuestion());
@@ -962,6 +982,112 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
         root.addView(button, lp);
+    }
+
+
+    private void showWrongAnswersScreen() {
+        phase = "wrong_answers";
+        baseScrollable();
+        band("Mauvaises réponses", RED, Color.WHITE, 26, 72);
+
+        if (wrongAnswers.isEmpty()) {
+            band("Aucune mauvaise réponse dans cette session", DARK, Color.WHITE, 20, 85);
+        } else {
+            for (int i = wrongAnswers.size() - 1; i >= 0; i--) {
+                WrongAnswer w = wrongAnswers.get(i);
+                addClickableThemeBand(w.theme);
+                band(w.question, RED, Color.WHITE, 25, 58);
+                if (w.detail != null && w.detail.length() > 0) {
+                    band(w.detail, YELLOW, Color.BLACK, 22, 62);
+                }
+                band("Réponse donnée : " + w.chosenAnswer + "\nBonne réponse : " + w.correctAnswer,
+                        DARK, Color.WHITE, 22, 90);
+            }
+        }
+
+        Button back = btn("Retour fin de partie", 20);
+        back.setOnClickListener(v -> showEndScreen());
+        addEndButton(back);
+
+        Button newGame = btn("Commencer une nouvelle partie", 20);
+        newGame.setOnClickListener(v -> showHome());
+        addEndButton(newGame);
+    }
+
+    private void addClickableThemeBand(String theme) {
+        TextView v = tv(theme, 25, Color.WHITE, Gravity.CENTER, true);
+        int innerMargin = compactBandPaddingPx();
+        v.setPadding(innerMargin, innerMargin, innerMargin, innerMargin);
+        v.setMinHeight(dp(48));
+        v.setMaxLines(3);
+        setRoundedBackground(v, GREEN, 14);
+        v.setOnClickListener(view -> showThemeReview(theme));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        int gap = halfBandGapPx();
+        lp.setMargins(0, gap, 0, gap);
+        root.addView(v, lp);
+    }
+
+    private void showThemeReview(String theme) {
+        phase = "theme_review";
+        baseScrollable();
+        band("Thème", GREEN, Color.WHITE, 24, 58);
+        band(theme, GREEN, Color.WHITE, 24, 70);
+        List<Question> questions = loadThemeQuestions(theme);
+        if (questions.isEmpty()) {
+            band("Aucune autre question trouvée pour ce thème", DARK, Color.WHITE, 20, 80);
+        } else {
+            for (Question q : questions) {
+                band(q.question, RED, Color.WHITE, 22, 58);
+                if (q.detail != null && q.detail.length() > 0) {
+                    band(q.detail, YELLOW, Color.BLACK, 20, 62);
+                }
+                String answer = "";
+                if (q.correct >= 1 && q.correct <= 4) answer = q.props[q.correct - 1];
+                band("Réponse : " + answer, DARK, Color.WHITE, 20, 62);
+            }
+        }
+
+        Button back = btn("Retour mauvaises réponses", 20);
+        back.setOnClickListener(v -> showWrongAnswersScreen());
+        addEndButton(back);
+
+        Button end = btn("Fin de partie", 20);
+        end.setOnClickListener(v -> showEndScreen());
+        addEndButton(end);
+    }
+
+    private List<Question> loadThemeQuestions(String theme) {
+        List<Question> list = new ArrayList<>();
+        SQLiteDatabase db = openDb();
+        Cursor c = null;
+        try {
+            c = db.rawQuery(
+                    "SELECT row_number, megatheme, theme, question, detail, proposition_a, proposition_b, proposition_c, proposition_d, correct_index, image_file, is_image " +
+                            "FROM " + TABLE + " ORDER BY row_number",
+                    null
+            );
+            String target = comparisonKey(theme);
+            while (c.moveToNext()) {
+                if (!target.equals(comparisonKey(c.getString(2)))) continue;
+                Question q = new Question();
+                q.row = c.getLong(0);
+                q.domain = normalize(c.getString(1));
+                q.theme = safe(c.getString(2));
+                q.question = safe(c.getString(3));
+                q.detail = safe(c.getString(4));
+                for (int i = 0; i < 4; i++) q.props[i] = safe(c.getString(5 + i));
+                q.correct = c.getInt(9);
+                if (q.correct < 1 || q.correct > 4) q.correct = 1;
+                q.imageFile = safe(c.getString(10));
+                q.isImage = c.getInt(11) == 1 || q.imageFile.length() > 0;
+                list.add(q);
+            }
+        } finally {
+            if (c != null) c.close();
+            db.close();
+        }
+        return list;
     }
 
     private long countStatus(String status) {
@@ -1075,6 +1201,7 @@ private void flagAndNext(String status, String msg) {
             goodStreak++;
             if (goodStreak > bestGoodStreak) bestGoodStreak = goodStreak;
         } else {
+            wrongAnswers.add(new WrongAnswer(current, choice));
             classicStreak = 0;
             goodStreak = 0;
         }
