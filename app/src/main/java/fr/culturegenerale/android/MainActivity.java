@@ -1046,12 +1046,12 @@ public class MainActivity extends Activity {
     private void showThemeQuestionReview(String theme, String question) {
         phase = "theme_question_review";
         baseScrollable();
-        reviewBand("Duo thème-question", GREEN, Color.WHITE);
+        reviewBand("Trio thème-question-disponible", GREEN, Color.WHITE);
         reviewBand(theme, GREEN, Color.WHITE);
         reviewBand(question, RED, Color.WHITE);
         List<Question> questions = loadThemeQuestionQuestions(theme, question);
         if (questions.isEmpty()) {
-            reviewBand("Aucune question trouvée pour ce duo thème-question", DARK, Color.WHITE);
+            reviewBand("Aucune question disponible trouvée pour ce trio thème-question-disponible", DARK, Color.WHITE);
         } else {
             for (Question q : questions) {
                 if (q.detail != null && q.detail.length() > 0) {
@@ -1079,7 +1079,7 @@ public class MainActivity extends Activity {
         try {
             c = db.rawQuery(
                     "SELECT row_number, megatheme, theme, question, detail, proposition_a, proposition_b, proposition_c, proposition_d, correct_index, image_file, is_image " +
-                            "FROM " + TABLE + " ORDER BY row_number",
+                            "FROM " + TABLE + " WHERE (status IS NULL OR TRIM(status)='' OR UPPER(TRIM(status)) NOT IN ('M','P','T','X')) ORDER BY row_number",
                     null
             );
             String targetTheme = comparisonKey(theme);
