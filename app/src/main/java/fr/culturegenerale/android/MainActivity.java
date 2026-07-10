@@ -109,10 +109,12 @@ public class MainActivity extends Activity {
     }
 
     static class WrongAnswer {
+        long row;
         String theme, question, detail, chosenAnswer, correctAnswer, imageFile;
         boolean isImage;
 
         WrongAnswer(Question q, int chosenChoice) {
+            row = q.row;
             theme = q.theme;
             question = q.question;
             detail = q.detail;
@@ -221,7 +223,7 @@ public class MainActivity extends Activity {
     private void addCompactStatsBar() {
         int correctSinceStart = classicOk + mentalOk;
         TextView stats = tv(
-                "Bonnes réponses : " + correctSinceStart,
+                String.valueOf(correctSinceStart),
                 25, Color.WHITE, Gravity.CENTER, true
         );
         stats.setSingleLine(true);
@@ -939,33 +941,22 @@ public class MainActivity extends Activity {
         phase = "end";
         baseScrollable();
         band("Fin de partie", RED, Color.WHITE, 26, 72);
-        band("Répondues : " + answered +
-                "\nAssimilées mentalement : " + mentalOk +
-                "\nÀ revoir : " + revised +
-                "\nSérie juste : " + goodStreak + " / record " + bestGoodStreak +
-                "\nSérie mentale : " + mentalStreak + " / record " + bestMentalStreak,
-                DARK, Color.WHITE, 21, 150);
+        band("Questions correctement répondues : " + (classicOk + mentalOk) +
+                        "\nMauvaises réponses : " + wrongAnswers.size(),
+                DARK, Color.WHITE, 21, 96);
 
         int exportedProblems = exportProblemsP(false);
         if (exportedProblems >= 0) {
-            band(exportedProblems + " problème" + (exportedProblems > 1 ? "s" : "") +
-                            " P répertorié" + (exportedProblems > 1 ? "s" : "") +
-                            " et envoyé" + (exportedProblems > 1 ? "s" : "") +
-                            " vers PROBLEMES_P.csv",
-                    BLUE, Color.WHITE, 18, 76);
+            band("Problèmes identifiés : " + exportedProblems,
+                    BLUE, Color.WHITE, 18, 54);
         } else {
-            band("Le fichier PROBLEMES_P.csv n'a pas pu être actualisé", RED, Color.WHITE, 17, 70);
+            band("Problèmes identifiés : indisponible", RED, Color.WHITE, 17, 54);
         }
 
         Button wrong = btn("Mauvaises réponses" + (wrongAnswers.isEmpty() ? "" : " (" + wrongAnswers.size() + ")"), 20);
         wrong.setOnClickListener(v -> showWrongAnswersScreen());
         addEndButton(wrong);
 
-        if (current != null) {
-            Button resume = btn("Reprendre la partie", 20);
-            resume.setOnClickListener(v -> showQuestion());
-            addEndButton(resume);
-        }
         Button newGame = btn("Commencer une nouvelle partie", 20);
         newGame.setOnClickListener(v -> showHome());
         addEndButton(newGame);
@@ -982,10 +973,37 @@ public class MainActivity extends Activity {
         root.addView(button, lp);
     }
 
+    private void baseWrongAnswersScrollable() {
+        screenRoot = new LinearLayout(this);
+        screenRoot.setOrientation(LinearLayout.VERTICAL);
+        screenRoot.setBackgroundColor(Color.BLACK);
+
+        Button fixedBack = btn("Retour à l'écran Fin de partie", 17);
+        setRoundedBackgroundWithStroke(fixedBack, BLUE, 14, Color.WHITE, 1);
+        fixedBack.setOnClickListener(v -> showEndScreen());
+        LinearLayout.LayoutParams fixedLp = new LinearLayout.LayoutParams(-1, cmToPx(1.35f));
+        fixedLp.setMargins(dp(10), halfBandGapPx(), dp(10), halfBandGapPx());
+        screenRoot.addView(fixedBack, fixedLp);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(10), 0, dp(10), dp(8));
+        root.setBackgroundColor(Color.BLACK);
+        scroll.addView(root);
+        screenRoot.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        actionPanelHost = new LinearLayout(this);
+        actionPanelHost.setVisibility(View.GONE);
+        bottomBar = new LinearLayout(this);
+        bottomBar.setVisibility(View.GONE);
+        setContentView(screenRoot);
+    }
 
     private void showWrongAnswersScreen() {
         phase = "wrong_answers";
-        baseScrollable();
+        baseWrongAnswersScrollable();
         reviewBand("Mauvaises réponses", RED, Color.WHITE);
 
         if (wrongAnswers.isEmpty()) {
@@ -993,26 +1011,54 @@ public class MainActivity extends Activity {
         } else {
             for (int i = wrongAnswers.size() - 1; i >= 0; i--) {
                 WrongAnswer w = wrongAnswers.get(i);
-                addClickableThemeBand(w.theme, w.question);
-                reviewBand(w.question, RED, Color.WHITE);
-                if (w.detail != null && w.detail.length() > 0) {
-                    reviewBand(w.detail, YELLOW, Color.BLACK);
-                }
-                if (w.isImage) {
-                    reviewImageBand(w.imageFile);
-                }
-                reviewBand("Réponse donnée : " + w.chosenAnswer + "\nBonne réponse : " + w.correctAnswer,
-                        DARK, Color.WHITE);
+                addWrongAnswerAndAvailableTrio(w);
+                if (i > 0) addReviewBlockGap();
             }
         }
+    }
 
-        Button back = btn("Retour fin de partie", 20);
-        back.setOnClickListener(v -> showEndScreen());
-        addEndButton(back);
+    private void addWrongAnswerAndAvailableTrio(WrongAnswer w) {
+        reviewBand(w.theme, GREEN, Color.WHITE);
+        reviewBand(w.question, RED, Color.WHITE);
+        if (w.detail != null && w.detail.length() > 0) {
+            reviewBand(w.detail, YELLOW, Color.BLACK);
+        }
+        if (w.isImage) {
+            reviewImageBand(w.imageFile);
+        }
+        reviewBand("Réponse donnée : " + w.chosenAnswer + "\nBonne réponse : " + w.correctAnswer,
+                DARK, Color.WHITE);
 
-        Button newGame = btn("Commencer une nouvelle partie", 20);
-        newGame.setOnClickListener(v -> showHome());
-        addEndButton(newGame);
+        List<Question> related = loadThemeQuestionQuestions(w.theme, w.question);
+        boolean hasOtherAvailable = false;
+        for (Question q : related) {
+            if (q.row != w.row) {
+                hasOtherAvailable = true;
+                break;
+            }
+        }
+        if (!hasOtherAvailable) return;
+
+        addReviewBlockGap();
+        reviewBand("Questions disponibles du même thème et du même énoncé", BLUE, Color.WHITE);
+        for (Question q : related) {
+            if (q.row == w.row) continue;
+            if (q.detail != null && q.detail.length() > 0) {
+                reviewBand(q.detail, YELLOW, Color.BLACK);
+            }
+            if (q.isImage) {
+                reviewImageBand(q.imageFile);
+            }
+            String answer = "";
+            if (q.correct >= 1 && q.correct <= 4) answer = q.props[q.correct - 1];
+            reviewBand("Réponse : " + answer, DARK, Color.WHITE);
+            addReviewBlockGap();
+        }
+    }
+
+    private void addReviewBlockGap() {
+        Space gap = new Space(this);
+        root.addView(gap, new LinearLayout.LayoutParams(-1, cmToPx(0.4f)));
     }
 
     private void reviewBand(String text, int color, int textColor) {
@@ -1060,53 +1106,6 @@ public class MainActivity extends Activity {
         iv.setBackgroundColor(Color.BLACK);
         FrameLayout.LayoutParams ivLp = new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER);
         imageArea.addView(iv, ivLp);
-    }
-
-    private void addClickableThemeBand(String theme, String question) {
-        TextView v = tv(theme, 22, Color.WHITE, Gravity.CENTER, true);
-        int innerMargin = compactBandPaddingPx();
-        v.setPadding(innerMargin, innerMargin, innerMargin, innerMargin);
-        v.setSingleLine(false);
-        v.setMaxLines(Integer.MAX_VALUE);
-        v.setMinHeight(dp(54));
-        setRoundedBackground(v, GREEN, 14);
-        v.setOnClickListener(view -> showThemeQuestionReview(theme, question));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        int gap = halfBandGapPx();
-        lp.setMargins(0, gap, 0, gap);
-        root.addView(v, lp);
-    }
-
-    private void showThemeQuestionReview(String theme, String question) {
-        phase = "theme_question_review";
-        baseScrollable();
-        reviewBand("Trio thème-question-disponible", GREEN, Color.WHITE);
-        reviewBand(theme, GREEN, Color.WHITE);
-        reviewBand(question, RED, Color.WHITE);
-        List<Question> questions = loadThemeQuestionQuestions(theme, question);
-        if (questions.isEmpty()) {
-            reviewBand("Aucune question disponible trouvée pour ce trio thème-question-disponible", DARK, Color.WHITE);
-        } else {
-            for (Question q : questions) {
-                if (q.detail != null && q.detail.length() > 0) {
-                    reviewBand(q.detail, YELLOW, Color.BLACK);
-                }
-                if (q.isImage) {
-                    reviewImageBand(q.imageFile);
-                }
-                String answer = "";
-                if (q.correct >= 1 && q.correct <= 4) answer = q.props[q.correct - 1];
-                reviewBand("Réponse : " + answer, DARK, Color.WHITE);
-            }
-        }
-
-        Button back = btn("Retour mauvaises réponses", 20);
-        back.setOnClickListener(v -> showWrongAnswersScreen());
-        addEndButton(back);
-
-        Button end = btn("Fin de partie", 20);
-        end.setOnClickListener(v -> showEndScreen());
-        addEndButton(end);
     }
 
     private List<Question> loadThemeQuestionQuestions(String theme, String question) {
@@ -1245,7 +1244,7 @@ private void flagAndNext(String status, String msg) {
             goodStreak = 0;
             updateStatus("R");
             showChoiceResult(choice);
-            screenRoot.postDelayed(this::showWrongAnswersScreen, 900);
+            showWrongAnswersScreen();
         }
     }
 
