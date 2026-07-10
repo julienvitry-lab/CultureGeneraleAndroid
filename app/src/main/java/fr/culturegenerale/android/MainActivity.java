@@ -285,7 +285,7 @@ public class MainActivity extends Activity {
 
     private void addOneMillimeterGap() {
         Space gap = new Space(this);
-        root.addView(gap, new LinearLayout.LayoutParams(-1, cmToPx(0.1f)));
+        root.addView(gap, new LinearLayout.LayoutParams(-1, cmToPx(0.2f)));
     }
 
     private TextView tv(String text, int sp, int color, int gravity, boolean bold) {
@@ -327,7 +327,7 @@ public class MainActivity extends Activity {
     }
 
     private int halfBandGapPx() {
-        return Math.max(1, cmToPx(0.05f));
+        return Math.max(1, cmToPx(0.10f));
     }
 
     private int compactBandPaddingPx() {
@@ -457,8 +457,8 @@ public class MainActivity extends Activity {
         exportProblemsP(false);
 	Map<String, Long> domainCounts = countDomains();
 
-        int gap = cmToPx(0.1f); // 1 mm exactement entre les rubriques
-        int halfGap = cmToPx(0.05f);
+        int gap = cmToPx(0.2f); // 2 mm exactement entre les rubriques
+        int halfGap = cmToPx(0.10f);
 
         LinearLayout selector = new LinearLayout(this);
         selector.setOrientation(LinearLayout.VERTICAL);
@@ -611,46 +611,24 @@ public class MainActivity extends Activity {
     private void startBackgroundPreloadForCurrentQuestion() {
         final Question snapshot = current;
         final String domainSnapshot = currentDomain;
-        if (snapshot == null) return;
+        if (snapshot == null || screenRoot == null) return;
 
-        new Thread(() -> {
+        // Un seul préchargement léger, décalé après l'affichage. On évite ainsi deux
+        // lectures SQLite concurrentes pendant que l'utilisateur ouvre les propositions.
+        screenRoot.postDelayed(() -> new Thread(() -> {
             try {
                 Question next = loadFreshQuestion(domainSnapshot);
                 synchronized (MainActivity.this) {
-                    if (next != null && !askedThisSession.contains(next.row)) {
+                    if (current == snapshot && next != null && !askedThisSession.contains(next.row)) {
                         prefetchedNextQuestion = next;
                     }
                 }
             } catch (Exception ignored) { }
-        }).start();
-
-        if (snapshot.theme != null && snapshot.theme.trim().length() > 0) {
-            final String themeKey = comparisonKey(snapshot.theme);
-            final String questionKey = comparisonKey(snapshot.question);
-            new Thread(() -> {
-                try {
-                    List<Question> related = loadThemeQuestionQuestions(snapshot.theme, snapshot.question);
-                    synchronized (MainActivity.this) {
-                        prefetchedRelatedQuestions = related;
-                        prefetchedRelatedThemeKey = themeKey;
-                        prefetchedRelatedQuestionKey = questionKey;
-                    }
-                } catch (Exception ignored) { }
-            }).start();
-        } else {
-            synchronized (this) {
-                prefetchedRelatedQuestions = null;
-                prefetchedRelatedThemeKey = "";
-                prefetchedRelatedQuestionKey = "";
-            }
-        }
+        }).start(), 700);
     }
 
     private synchronized List<Question> takePrefetchedRelatedQuestions(String theme, String question) {
-        if (prefetchedRelatedQuestions == null) return null;
-        if (!prefetchedRelatedThemeKey.equals(comparisonKey(theme))) return null;
-        if (!prefetchedRelatedQuestionKey.equals(comparisonKey(question))) return null;
-        return new ArrayList<>(prefetchedRelatedQuestions);
+        return null;
     }
 
     private Question loadFreshQuestion(String domain) {
@@ -1011,47 +989,42 @@ public class MainActivity extends Activity {
         phase = "end";
         baseFixed();
 
-        band("Fin de partie", RED, Color.WHITE, 26, 72);
-        band("Score : " + (classicOk + mentalOk),
-                DARK, Color.WHITE, 26, 64);
-
-        int exportedProblems = exportProblemsP(false);
-        if (exportedProblems >= 0) {
-            band("Problèmes identifiés : " + exportedProblems,
-                    BLUE, Color.WHITE, 26, 54);
-        } else {
-            band("Problèmes identifiés : indisponible", RED, Color.WHITE, 26, 54);
-        }
+        band("Score : " + (classicOk + mentalOk), DARK, Color.WHITE, 26, 64);
 
         Space flexibleSpace = new Space(this);
         root.addView(flexibleSpace, new LinearLayout.LayoutParams(-1, 0, 1));
 
         Button wrong = btn("Mauvaises réponses", 26);
         wrong.setOnClickListener(v -> showWrongAnswersScreen());
-        addEndButton(wrong);
+        addEndButton(wrong, false);
 
         Button newGame = btn("Nouvelle partie", 26);
         newGame.setOnClickListener(v -> showHome());
-        addEndButton(newGame);
+        addEndButton(newGame, true);
 
         Button quit = btn("Quitter la partie", 26);
         setRoundedBackground(quit, RED, 16);
         quit.setOnClickListener(v -> finishAffinity());
-        addEndButton(quit);
+        addEndButton(quit, true);
     }
 
-    private void addEndButton(Button button) {
+    private void addEndButton(Button button, boolean addTopGap) {
         button.setGravity(Gravity.CENTER);
         button.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+        lp.setMargins(0, addTopGap ? cmToPx(0.5f) : 0, 0, 0);
         root.addView(button, lp);
     }
 
-    private void baseWrongAnswersScrollable(String anchoredTheme) {
+    private void baseWrongAnswersScrollable(String anchoredTheme, String anchoredDetail) {
         screenRoot = new LinearLayout(this);
         screenRoot.setOrientation(LinearLayout.VERTICAL);
         screenRoot.setBackgroundColor(Color.BLACK);
+
+        LinearLayout anchoredTop = new LinearLayout(this);
+        anchoredTop.setOrientation(LinearLayout.VERTICAL);
+        anchoredTop.setPadding(dp(10), 0, dp(10), 0);
+        anchoredTop.setBackgroundColor(Color.BLACK);
 
         if (anchoredTheme != null && anchoredTheme.trim().length() > 0) {
             TextView fixedTheme = tv(anchoredTheme, 22, Color.WHITE, Gravity.CENTER, true);
@@ -1063,9 +1036,24 @@ public class MainActivity extends Activity {
                     compactBandPaddingPx(), compactBandPaddingPx());
             setRoundedBackgroundWithStroke(fixedTheme, GREEN, 14, Color.WHITE, 1);
             LinearLayout.LayoutParams themeLp = new LinearLayout.LayoutParams(-1, -2);
-            themeLp.setMargins(dp(10), halfBandGapPx(), dp(10), halfBandGapPx());
-            screenRoot.addView(fixedTheme, themeLp);
+            themeLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+            anchoredTop.addView(fixedTheme, themeLp);
         }
+
+        if (anchoredDetail != null && anchoredDetail.trim().length() > 0) {
+            TextView fixedDetail = tv(anchoredDetail, 22, Color.BLACK, Gravity.CENTER, true);
+            fixedDetail.setSingleLine(false);
+            fixedDetail.setMaxLines(Integer.MAX_VALUE);
+            fixedDetail.setGravity(Gravity.CENTER);
+            fixedDetail.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+            fixedDetail.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
+                    compactBandPaddingPx(), compactBandPaddingPx());
+            setRoundedBackgroundWithStroke(fixedDetail, YELLOW, 14, Color.WHITE, 1);
+            LinearLayout.LayoutParams detailLp = new LinearLayout.LayoutParams(-1, -2);
+            detailLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+            anchoredTop.addView(fixedDetail, detailLp);
+        }
+        screenRoot.addView(anchoredTop, new LinearLayout.LayoutParams(-1, -2));
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
@@ -1097,34 +1085,45 @@ public class MainActivity extends Activity {
         phase = "wrong_answers";
         WrongAnswer latest = wrongAnswers.isEmpty() ? null : wrongAnswers.get(wrongAnswers.size() - 1);
         String anchoredTheme = latest == null ? "" : latest.theme;
-        baseWrongAnswersScrollable(anchoredTheme);
+        String anchoredDetail = latest == null ? "" : latest.detail;
+        baseWrongAnswersScrollable(anchoredTheme, anchoredDetail);
 
-        if (wrongAnswers.isEmpty()) {
+        if (latest == null) {
             reviewBand("Aucune mauvaise réponse dans cette session", DARK, Color.WHITE);
-        } else {
-            // En mode mort subite, la dernière mauvaise réponse est la seule pertinente.
-            addWrongAnswerAndAvailableTrio(latest);
+            return;
         }
+
+        // La mauvaise réponse s'affiche immédiatement. Le reste du trio est chargé
+        // ensuite en arrière-plan, puis ajouté dans l'ordre du fichier source.
+        addWrongAnswerPrimary(latest);
+        if (latest.theme == null || latest.theme.trim().length() == 0) return;
+
+        final long expectedRow = latest.row;
+        new Thread(() -> {
+            List<Question> related;
+            try {
+                related = loadThemeQuestionQuestions(latest.theme, latest.question);
+            } catch (Exception e) {
+                related = new ArrayList<>();
+            }
+            final List<Question> ready = related;
+            runOnUiThread(() -> {
+                if (!"wrong_answers".equals(phase)) return;
+                WrongAnswer currentLatest = wrongAnswers.isEmpty() ? null : wrongAnswers.get(wrongAnswers.size() - 1);
+                if (currentLatest == null || currentLatest.row != expectedRow) return;
+                appendAvailableTrio(latest, ready);
+            });
+        }).start();
     }
 
-    private void addWrongAnswerAndAvailableTrio(WrongAnswer w) {
-        boolean hasTheme = w.theme != null && w.theme.trim().length() > 0;
+    private void addWrongAnswerPrimary(WrongAnswer w) {
         reviewBand(w.question, RED, Color.WHITE);
-
-        if (w.detail != null && w.detail.length() > 0) {
-            reviewBandWithMargins(w.detail, YELLOW, Color.BLACK, halfBandGapPx(), 0);
-        }
-        if (w.isImage) {
-            reviewImageBand(w.imageFile);
-        }
+        if (w.isImage) reviewImageBand(w.imageFile);
         addTwoMillimeterGap();
         reviewWrongAndCorrectAnswers(w.chosenAnswer, w.correctAnswer);
+    }
 
-        // Les questions sans thème restent isolées pour éviter une liste gigantesque.
-        if (!hasTheme) return;
-
-        List<Question> related = takePrefetchedRelatedQuestions(w.theme, w.question);
-        if (related == null) related = loadThemeQuestionQuestions(w.theme, w.question);
+    private void appendAvailableTrio(WrongAnswer w, List<Question> related) {
         boolean hasOtherAvailable = false;
         for (Question q : related) {
             if (q.row != w.row) {
@@ -1144,9 +1143,7 @@ public class MainActivity extends Activity {
             if (q.detail != null && q.detail.length() > 0) {
                 reviewBandWithMargins(q.detail, YELLOW, Color.BLACK, 0, 0);
             }
-            if (q.isImage) {
-                reviewImageBand(q.imageFile);
-            }
+            if (q.isImage) reviewImageBand(q.imageFile);
             addTwoMillimeterGap();
             String answer = "";
             if (q.correct >= 1 && q.correct <= 4) answer = q.props[q.correct - 1];
@@ -1388,27 +1385,33 @@ private void flagAndNext(String status, String msg) {
         answered++;
         revised++;
         mentalStreak = 0;
-        if (choice == current.correct) {
+        final Question answeredQuestion = current;
+
+        // La coloration est prioritaire et se fait avant toute écriture SQLite.
+        showChoiceResult(choice);
+
+        if (choice == answeredQuestion.correct) {
             classicOk++;
             classicStreak++;
             goodStreak++;
             if (goodStreak > bestGoodStreak) bestGoodStreak = goodStreak;
-            updateStatus("R");
-            showChoiceResult(choice);
-            screenRoot.postDelayed(this::continueAfterAnswer, 450);
+            new Thread(() -> {
+                updateStatusForRow("R", answeredQuestion.row);
+                runOnUiThread(() -> screenRoot.postDelayed(this::continueAfterAnswer, 250));
+            }).start();
         } else {
-            wrongAnswers.add(new WrongAnswer(current, choice));
+            wrongAnswers.add(new WrongAnswer(answeredQuestion, choice));
             classicStreak = 0;
             goodStreak = 0;
-            updateStatus("R");
-            showChoiceResult(choice);
             setBottomBarEnabled(false);
-            screenRoot.postDelayed(this::showWrongAnswersScreen, 180);
+            new Thread(() -> updateStatusForRow("R", answeredQuestion.row)).start();
+            screenRoot.postDelayed(this::showWrongAnswersScreen, 220);
         }
     }
 
     private void finish(String status) {
         answered++;
+        final Question answeredQuestion = current;
         if ("M".equals(status)) {
             mentalOk++;
             goodStreak++;
@@ -1416,17 +1419,29 @@ private void flagAndNext(String status, String msg) {
             classicStreak = 0;
             if (goodStreak > bestGoodStreak) bestGoodStreak = goodStreak;
             if (mentalStreak > bestMentalStreak) bestMentalStreak = mentalStreak;
-            updateStatus(status);
-            continueAfterAnswer();
+            new Thread(() -> {
+                updateStatusForRow(status, answeredQuestion.row);
+                runOnUiThread(this::continueAfterAnswer);
+            }).start();
         } else {
             revised++;
             goodStreak = 0;
             classicStreak = 0;
             mentalStreak = 0;
-            wrongAnswers.add(new WrongAnswer(current, 0));
-            updateStatus(status);
+            wrongAnswers.add(new WrongAnswer(answeredQuestion, 0));
             setBottomBarEnabled(false);
-            screenRoot.postDelayed(this::showWrongAnswersScreen, 180);
+            new Thread(() -> updateStatusForRow(status, answeredQuestion.row)).start();
+            screenRoot.postDelayed(this::showWrongAnswersScreen, 220);
+        }
+    }
+
+    private void updateStatusForRow(String status, long rowNumber) {
+        SQLiteDatabase db = openDb();
+        try {
+            db.execSQL("UPDATE " + TABLE + " SET status=? WHERE row_number=?",
+                    new Object[]{status, rowNumber});
+        } finally {
+            db.close();
         }
     }
 
