@@ -1016,7 +1016,7 @@ public class MainActivity extends Activity {
         root.addView(button, lp);
     }
 
-    private void baseWrongAnswersScrollable(String anchoredTheme, String anchoredDetail) {
+    private void baseWrongAnswersScrollable(String anchoredTheme, String anchoredQuestion) {
         screenRoot = new LinearLayout(this);
         screenRoot.setOrientation(LinearLayout.VERTICAL);
         screenRoot.setBackgroundColor(Color.BLACK);
@@ -1040,18 +1040,18 @@ public class MainActivity extends Activity {
             anchoredTop.addView(fixedTheme, themeLp);
         }
 
-        if (anchoredDetail != null && anchoredDetail.trim().length() > 0) {
-            TextView fixedDetail = tv(anchoredDetail, 22, Color.BLACK, Gravity.CENTER, true);
-            fixedDetail.setSingleLine(false);
-            fixedDetail.setMaxLines(Integer.MAX_VALUE);
-            fixedDetail.setGravity(Gravity.CENTER);
-            fixedDetail.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
-            fixedDetail.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
+        if (anchoredQuestion != null && anchoredQuestion.trim().length() > 0) {
+            TextView fixedQuestion = tv(anchoredQuestion, 22, Color.WHITE, Gravity.CENTER, true);
+            fixedQuestion.setSingleLine(false);
+            fixedQuestion.setMaxLines(Integer.MAX_VALUE);
+            fixedQuestion.setGravity(Gravity.CENTER);
+            fixedQuestion.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+            fixedQuestion.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
                     compactBandPaddingPx(), compactBandPaddingPx());
-            setRoundedBackgroundWithStroke(fixedDetail, YELLOW, 14, Color.WHITE, 1);
-            LinearLayout.LayoutParams detailLp = new LinearLayout.LayoutParams(-1, -2);
-            detailLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
-            anchoredTop.addView(fixedDetail, detailLp);
+            setRoundedBackgroundWithStroke(fixedQuestion, RED, 14, Color.WHITE, 1);
+            LinearLayout.LayoutParams questionLp = new LinearLayout.LayoutParams(-1, -2);
+            questionLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+            anchoredTop.addView(fixedQuestion, questionLp);
         }
         screenRoot.addView(anchoredTop, new LinearLayout.LayoutParams(-1, -2));
 
@@ -1085,8 +1085,8 @@ public class MainActivity extends Activity {
         phase = "wrong_answers";
         WrongAnswer latest = wrongAnswers.isEmpty() ? null : wrongAnswers.get(wrongAnswers.size() - 1);
         String anchoredTheme = latest == null ? "" : latest.theme;
-        String anchoredDetail = latest == null ? "" : latest.detail;
-        baseWrongAnswersScrollable(anchoredTheme, anchoredDetail);
+        String anchoredQuestion = latest == null ? "" : latest.question;
+        baseWrongAnswersScrollable(anchoredTheme, anchoredQuestion);
 
         if (latest == null) {
             reviewBand("Aucune mauvaise réponse dans cette session", DARK, Color.WHITE);
@@ -1117,7 +1117,9 @@ public class MainActivity extends Activity {
     }
 
     private void addWrongAnswerPrimary(WrongAnswer w) {
-        reviewBand(w.question, RED, Color.WHITE);
+        if (w.detail != null && w.detail.length() > 0) {
+            reviewBand(w.detail, YELLOW, Color.BLACK);
+        }
         if (w.isImage) reviewImageBand(w.imageFile);
         addTwoMillimeterGap();
         reviewWrongAndCorrectAnswers(w.chosenAnswer, w.correctAnswer);
