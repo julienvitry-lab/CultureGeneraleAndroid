@@ -1018,7 +1018,10 @@ public class MainActivity extends Activity {
     }
 
     private void addWrongAnswerAndAvailableTrio(WrongAnswer w) {
-        reviewBand(w.theme, GREEN, Color.WHITE);
+        boolean hasTheme = w.theme != null && w.theme.trim().length() > 0;
+        if (hasTheme) {
+            reviewBand(w.theme, GREEN, Color.WHITE);
+        }
         reviewBand(w.question, RED, Color.WHITE);
         if (w.detail != null && w.detail.length() > 0) {
             reviewBand(w.detail, YELLOW, Color.BLACK);
@@ -1028,6 +1031,11 @@ public class MainActivity extends Activity {
         }
         reviewBand("Réponse donnée : " + w.chosenAnswer + "\nBonne réponse : " + w.correctAnswer,
                 DARK, Color.WHITE);
+
+        // Les questions issues de jeux télévisés peuvent ne pas avoir de thème.
+        // Dans ce cas, on limite la revue à la seule question ratée afin d'éviter
+        // de charger toutes les questions sans thème partageant le même énoncé.
+        if (!hasTheme) return;
 
         List<Question> related = loadThemeQuestionQuestions(w.theme, w.question);
         boolean hasOtherAvailable = false;
