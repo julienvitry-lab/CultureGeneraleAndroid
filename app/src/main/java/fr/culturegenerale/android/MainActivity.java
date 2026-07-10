@@ -287,7 +287,8 @@ public class MainActivity extends Activity {
         v.setText(text == null ? "" : text);
         v.setTextSize(sp + 2);
         v.setTextColor(color);
-        v.setGravity(gravity);
+        v.setGravity(Gravity.CENTER);
+        v.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         v.setPadding(dp(4), dp(2), dp(4), dp(2));
         v.setTypeface(appFont);
         v.setIncludeFontPadding(false);
@@ -301,6 +302,8 @@ public class MainActivity extends Activity {
         b.setTextSize(sp + 2);
         b.setAllCaps(false);
         b.setGravity(Gravity.CENTER);
+        b.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        b.setIncludeFontPadding(false);
         b.setPadding(dp(4), dp(4), dp(4), dp(4));
         b.setTypeface(appFont);
         b.setTextColor(Color.WHITE);
@@ -970,6 +973,8 @@ public class MainActivity extends Activity {
     }
 
     private void addEndButton(Button button) {
+        button.setGravity(Gravity.CENTER);
+        button.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
         root.addView(button, lp);
@@ -980,14 +985,6 @@ public class MainActivity extends Activity {
         screenRoot.setOrientation(LinearLayout.VERTICAL);
         screenRoot.setBackgroundColor(Color.BLACK);
 
-        Button fixedBack = btn("Fin de partie", 22);
-        setRoundedBackgroundWithStroke(fixedBack, BLUE, 14, Color.WHITE, 1);
-        fixedBack.setOnClickListener(v -> showEndScreen());
-        fixedBack.setMinHeight(dp(54));
-        LinearLayout.LayoutParams fixedLp = new LinearLayout.LayoutParams(-1, -2);
-        fixedLp.setMargins(dp(10), halfBandGapPx(), dp(10), halfBandGapPx());
-        screenRoot.addView(fixedBack, fixedLp);
-
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         root = new LinearLayout(this);
@@ -996,6 +993,16 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(Color.BLACK);
         scroll.addView(root);
         screenRoot.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        Button fixedBack = btn("Fin de partie", 22);
+        setRoundedBackgroundWithStroke(fixedBack, BLUE, 14, Color.WHITE, 1);
+        fixedBack.setOnClickListener(v -> showEndScreen());
+        fixedBack.setMinHeight(dp(54));
+        fixedBack.setGravity(Gravity.CENTER);
+        fixedBack.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        LinearLayout.LayoutParams fixedLp = new LinearLayout.LayoutParams(-1, -2);
+        fixedLp.setMargins(dp(10), halfBandGapPx(), dp(10), halfBandGapPx());
+        screenRoot.addView(fixedBack, fixedLp);
 
         actionPanelHost = new LinearLayout(this);
         actionPanelHost.setVisibility(View.GONE);
@@ -1026,12 +1033,14 @@ public class MainActivity extends Activity {
             reviewBand(w.theme, GREEN, Color.WHITE);
         }
         reviewBand(w.question, RED, Color.WHITE);
+
         if (w.detail != null && w.detail.length() > 0) {
-            reviewBand(w.detail, YELLOW, Color.BLACK);
+            reviewBandWithMargins(w.detail, DARK, YELLOW, halfBandGapPx(), 0);
         }
         if (w.isImage) {
             reviewImageBand(w.imageFile);
         }
+        addTwoMillimeterGap();
         reviewWrongAndCorrectAnswers(w.chosenAnswer, w.correctAnswer);
 
         // Les questions sans thème restent isolées pour éviter une liste gigantesque.
@@ -1047,20 +1056,29 @@ public class MainActivity extends Activity {
         }
         if (!hasOtherAvailable) return;
 
-        addReviewVerticalSeparator();
+        addReviewHorizontalSeparator();
+        boolean firstRelated = true;
         for (Question q : related) {
             if (q.row == w.row) continue;
+            if (!firstRelated) addReviewBlockGap();
+            firstRelated = false;
+
             if (q.detail != null && q.detail.length() > 0) {
-                reviewBand(q.detail, YELLOW, Color.BLACK);
+                reviewBandWithMargins(q.detail, DARK, YELLOW, 0, 0);
             }
             if (q.isImage) {
                 reviewImageBand(q.imageFile);
             }
+            addTwoMillimeterGap();
             String answer = "";
             if (q.correct >= 1 && q.correct <= 4) answer = q.props[q.correct - 1];
-            reviewBand(answer, GREEN, Color.WHITE);
-            addReviewBlockGap();
+            reviewBandWithMargins(answer, YELLOW, Color.BLACK, 0, 0);
         }
+    }
+
+    private void addTwoMillimeterGap() {
+        Space gap = new Space(this);
+        root.addView(gap, new LinearLayout.LayoutParams(-1, cmToPx(0.2f)));
     }
 
     private void reviewWrongAndCorrectAnswers(String wrongAnswer, String correctAnswer) {
@@ -1097,12 +1115,11 @@ public class MainActivity extends Activity {
         outer.addView(correctView, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        int gap = halfBandGapPx();
-        lp.setMargins(0, gap, 0, gap);
+        lp.setMargins(0, 0, 0, 0);
         root.addView(outer, lp);
     }
 
-    private void addReviewVerticalSeparator() {
+    private void addReviewHorizontalSeparator() {
         FrameLayout separatorArea = new FrameLayout(this);
         separatorArea.setBackgroundColor(Color.BLACK);
         View line = new View(this);
@@ -1118,16 +1135,23 @@ public class MainActivity extends Activity {
     }
 
     private void reviewBand(String text, int color, int textColor) {
+        int gap = halfBandGapPx();
+        reviewBandWithMargins(text, color, textColor, gap, gap);
+    }
+
+    private void reviewBandWithMargins(String text, int color, int textColor,
+                                       int topMarginPx, int bottomMarginPx) {
         TextView v = tv(text, 22, textColor, Gravity.CENTER, true);
         int innerMargin = compactBandPaddingPx();
         v.setPadding(innerMargin, innerMargin, innerMargin, innerMargin);
         v.setSingleLine(false);
         v.setMaxLines(Integer.MAX_VALUE);
         v.setMinHeight(dp(54));
+        v.setGravity(Gravity.CENTER);
+        v.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         setRoundedBackground(v, color, 14);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        int gap = halfBandGapPx();
-        lp.setMargins(0, gap, 0, gap);
+        lp.setMargins(0, topMarginPx, 0, bottomMarginPx);
         root.addView(v, lp);
     }
 
