@@ -2,6 +2,9 @@ package fr.culturegenerale.android;
 
 import android.text.TextUtils;
 import android.text.Layout;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -941,9 +944,8 @@ public class MainActivity extends Activity {
         phase = "end";
         baseScrollable();
         band("Fin de partie", RED, Color.WHITE, 26, 72);
-        band("Questions correctement répondues : " + (classicOk + mentalOk) +
-                        "\nMauvaises réponses : " + wrongAnswers.size(),
-                DARK, Color.WHITE, 21, 96);
+        band("Score : " + (classicOk + mentalOk),
+                DARK, Color.WHITE, 21, 64);
 
         int exportedProblems = exportProblemsP(false);
         if (exportedProblems >= 0) {
@@ -978,7 +980,7 @@ public class MainActivity extends Activity {
         screenRoot.setOrientation(LinearLayout.VERTICAL);
         screenRoot.setBackgroundColor(Color.BLACK);
 
-        Button fixedBack = btn("Retour à l'écran Fin de partie", 17);
+        Button fixedBack = btn("Fin de partie", 17);
         setRoundedBackgroundWithStroke(fixedBack, BLUE, 14, Color.WHITE, 1);
         fixedBack.setOnClickListener(v -> showEndScreen());
         LinearLayout.LayoutParams fixedLp = new LinearLayout.LayoutParams(-1, cmToPx(1.35f));
@@ -1029,12 +1031,9 @@ public class MainActivity extends Activity {
         if (w.isImage) {
             reviewImageBand(w.imageFile);
         }
-        reviewBand("Réponse donnée : " + w.chosenAnswer + "\nBonne réponse : " + w.correctAnswer,
-                DARK, Color.WHITE);
+        reviewWrongAndCorrectAnswers(w.chosenAnswer, w.correctAnswer);
 
-        // Les questions issues de jeux télévisés peuvent ne pas avoir de thème.
-        // Dans ce cas, on limite la revue à la seule question ratée afin d'éviter
-        // de charger toutes les questions sans thème partageant le même énoncé.
+        // Les questions sans thème restent isolées pour éviter une liste gigantesque.
         if (!hasTheme) return;
 
         List<Question> related = loadThemeQuestionQuestions(w.theme, w.question);
@@ -1047,8 +1046,7 @@ public class MainActivity extends Activity {
         }
         if (!hasOtherAvailable) return;
 
-        addReviewBlockGap();
-        reviewBand("Questions disponibles du même thème et du même énoncé", BLUE, Color.WHITE);
+        addReviewVerticalSeparator();
         for (Question q : related) {
             if (q.row == w.row) continue;
             if (q.detail != null && q.detail.length() > 0) {
@@ -1059,14 +1057,49 @@ public class MainActivity extends Activity {
             }
             String answer = "";
             if (q.correct >= 1 && q.correct <= 4) answer = q.props[q.correct - 1];
-            reviewBand("Réponse : " + answer, DARK, Color.WHITE);
+            reviewBand(answer, Color.WHITE, Color.BLACK);
             addReviewBlockGap();
         }
     }
 
+    private void reviewWrongAndCorrectAnswers(String wrongAnswer, String correctAnswer) {
+        String wrong = wrongAnswer == null || wrongAnswer.trim().length() == 0
+                ? "Aucune réponse donnée" : wrongAnswer.trim();
+        String correct = correctAnswer == null ? "" : correctAnswer.trim();
+        String text = wrong + "\n" + correct;
+        SpannableString styled = new SpannableString(text);
+        styled.setSpan(new ForegroundColorSpan(Color.rgb(200, 0, 0)),
+                0, wrong.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        styled.setSpan(new ForegroundColorSpan(Color.rgb(0, 135, 60)),
+                wrong.length() + 1, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+
+        TextView v = tv("", 22, Color.BLACK, Gravity.CENTER, true);
+        v.setText(styled);
+        int innerMargin = compactBandPaddingPx();
+        v.setPadding(innerMargin, innerMargin, innerMargin, innerMargin);
+        v.setSingleLine(false);
+        v.setMaxLines(Integer.MAX_VALUE);
+        v.setMinHeight(dp(54));
+        setRoundedBackgroundWithStroke(v, Color.WHITE, 14, Color.WHITE, 1);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        int gap = halfBandGapPx();
+        lp.setMargins(0, gap, 0, gap);
+        root.addView(v, lp);
+    }
+
+    private void addReviewVerticalSeparator() {
+        FrameLayout separatorArea = new FrameLayout(this);
+        separatorArea.setBackgroundColor(Color.BLACK);
+        View line = new View(this);
+        line.setBackgroundColor(Color.WHITE);
+        FrameLayout.LayoutParams lineLp = new FrameLayout.LayoutParams(dp(2), -1, Gravity.CENTER);
+        separatorArea.addView(line, lineLp);
+        root.addView(separatorArea, new LinearLayout.LayoutParams(-1, cmToPx(0.5f)));
+    }
+
     private void addReviewBlockGap() {
         Space gap = new Space(this);
-        root.addView(gap, new LinearLayout.LayoutParams(-1, cmToPx(0.4f)));
+        root.addView(gap, new LinearLayout.LayoutParams(-1, cmToPx(0.5f)));
     }
 
     private void reviewBand(String text, int color, int textColor) {
@@ -1252,7 +1285,8 @@ private void flagAndNext(String status, String msg) {
             goodStreak = 0;
             updateStatus("R");
             showChoiceResult(choice);
-            showWrongAnswersScreen();
+            setBottomBarEnabled(false);
+            screenRoot.postDelayed(this::showWrongAnswersScreen, 1200);
         }
     }
 
@@ -1274,7 +1308,8 @@ private void flagAndNext(String status, String msg) {
             mentalStreak = 0;
             wrongAnswers.add(new WrongAnswer(current, 0));
             updateStatus(status);
-            showWrongAnswersScreen();
+            setBottomBarEnabled(false);
+            screenRoot.postDelayed(this::showWrongAnswersScreen, 1200);
         }
     }
 
