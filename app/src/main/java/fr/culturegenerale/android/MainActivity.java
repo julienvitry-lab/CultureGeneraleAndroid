@@ -945,25 +945,25 @@ public class MainActivity extends Activity {
         baseScrollable();
         band("Fin de partie", RED, Color.WHITE, 26, 72);
         band("Score : " + (classicOk + mentalOk),
-                DARK, Color.WHITE, 21, 64);
+                DARK, Color.WHITE, 26, 64);
 
         int exportedProblems = exportProblemsP(false);
         if (exportedProblems >= 0) {
             band("Problèmes identifiés : " + exportedProblems,
-                    BLUE, Color.WHITE, 18, 54);
+                    BLUE, Color.WHITE, 26, 54);
         } else {
-            band("Problèmes identifiés : indisponible", RED, Color.WHITE, 17, 54);
+            band("Problèmes identifiés : indisponible", RED, Color.WHITE, 26, 54);
         }
 
-        Button wrong = btn("Mauvaises réponses" + (wrongAnswers.isEmpty() ? "" : " (" + wrongAnswers.size() + ")"), 20);
+        Button wrong = btn("Mauvaises réponses", 26);
         wrong.setOnClickListener(v -> showWrongAnswersScreen());
         addEndButton(wrong);
 
-        Button newGame = btn("Commencer une nouvelle partie", 20);
+        Button newGame = btn("Nouvelle partie", 26);
         newGame.setOnClickListener(v -> showHome());
         addEndButton(newGame);
 
-        Button quit = btn("Quitter la partie", 20);
+        Button quit = btn("Quitter la partie", 26);
         setRoundedBackground(quit, RED, 16);
         quit.setOnClickListener(v -> finishAffinity());
         addEndButton(quit);
@@ -1058,7 +1058,7 @@ public class MainActivity extends Activity {
             }
             String answer = "";
             if (q.correct >= 1 && q.correct <= 4) answer = q.props[q.correct - 1];
-            reviewBand(answer, Color.WHITE, Color.BLACK);
+            reviewBand(answer, GREEN, Color.WHITE);
             addReviewBlockGap();
         }
     }
@@ -1071,8 +1071,8 @@ public class MainActivity extends Activity {
         LinearLayout outer = new LinearLayout(this);
         outer.setOrientation(LinearLayout.VERTICAL);
         outer.setGravity(Gravity.CENTER);
-        int oneMillimeter = cmToPx(0.1f);
-        outer.setPadding(oneMillimeter, oneMillimeter, oneMillimeter, oneMillimeter);
+        int twoMillimeters = cmToPx(0.2f);
+        outer.setPadding(twoMillimeters, twoMillimeters, twoMillimeters, twoMillimeters);
         setRoundedBackgroundWithStroke(outer, Color.rgb(24, 24, 24), 14, Color.WHITE, 1);
 
         TextView wrongView = tv(wrong, 22, Color.WHITE, Gravity.CENTER, true);
@@ -1085,7 +1085,7 @@ public class MainActivity extends Activity {
         outer.addView(wrongView, new LinearLayout.LayoutParams(-1, -2));
 
         Space innerGap = new Space(this);
-        outer.addView(innerGap, new LinearLayout.LayoutParams(-1, oneMillimeter));
+        outer.addView(innerGap, new LinearLayout.LayoutParams(-1, twoMillimeters));
 
         TextView correctView = tv(correct, 22, Color.WHITE, Gravity.CENTER, true);
         correctView.setSingleLine(false);
@@ -1148,7 +1148,7 @@ public class MainActivity extends Activity {
         File f = imageFile(imageFile);
         Bitmap bm = (f != null && f.exists()) ? decode(f) : null;
         if (bm == null) {
-            TextView missing = tv("Image introuvable : " + imageFile, 18, Color.WHITE, Gravity.CENTER, true);
+            TextView missing = tv("Image introuvable : " + imageFile, 22, Color.WHITE, Gravity.CENTER, true);
             setRoundedBackground(missing, RED, 14);
             FrameLayout.LayoutParams missingLp = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
             missingLp.setMargins(dp(6), dp(6), dp(6), dp(6));
