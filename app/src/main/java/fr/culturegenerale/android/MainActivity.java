@@ -980,10 +980,11 @@ public class MainActivity extends Activity {
         screenRoot.setOrientation(LinearLayout.VERTICAL);
         screenRoot.setBackgroundColor(Color.BLACK);
 
-        Button fixedBack = btn("Fin de partie", 17);
+        Button fixedBack = btn("Fin de partie", 22);
         setRoundedBackgroundWithStroke(fixedBack, BLUE, 14, Color.WHITE, 1);
         fixedBack.setOnClickListener(v -> showEndScreen());
-        LinearLayout.LayoutParams fixedLp = new LinearLayout.LayoutParams(-1, cmToPx(1.35f));
+        fixedBack.setMinHeight(dp(54));
+        LinearLayout.LayoutParams fixedLp = new LinearLayout.LayoutParams(-1, -2);
         fixedLp.setMargins(dp(10), halfBandGapPx(), dp(10), halfBandGapPx());
         screenRoot.addView(fixedBack, fixedLp);
 
@@ -1066,25 +1067,39 @@ public class MainActivity extends Activity {
         String wrong = wrongAnswer == null || wrongAnswer.trim().length() == 0
                 ? "Aucune réponse donnée" : wrongAnswer.trim();
         String correct = correctAnswer == null ? "" : correctAnswer.trim();
-        String text = wrong + "\n" + correct;
-        SpannableString styled = new SpannableString(text);
-        styled.setSpan(new ForegroundColorSpan(Color.rgb(200, 0, 0)),
-                0, wrong.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        styled.setSpan(new ForegroundColorSpan(Color.rgb(0, 135, 60)),
-                wrong.length() + 1, text.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
 
-        TextView v = tv("", 22, Color.BLACK, Gravity.CENTER, true);
-        v.setText(styled);
-        int innerMargin = compactBandPaddingPx();
-        v.setPadding(innerMargin, innerMargin, innerMargin, innerMargin);
-        v.setSingleLine(false);
-        v.setMaxLines(Integer.MAX_VALUE);
-        v.setMinHeight(dp(54));
-        setRoundedBackgroundWithStroke(v, Color.WHITE, 14, Color.WHITE, 1);
+        LinearLayout outer = new LinearLayout(this);
+        outer.setOrientation(LinearLayout.VERTICAL);
+        outer.setGravity(Gravity.CENTER);
+        int oneMillimeter = cmToPx(0.1f);
+        outer.setPadding(oneMillimeter, oneMillimeter, oneMillimeter, oneMillimeter);
+        setRoundedBackgroundWithStroke(outer, Color.rgb(24, 24, 24), 14, Color.WHITE, 1);
+
+        TextView wrongView = tv(wrong, 22, Color.WHITE, Gravity.CENTER, true);
+        wrongView.setSingleLine(false);
+        wrongView.setMaxLines(Integer.MAX_VALUE);
+        wrongView.setMinHeight(dp(48));
+        wrongView.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
+                compactBandPaddingPx(), compactBandPaddingPx());
+        setRoundedBackgroundWithStroke(wrongView, Color.rgb(190, 25, 25), 11, Color.WHITE, 1);
+        outer.addView(wrongView, new LinearLayout.LayoutParams(-1, -2));
+
+        Space innerGap = new Space(this);
+        outer.addView(innerGap, new LinearLayout.LayoutParams(-1, oneMillimeter));
+
+        TextView correctView = tv(correct, 22, Color.WHITE, Gravity.CENTER, true);
+        correctView.setSingleLine(false);
+        correctView.setMaxLines(Integer.MAX_VALUE);
+        correctView.setMinHeight(dp(48));
+        correctView.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
+                compactBandPaddingPx(), compactBandPaddingPx());
+        setRoundedBackgroundWithStroke(correctView, Color.rgb(0, 135, 60), 11, Color.WHITE, 1);
+        outer.addView(correctView, new LinearLayout.LayoutParams(-1, -2));
+
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         int gap = halfBandGapPx();
         lp.setMargins(0, gap, 0, gap);
-        root.addView(v, lp);
+        root.addView(outer, lp);
     }
 
     private void addReviewVerticalSeparator() {
@@ -1092,7 +1107,7 @@ public class MainActivity extends Activity {
         separatorArea.setBackgroundColor(Color.BLACK);
         View line = new View(this);
         line.setBackgroundColor(Color.WHITE);
-        FrameLayout.LayoutParams lineLp = new FrameLayout.LayoutParams(dp(2), -1, Gravity.CENTER);
+        FrameLayout.LayoutParams lineLp = new FrameLayout.LayoutParams(-1, dp(2), Gravity.CENTER);
         separatorArea.addView(line, lineLp);
         root.addView(separatorArea, new LinearLayout.LayoutParams(-1, cmToPx(0.5f)));
     }
@@ -1204,7 +1219,7 @@ private void flagAndNext(String status, String msg) {
         long totalP = countStatus("P");
         // Toast supprimé
     }
-    screenRoot.postDelayed(this::nextQuestion, 350);
+    screenRoot.postDelayed(this::nextQuestion, 150);
 }
 
     private int updateAnalogousQuestionsToT() {
@@ -1278,7 +1293,7 @@ private void flagAndNext(String status, String msg) {
             if (goodStreak > bestGoodStreak) bestGoodStreak = goodStreak;
             updateStatus("R");
             showChoiceResult(choice);
-            screenRoot.postDelayed(this::continueAfterAnswer, 900);
+            screenRoot.postDelayed(this::continueAfterAnswer, 450);
         } else {
             wrongAnswers.add(new WrongAnswer(current, choice));
             classicStreak = 0;
@@ -1286,7 +1301,7 @@ private void flagAndNext(String status, String msg) {
             updateStatus("R");
             showChoiceResult(choice);
             setBottomBarEnabled(false);
-            screenRoot.postDelayed(this::showWrongAnswersScreen, 1200);
+            screenRoot.postDelayed(this::showWrongAnswersScreen, 650);
         }
     }
 
@@ -1309,7 +1324,7 @@ private void flagAndNext(String status, String msg) {
             wrongAnswers.add(new WrongAnswer(current, 0));
             updateStatus(status);
             setBottomBarEnabled(false);
-            screenRoot.postDelayed(this::showWrongAnswersScreen, 1200);
+            screenRoot.postDelayed(this::showWrongAnswersScreen, 650);
         }
     }
 
