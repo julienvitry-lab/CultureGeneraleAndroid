@@ -103,6 +103,12 @@ public class MainActivity extends Activity {
     private int lastCombinedPopupAt = 0;
     private long remainingInCurrentDomain = 0;
 
+    // Préchargement léger pour fluidifier les transitions sans modifier la logique de jeu.
+    private volatile Question prefetchedNextQuestion = null;
+    private volatile List<Question> prefetchedRelatedQuestions = null;
+    private volatile String prefetchedRelatedThemeKey = "";
+    private volatile String prefetchedRelatedQuestionKey = "";
+
     static class Question {
         long row;
         String domain, theme, question, detail, imageFile;
@@ -555,6 +561,10 @@ public class MainActivity extends Activity {
         history.clear();
         wrongAnswers.clear();
         historyIndex = -1;
+        prefetchedNextQuestion = null;
+        prefetchedRelatedQuestions = null;
+        prefetchedRelatedThemeKey = "";
+        prefetchedRelatedQuestionKey = "";
         nextQuestion();
     }
 
@@ -563,7 +573,8 @@ public class MainActivity extends Activity {
             // Recalcul uniquement au moment du tirage d'une nouvelle question :
             // R = questions disponibles non assimilées mentalement, hors P/T/X.
             remainingInCurrentDomain = countRemaining(currentDomain);
-            Question q = loadFreshQuestion(currentDomain);
+            Question q = takePrefetchedNextQuestion();
+            if (q == null) q = loadFreshQuestion(currentDomain);
             if (q == null) {
                 baseScrollable();
                 band("Aucune question jouable", RED, Color.WHITE, 24, 70);
@@ -580,6 +591,7 @@ public class MainActivity extends Activity {
             history.add(q);
             historyIndex = history.size() - 1;
             showQuestion();
+            startBackgroundPreloadForCurrentQuestion();
         } catch (Exception e) {
             baseScrollable();
             band("Erreur : " + e.getMessage(), RED, Color.WHITE, 18, 90);
@@ -587,6 +599,58 @@ public class MainActivity extends Activity {
             b.setOnClickListener(v -> showHome());
             add(b);
         }
+    }
+
+    private synchronized Question takePrefetchedNextQuestion() {
+        Question q = prefetchedNextQuestion;
+        prefetchedNextQuestion = null;
+        if (q != null && askedThisSession.contains(q.row)) return null;
+        return q;
+    }
+
+    private void startBackgroundPreloadForCurrentQuestion() {
+        final Question snapshot = current;
+        final String domainSnapshot = currentDomain;
+        if (snapshot == null) return;
+
+        new Thread(() -> {
+            try {
+                Question next = loadFreshQuestion(domainSnapshot);
+                synchronized (MainActivity.this) {
+                    if (next != null && !askedThisSession.contains(next.row)) {
+                        prefetchedNextQuestion = next;
+                    }
+                }
+            } catch (Exception ignored) { }
+        }).start();
+
+        if (snapshot.theme != null && snapshot.theme.trim().length() > 0) {
+            final String themeKey = comparisonKey(snapshot.theme);
+            final String questionKey = comparisonKey(snapshot.question);
+            new Thread(() -> {
+                try {
+                    List<Question> related = loadThemeQuestionQuestions(snapshot.theme, snapshot.question);
+                    synchronized (MainActivity.this) {
+                        prefetchedRelatedQuestions = related;
+                        prefetchedRelatedThemeKey = themeKey;
+                        prefetchedRelatedQuestionKey = questionKey;
+                    }
+                } catch (Exception ignored) { }
+            }).start();
+        } else {
+            synchronized (this) {
+                prefetchedRelatedQuestions = null;
+                prefetchedRelatedThemeKey = "";
+                prefetchedRelatedQuestionKey = "";
+            }
+        }
+    }
+
+    private synchronized List<Question> takePrefetchedRelatedQuestions(String theme, String question) {
+        if (prefetchedRelatedQuestions == null) return null;
+        if (!prefetchedRelatedThemeKey.equals(comparisonKey(theme))) return null;
+        if (!prefetchedRelatedQuestionKey.equals(comparisonKey(question))) return null;
+        return new ArrayList<>(prefetchedRelatedQuestions);
     }
 
     private Question loadFreshQuestion(String domain) {
@@ -945,7 +1009,8 @@ public class MainActivity extends Activity {
 
     private void showEndScreen() {
         phase = "end";
-        baseScrollable();
+        baseFixed();
+
         band("Fin de partie", RED, Color.WHITE, 26, 72);
         band("Score : " + (classicOk + mentalOk),
                 DARK, Color.WHITE, 26, 64);
@@ -957,6 +1022,9 @@ public class MainActivity extends Activity {
         } else {
             band("Problèmes identifiés : indisponible", RED, Color.WHITE, 26, 54);
         }
+
+        Space flexibleSpace = new Space(this);
+        root.addView(flexibleSpace, new LinearLayout.LayoutParams(-1, 0, 1));
 
         Button wrong = btn("Mauvaises réponses", 26);
         wrong.setOnClickListener(v -> showWrongAnswersScreen());
@@ -980,10 +1048,24 @@ public class MainActivity extends Activity {
         root.addView(button, lp);
     }
 
-    private void baseWrongAnswersScrollable() {
+    private void baseWrongAnswersScrollable(String anchoredTheme) {
         screenRoot = new LinearLayout(this);
         screenRoot.setOrientation(LinearLayout.VERTICAL);
         screenRoot.setBackgroundColor(Color.BLACK);
+
+        if (anchoredTheme != null && anchoredTheme.trim().length() > 0) {
+            TextView fixedTheme = tv(anchoredTheme, 22, Color.WHITE, Gravity.CENTER, true);
+            fixedTheme.setSingleLine(false);
+            fixedTheme.setMaxLines(Integer.MAX_VALUE);
+            fixedTheme.setGravity(Gravity.CENTER);
+            fixedTheme.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+            fixedTheme.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
+                    compactBandPaddingPx(), compactBandPaddingPx());
+            setRoundedBackgroundWithStroke(fixedTheme, GREEN, 14, Color.WHITE, 1);
+            LinearLayout.LayoutParams themeLp = new LinearLayout.LayoutParams(-1, -2);
+            themeLp.setMargins(dp(10), halfBandGapPx(), dp(10), halfBandGapPx());
+            screenRoot.addView(fixedTheme, themeLp);
+        }
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
@@ -1013,29 +1095,24 @@ public class MainActivity extends Activity {
 
     private void showWrongAnswersScreen() {
         phase = "wrong_answers";
-        baseWrongAnswersScrollable();
-        reviewBand("Mauvaises réponses", RED, Color.WHITE);
+        WrongAnswer latest = wrongAnswers.isEmpty() ? null : wrongAnswers.get(wrongAnswers.size() - 1);
+        String anchoredTheme = latest == null ? "" : latest.theme;
+        baseWrongAnswersScrollable(anchoredTheme);
 
         if (wrongAnswers.isEmpty()) {
             reviewBand("Aucune mauvaise réponse dans cette session", DARK, Color.WHITE);
         } else {
-            for (int i = wrongAnswers.size() - 1; i >= 0; i--) {
-                WrongAnswer w = wrongAnswers.get(i);
-                addWrongAnswerAndAvailableTrio(w);
-                if (i > 0) addReviewBlockGap();
-            }
+            // En mode mort subite, la dernière mauvaise réponse est la seule pertinente.
+            addWrongAnswerAndAvailableTrio(latest);
         }
     }
 
     private void addWrongAnswerAndAvailableTrio(WrongAnswer w) {
         boolean hasTheme = w.theme != null && w.theme.trim().length() > 0;
-        if (hasTheme) {
-            reviewBand(w.theme, GREEN, Color.WHITE);
-        }
         reviewBand(w.question, RED, Color.WHITE);
 
         if (w.detail != null && w.detail.length() > 0) {
-            reviewBandWithMargins(w.detail, DARK, YELLOW, halfBandGapPx(), 0);
+            reviewBandWithMargins(w.detail, YELLOW, Color.BLACK, halfBandGapPx(), 0);
         }
         if (w.isImage) {
             reviewImageBand(w.imageFile);
@@ -1046,7 +1123,8 @@ public class MainActivity extends Activity {
         // Les questions sans thème restent isolées pour éviter une liste gigantesque.
         if (!hasTheme) return;
 
-        List<Question> related = loadThemeQuestionQuestions(w.theme, w.question);
+        List<Question> related = takePrefetchedRelatedQuestions(w.theme, w.question);
+        if (related == null) related = loadThemeQuestionQuestions(w.theme, w.question);
         boolean hasOtherAvailable = false;
         for (Question q : related) {
             if (q.row != w.row) {
@@ -1064,7 +1142,7 @@ public class MainActivity extends Activity {
             firstRelated = false;
 
             if (q.detail != null && q.detail.length() > 0) {
-                reviewBandWithMargins(q.detail, DARK, YELLOW, 0, 0);
+                reviewBandWithMargins(q.detail, YELLOW, Color.BLACK, 0, 0);
             }
             if (q.isImage) {
                 reviewImageBand(q.imageFile);
@@ -1072,7 +1150,7 @@ public class MainActivity extends Activity {
             addTwoMillimeterGap();
             String answer = "";
             if (q.correct >= 1 && q.correct <= 4) answer = q.props[q.correct - 1];
-            reviewBandWithMargins(answer, YELLOW, Color.BLACK, 0, 0);
+            reviewBandWithMargins(answer, GREEN, Color.WHITE, 0, 0);
         }
     }
 
@@ -1325,7 +1403,7 @@ private void flagAndNext(String status, String msg) {
             updateStatus("R");
             showChoiceResult(choice);
             setBottomBarEnabled(false);
-            screenRoot.postDelayed(this::showWrongAnswersScreen, 650);
+            screenRoot.postDelayed(this::showWrongAnswersScreen, 180);
         }
     }
 
@@ -1348,7 +1426,7 @@ private void flagAndNext(String status, String msg) {
             wrongAnswers.add(new WrongAnswer(current, 0));
             updateStatus(status);
             setBottomBarEnabled(false);
-            screenRoot.postDelayed(this::showWrongAnswersScreen, 650);
+            screenRoot.postDelayed(this::showWrongAnswersScreen, 180);
         }
     }
 
