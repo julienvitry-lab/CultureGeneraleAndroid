@@ -462,7 +462,7 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseFixed();
-        add(tv("Culture Générale Android V9.5.3", 33, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V9.5.4", 33, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 23, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 21);
@@ -1361,23 +1361,26 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(Color.BLACK);
         screenRoot.addView(root, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        // Les questions-images n'ont volontairement aucun bandeau jaune.
+        // La zone centrale occupe toute la hauteur encore disponible.
+        // Le détail jaune appartient uniquement à la question courante et reste
+        // identique entre son temps 1 et son temps 2.
         if (!q.isImage && q.detail != null && !q.detail.trim().isEmpty()) {
             addStableTrioDetailBand(q.detail);
-        }
-
-        if (q.isImage) {
+        } else if (q.isImage) {
             addFixedTrioImage(q.imageFile);
+        } else {
+            Space emptyMiddle = new Space(this);
+            root.addView(emptyMiddle, new LinearLayout.LayoutParams(-1, 0, 1));
         }
 
+        // Partie basse ancrée : réponse, Assimiler, navigation puis Retour/Fin.
         if (trioAnswerVisible) {
             String answer = q.correct >= 1 && q.correct <= 4
                     ? q.props[q.correct - 1] : "";
-            addTwoMillimeterGap();
             addFixedTrioAnswerBand(answer);
+            addTrioAssimilateButton(q);
         }
 
-        if (trioAnswerVisible) addTrioAssimilateButton(q);
         addTrioPager();
         addTrioBottomNavigation(true);
         setContentView(screenRoot);
@@ -1414,7 +1417,7 @@ public class MainActivity extends Activity {
     private void addFixedTrioAnswerBand(String answer) {
         TextView v = tv(answer, 22, Color.WHITE, Gravity.CENTER, true);
         v.setSingleLine(false);
-        v.setMaxLines(5);
+        v.setMaxLines(4);
         v.setGravity(Gravity.CENTER);
         v.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         v.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
@@ -1423,13 +1426,13 @@ public class MainActivity extends Activity {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             v.setAutoSizeTextTypeUniformWithConfiguration(
-                    10, 24, 1, TypedValue.COMPLEX_UNIT_SP);
+                    18, 24, 1, TypedValue.COMPLEX_UNIT_SP);
         }
 
         LinearLayout.LayoutParams lp =
                 new LinearLayout.LayoutParams(-1, cmToPx(1.65f));
-        lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
-        root.addView(v, lp);
+        lp.setMargins(dp(10), halfBandGapPx(), dp(10), halfBandGapPx());
+        screenRoot.addView(v, lp);
     }
 
     private void addTrioAssimilateButton(Question q) {
@@ -1478,24 +1481,25 @@ public class MainActivity extends Activity {
     }
 
     private void addStableTrioDetailBand(String detail) {
-        TextView v = tv(detail == null ? "" : detail, 18, Color.BLACK, Gravity.CENTER, true);
+        TextView v = tv(detail == null ? "" : detail, 22,
+                Color.BLACK, Gravity.CENTER, true);
         int innerMargin = compactBandPaddingPx();
         v.setPadding(innerMargin, innerMargin, innerMargin, innerMargin);
         v.setSingleLine(false);
-        v.setMaxLines(7);
+        v.setMaxLines(Integer.MAX_VALUE);
         v.setGravity(Gravity.CENTER);
         v.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
-        v.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
         setRoundedBackgroundWithStroke(v, YELLOW, 14, Color.WHITE, 1);
 
-        // Uniformité visuelle : 20 sp par défaut, réduction limitée à 18 sp.
+        // Même taille nominale que les bandeaux vert et rouge.
+        // Réduction seulement pour les textes exceptionnellement longs.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             v.setAutoSizeTextTypeUniformWithConfiguration(
-                    18, 20, 1, TypedValue.COMPLEX_UNIT_SP);
+                    18, 24, 1, TypedValue.COMPLEX_UNIT_SP);
         }
 
         LinearLayout.LayoutParams lp =
-                new LinearLayout.LayoutParams(-1, cmToPx(2.6f));
+                new LinearLayout.LayoutParams(-1, 0, 1);
         lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
         root.addView(v, lp);
     }
