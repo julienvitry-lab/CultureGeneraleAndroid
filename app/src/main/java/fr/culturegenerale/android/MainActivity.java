@@ -462,7 +462,7 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseFixed();
-        add(tv("Culture Générale Android V9.5.8", 33, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V9.5.9", 33, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 23, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 21);
@@ -1554,10 +1554,11 @@ public class MainActivity extends Activity {
     }
 
     private void addStableTrioDetailBand(String detail) {
-        // La zone disponible est occupée par un conteneur noir.
-        // Seul le bandeau jaune reste en WRAP_CONTENT et est centré dans ce conteneur.
-        FrameLayout centerHost = new FrameLayout(this);
-        centerHost.setBackgroundColor(Color.BLACK);
+        // L'ancrage du bandeau jaune est prioritaire sur son centrage.
+        // Le conteneur occupe toute la zone centrale, mais le bandeau jaune est
+        // accroché en bas de cette zone, donc toujours au même niveau aux temps 1 et 2.
+        FrameLayout anchorHost = new FrameLayout(this);
+        anchorHost.setBackgroundColor(Color.BLACK);
 
         TextView v = tv(detail == null ? "" : detail, 22,
                 Color.BLACK, Gravity.CENTER, true);
@@ -1572,21 +1573,22 @@ public class MainActivity extends Activity {
         v.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         setRoundedBackgroundWithStroke(v, YELLOW, 14, Color.WHITE, 1);
 
-        // Taille identique aux autres bandeaux.
-        // Réduction seulement pour un texte exceptionnellement long.
+        // Taille nominale identique aux autres bandeaux.
+        // Réduction seulement pour les textes exceptionnellement longs.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             v.setAutoSizeTextTypeUniformWithConfiguration(
                     18, 24, 1, TypedValue.COMPLEX_UNIT_SP);
         }
 
         FrameLayout.LayoutParams bandLp =
-                new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
+                new FrameLayout.LayoutParams(-1, -2,
+                        Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
         bandLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
-        centerHost.addView(v, bandLp);
+        anchorHost.addView(v, bandLp);
 
         LinearLayout.LayoutParams hostLp =
                 new LinearLayout.LayoutParams(-1, 0, 1);
-        root.addView(centerHost, hostLp);
+        root.addView(anchorHost, hostLp);
     }
 
     private void addTrioPager() {
