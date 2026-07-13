@@ -462,7 +462,7 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseFixed();
-        add(tv("Culture Générale Android V9.5.7", 33, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V9.5.8", 33, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 23, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 21);
@@ -1374,16 +1374,10 @@ public class MainActivity extends Activity {
         }
 
         // Partie basse ancrée : réponse, Assimiler, navigation puis Retour/Fin.
-        if (trioAnswerVisible) {
-            String answer = q.correct >= 1 && q.correct <= 4
-                    ? q.props[q.correct - 1] : "";
-            addFixedTrioAnswerBand(answer);
-            addTrioAssimilateButton(q);
-        } else {
-            // Temps 1 : on réserve exactement la hauteur du temps 2.
-            // Le bandeau jaune reste donc au même emplacement pour la même question.
-            addTrioTimeTwoMirrorSpace();
-        }
+        // La zone basse existe toujours avec exactement les mêmes vues et dimensions.
+        // Au temps 1, elles sont simplement invisibles. Le bandeau jaune ne peut donc
+        // plus changer de niveau entre les deux temps d'une même question.
+        addTrioTimeTwoStage(q, trioAnswerVisible);
 
         addTrioPager();
         addTrioBottomNavigation(true);
@@ -1416,6 +1410,81 @@ public class MainActivity extends Activity {
                 new LinearLayout.LayoutParams(-1, 0, 1);
         lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
         root.addView(area, lp);
+    }
+
+    private void addTrioTimeTwoStage(Question q, boolean visible) {
+        String answer = q.correct >= 1 && q.correct <= 4
+                ? q.props[q.correct - 1] : "";
+
+        TextView answerBand = tv(answer, 22, Color.WHITE, Gravity.CENTER, true);
+        answerBand.setSingleLine(false);
+        answerBand.setMaxLines(4);
+        answerBand.setGravity(Gravity.CENTER);
+        answerBand.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        answerBand.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
+                compactBandPaddingPx(), compactBandPaddingPx());
+        setRoundedBackgroundWithStroke(answerBand, GREEN, 14, Color.WHITE, 1);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            answerBand.setAutoSizeTextTypeUniformWithConfiguration(
+                    18, 24, 1, TypedValue.COMPLEX_UNIT_SP);
+        }
+
+        LinearLayout.LayoutParams answerLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(1.65f));
+        answerLp.setMargins(dp(10), halfBandGapPx(), dp(10), halfBandGapPx());
+        screenRoot.addView(answerBand, answerLp);
+
+        Button assimilate = btn("Assimiler", 22);
+        setRoundedBackgroundWithStroke(assimilate, NAVY, 14, Color.WHITE, 1);
+        assimilate.setTextColor(Color.WHITE);
+
+        if (visible) {
+            assimilate.setOnClickListener(v -> assimilateTrioQuestion(q, assimilate));
+        }
+
+        LinearLayout.LayoutParams assimilateLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(1.0f));
+        assimilateLp.setMargins(dp(10), 0, dp(10), cmToPx(0.2f));
+        screenRoot.addView(assimilate, assimilateLp);
+
+        int visibility = visible ? View.VISIBLE : View.INVISIBLE;
+        answerBand.setVisibility(visibility);
+        assimilate.setVisibility(visibility);
+    }
+
+    private void assimilateTrioQuestion(Question q, Button assimilate) {
+        assimilate.setEnabled(false);
+
+        int removedIndex = trioPageIndex;
+        if (removedIndex >= 0 && removedIndex < trioQuestions.size()
+                && trioQuestions.get(removedIndex).row == q.row) {
+            trioQuestions.remove(removedIndex);
+        } else {
+            for (int i = 0; i < trioQuestions.size(); i++) {
+                if (trioQuestions.get(i).row == q.row) {
+                    trioQuestions.remove(i);
+                    removedIndex = i;
+                    break;
+                }
+            }
+        }
+
+        if (trioQuestions.isEmpty()) {
+            trioPageIndex = 0;
+            trioAnswerVisible = false;
+            if ("good".equals(trioReturnMode)) {
+                goodThemesThisSession.remove(comparisonKey(q.theme));
+            }
+        } else {
+            trioPageIndex = Math.min(removedIndex, trioQuestions.size() - 1);
+            trioAnswerVisible = false;
+        }
+
+        showTrioQuestionPage();
+
+        if (remainingInCurrentDomain > 0) remainingInCurrentDomain--;
+        new Thread(() -> updateStatusForRow("M", q.row)).start();
     }
 
     private void addFixedTrioAnswerBand(String answer) {
@@ -1518,20 +1587,6 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams hostLp =
                 new LinearLayout.LayoutParams(-1, 0, 1);
         root.addView(centerHost, hostLp);
-    }
-
-    private void addTrioTimeTwoMirrorSpace() {
-        // Hauteur exacte du bandeau réponse, avec ses marges.
-        int answerHeight = cmToPx(1.65f) + (2 * halfBandGapPx());
-        Space answerMirror = new Space(this);
-        screenRoot.addView(answerMirror,
-                new LinearLayout.LayoutParams(-1, answerHeight));
-
-        // Hauteur exacte du bouton Assimiler, avec son espacement inférieur de 2 mm.
-        int assimilateHeight = cmToPx(1.0f) + cmToPx(0.2f);
-        Space assimilateMirror = new Space(this);
-        screenRoot.addView(assimilateMirror,
-                new LinearLayout.LayoutParams(-1, assimilateHeight));
     }
 
     private void addTrioPager() {
