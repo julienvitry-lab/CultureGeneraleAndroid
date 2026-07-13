@@ -462,7 +462,7 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseFixed();
-        add(tv("Culture Générale Android V9.5.2", 33, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V9.5.3", 33, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 23, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 21);
@@ -1478,20 +1478,24 @@ public class MainActivity extends Activity {
     }
 
     private void addStableTrioDetailBand(String detail) {
-        TextView v = tv(detail == null ? "" : detail, 22, Color.BLACK, Gravity.CENTER, true);
+        TextView v = tv(detail == null ? "" : detail, 18, Color.BLACK, Gravity.CENTER, true);
         int innerMargin = compactBandPaddingPx();
         v.setPadding(innerMargin, innerMargin, innerMargin, innerMargin);
         v.setSingleLine(false);
-        v.setMaxLines(6);
+        v.setMaxLines(7);
         v.setGravity(Gravity.CENTER);
         v.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        v.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
         setRoundedBackgroundWithStroke(v, YELLOW, 14, Color.WHITE, 1);
 
+        // Uniformité visuelle : 20 sp par défaut, réduction limitée à 18 sp.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            v.setAutoSizeTextTypeUniformWithConfiguration(10, 24, 1, TypedValue.COMPLEX_UNIT_SP);
+            v.setAutoSizeTextTypeUniformWithConfiguration(
+                    18, 20, 1, TypedValue.COMPLEX_UNIT_SP);
         }
 
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, cmToPx(2.2f));
+        LinearLayout.LayoutParams lp =
+                new LinearLayout.LayoutParams(-1, cmToPx(2.6f));
         lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
         root.addView(v, lp);
     }
