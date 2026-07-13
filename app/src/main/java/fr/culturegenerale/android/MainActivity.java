@@ -83,6 +83,7 @@ public class MainActivity extends Activity {
     private Question current;
     private String currentDomain = null;
     private String phase = "home";
+    private String phaseBeforeEnd = "question";
 
     private final Set<Long> askedThisSession = new HashSet<>();
     private final List<Question> history = new ArrayList<>();
@@ -234,42 +235,31 @@ public class MainActivity extends Activity {
         statsRow.setOrientation(LinearLayout.HORIZONTAL);
         statsRow.setGravity(Gravity.CENTER);
 
-        TextView available = tv(
-                String.valueOf(remainingInCurrentDomain),
-                25, Color.WHITE, Gravity.CENTER, true
-        );
-        TextView score = tv(
-                String.valueOf(classicOk + mentalOk),
-                25, Color.WHITE, Gravity.CENTER, true
-        );
+        int gap = cmToPx(0.2f);
+        addStatsCell(statsRow, String.valueOf(remainingInCurrentDomain), 0, gap / 2);
+        addStatsCell(statsRow, String.valueOf(bestGoodStreak), gap / 2, gap / 2);
+        addStatsCell(statsRow, String.valueOf(goodStreak), gap / 2, 0);
 
-        for (TextView stats : new TextView[]{available, score}) {
-            stats.setSingleLine(true);
-            stats.setMaxLines(1);
-            stats.setEllipsize(null);
-            stats.setHorizontallyScrolling(false);
-            stats.setPadding(dp(3), 0, dp(3), 0);
-            stats.setMinHeight(0);
-            setRoundedBackground(stats, Color.rgb(24, 24, 24), 8);
-            stats.setTextSize(TypedValue.COMPLEX_UNIT_SP, 27);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                stats.setAutoSizeTextTypeUniformWithConfiguration(
-                        10, 27, 1, TypedValue.COMPLEX_UNIT_SP
-                );
-            }
-        }
-
-        int halfGap = cmToPx(0.1f);
-        LinearLayout.LayoutParams leftLp =
-                new LinearLayout.LayoutParams(0, cmToPx(0.85f), 1);
-        leftLp.setMargins(0, 0, halfGap, 0);
-        LinearLayout.LayoutParams rightLp =
-                new LinearLayout.LayoutParams(0, cmToPx(0.85f), 1);
-        rightLp.setMargins(halfGap, 0, 0, 0);
-
-        statsRow.addView(available, leftLp);
-        statsRow.addView(score, rightLp);
         root.addView(statsRow, new LinearLayout.LayoutParams(-1, cmToPx(0.85f)));
+    }
+
+    private void addStatsCell(LinearLayout row, String text, int leftMargin, int rightMargin) {
+        TextView cell = tv(text, 25, Color.WHITE, Gravity.CENTER, true);
+        cell.setSingleLine(true);
+        cell.setMaxLines(1);
+        cell.setEllipsize(null);
+        cell.setHorizontallyScrolling(false);
+        cell.setPadding(dp(3), 0, dp(3), 0);
+        cell.setMinHeight(0);
+        setRoundedBackground(cell, Color.rgb(24, 24, 24), 8);
+        cell.setTextSize(TypedValue.COMPLEX_UNIT_SP, 27);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            cell.setAutoSizeTextTypeUniformWithConfiguration(10, 27, 1, TypedValue.COMPLEX_UNIT_SP);
+        }
+        cell.post(() -> fitSingleLineLegacy(cell, cell.getText().toString(), 27, 10));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1);
+        lp.setMargins(leftMargin, 0, rightMargin, 0);
+        row.addView(cell, lp);
     }
 
     private long countRemaining(String domain) {
@@ -463,7 +453,7 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseFixed();
-        add(tv("Culture Générale Android V9.4.7", 32, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V9.4.6", 32, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 22, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 20);
@@ -758,6 +748,7 @@ public class MainActivity extends Activity {
         phase = "choices";
         baseFixed();
         addCompactStatsBar();
+        addOneMillimeterGap();
         for (int i = 1; i <= 4; i++) {
             final int idx = i;
             Button b = btn(current.props[i - 1], 22);
@@ -776,6 +767,7 @@ public class MainActivity extends Activity {
         phase = "reveal";
         baseFixed();
         addCompactStatsBar();
+        addOneMillimeterGap();
         for (int i = 1; i <= 4; i++) {
             Button b = btn(current.props[i - 1], 22);
             b.setEnabled(false);
@@ -1008,10 +1000,13 @@ public class MainActivity extends Activity {
     }
 
     private void showEndScreen() {
+        if (!"end".equals(phase) && !"wrong_answers".equals(phase) && !"wrong_detail".equals(phase)) {
+            phaseBeforeEnd = phase;
+        }
         phase = "end";
         baseFixed();
 
-        band("Score : " + (classicOk + mentalOk), DARK, Color.WHITE, 26, 64);
+        band("Score : " + goodStreak, DARK, Color.WHITE, 26, 64);
 
         Space flexibleSpace = new Space(this);
         root.addView(flexibleSpace, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -1019,6 +1014,10 @@ public class MainActivity extends Activity {
         Button wrong = btn("Mauvaises réponses", 26);
         wrong.setOnClickListener(v -> showWrongAnswersScreen());
         addEndButton(wrong, false);
+
+        Button resume = btn("Reprendre la partie", 26);
+        resume.setOnClickListener(v -> resumeGame());
+        addEndButton(resume, true);
 
         Button newGame = btn("Nouvelle partie", 26);
         newGame.setOnClickListener(v -> showHome());
@@ -1030,6 +1029,16 @@ public class MainActivity extends Activity {
         addEndButton(quit, true);
     }
 
+    private void resumeGame() {
+        if (current == null) {
+            showHome();
+            return;
+        }
+        if ("choices".equals(phaseBeforeEnd)) showChoices();
+        else if ("reveal".equals(phaseBeforeEnd)) revealMental();
+        else showQuestion();
+    }
+
     private void addEndButton(Button button, boolean addTopGap) {
         button.setGravity(Gravity.CENTER);
         button.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
@@ -1038,7 +1047,7 @@ public class MainActivity extends Activity {
         root.addView(button, lp);
     }
 
-    private void baseWrongAnswersScrollable() {
+    private void baseWrongAnswersHistory() {
         screenRoot = new LinearLayout(this);
         screenRoot.setOrientation(LinearLayout.VERTICAL);
         screenRoot.setBackgroundColor(Color.BLACK);
@@ -1056,8 +1065,6 @@ public class MainActivity extends Activity {
         setRoundedBackgroundWithStroke(fixedBack, BLUE, 14, Color.WHITE, 1);
         fixedBack.setOnClickListener(v -> showEndScreen());
         fixedBack.setMinHeight(dp(54));
-        fixedBack.setGravity(Gravity.CENTER);
-        fixedBack.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         LinearLayout.LayoutParams fixedLp = new LinearLayout.LayoutParams(-1, -2);
         fixedLp.setMargins(dp(10), halfBandGapPx(), dp(10), halfBandGapPx());
         screenRoot.addView(fixedBack, fixedLp);
@@ -1071,228 +1078,135 @@ public class MainActivity extends Activity {
 
     private void showWrongAnswersScreen() {
         phase = "wrong_answers";
-        baseWrongAnswersScrollable();
-
+        baseWrongAnswersHistory();
         if (wrongAnswers.isEmpty()) {
             reviewBand("Aucune mauvaise réponse dans cette session", DARK, Color.WHITE);
             return;
         }
-
         for (int i = wrongAnswers.size() - 1; i >= 0; i--) {
             WrongAnswer w = wrongAnswers.get(i);
-            addWrongAnswerBlock(w);
+            addWrongAnswerHistoryBlock(w);
             if (i > 0) addReviewHorizontalSeparator();
         }
     }
 
-    private void addWrongAnswerBlock(WrongAnswer w) {
-        LinearLayout block = new LinearLayout(this);
-        block.setOrientation(LinearLayout.VERTICAL);
-        block.setBackgroundColor(Color.BLACK);
-
-        TextView themeView = tv(
-                (w.theme == null || w.theme.trim().length() == 0) ? "Sans thème" : w.theme,
-                22, Color.WHITE, Gravity.CENTER, true
-        );
-        themeView.setSingleLine(false);
-        themeView.setMaxLines(Integer.MAX_VALUE);
-        themeView.setGravity(Gravity.CENTER);
-        themeView.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
-        themeView.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
-                compactBandPaddingPx(), compactBandPaddingPx());
-        setRoundedBackgroundWithStroke(themeView, GREEN, 14, Color.WHITE, 1);
+    private void addWrongAnswerHistoryBlock(WrongAnswer w) {
+        TextView theme = tv(w.theme == null || w.theme.trim().isEmpty() ? "Sans thème" : w.theme,
+                22, Color.WHITE, Gravity.CENTER, true);
+        theme.setSingleLine(false);
+        theme.setMaxLines(Integer.MAX_VALUE);
+        setRoundedBackgroundWithStroke(theme, GREEN, 14, Color.WHITE, 1);
+        theme.setOnClickListener(v -> showWrongAnswerDetailPage(w));
         LinearLayout.LayoutParams themeLp = new LinearLayout.LayoutParams(-1, -2);
         themeLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
-        block.addView(themeView, themeLp);
+        root.addView(theme, themeLp);
 
-        TextView questionView = tv(w.question, 22, Color.WHITE, Gravity.CENTER, true);
-        questionView.setSingleLine(false);
-        questionView.setMaxLines(Integer.MAX_VALUE);
-        questionView.setGravity(Gravity.CENTER);
-        questionView.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
-        questionView.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
-                compactBandPaddingPx(), compactBandPaddingPx());
-        setRoundedBackgroundWithStroke(questionView, RED, 14, Color.WHITE, 1);
-        LinearLayout.LayoutParams questionLp = new LinearLayout.LayoutParams(-1, -2);
-        questionLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
-        block.addView(questionView, questionLp);
+        reviewBand(w.question, RED, Color.WHITE);
+        addWrongAnswerPrimary(w);
+    }
 
+    private void showWrongAnswerDetailPage(WrongAnswer w) {
+        phase = "wrong_detail";
+        screenRoot = new LinearLayout(this);
+        screenRoot.setOrientation(LinearLayout.VERTICAL);
+        screenRoot.setBackgroundColor(Color.BLACK);
+
+        TextView fixedTheme = tv(w.theme == null || w.theme.trim().isEmpty() ? "Sans thème" : w.theme,
+                22, Color.WHITE, Gravity.CENTER, true);
+        fixedTheme.setSingleLine(false);
+        fixedTheme.setMaxLines(Integer.MAX_VALUE);
+        setRoundedBackgroundWithStroke(fixedTheme, GREEN, 14, Color.WHITE, 1);
+        LinearLayout.LayoutParams themeLp = new LinearLayout.LayoutParams(-1, -2);
+        themeLp.setMargins(dp(10), halfBandGapPx(), dp(10), halfBandGapPx());
+        screenRoot.addView(fixedTheme, themeLp);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(10), 0, dp(10), dp(8));
+        root.setBackgroundColor(Color.BLACK);
+        scroll.addView(root);
+        screenRoot.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        reviewBand(w.question, RED, Color.WHITE);
+        addWrongAnswerPrimary(w);
+
+        if (w.theme != null && !w.theme.trim().isEmpty()) {
+            new Thread(() -> {
+                List<Question> related;
+                try { related = loadThemeQuestionQuestions(w.theme, w.question); }
+                catch (Exception e) { related = new ArrayList<>(); }
+                final List<Question> ready = related;
+                runOnUiThread(() -> {
+                    if (!"wrong_detail".equals(phase)) return;
+                    boolean hasOther = false;
+                    for (Question q : ready) if (q.row != w.row) { hasOther = true; break; }
+                    if (!hasOther) return;
+                    addReviewBlockGap();
+                    appendAvailableTrio(w, ready);
+                });
+            }).start();
+        }
+
+        LinearLayout nav = new LinearLayout(this);
+        nav.setOrientation(LinearLayout.HORIZONTAL);
+        nav.setGravity(Gravity.CENTER);
+        Button back = btn("Retour aux mauvaises réponses", 18);
+        back.setOnClickListener(v -> showWrongAnswersScreen());
+        Button end = btn("Fin de partie", 18);
+        setRoundedBackgroundWithStroke(end, BLUE, 14, Color.WHITE, 1);
+        end.setOnClickListener(v -> showEndScreen());
+        int gap = cmToPx(0.2f);
+        LinearLayout.LayoutParams leftLp = new LinearLayout.LayoutParams(0, cmToPx(1.8f), 1);
+        leftLp.setMargins(dp(10), gap / 2, gap / 2, gap / 2);
+        LinearLayout.LayoutParams rightLp = new LinearLayout.LayoutParams(0, cmToPx(1.8f), 1);
+        rightLp.setMargins(gap / 2, gap / 2, dp(10), gap / 2);
+        nav.addView(back, leftLp);
+        nav.addView(end, rightLp);
+        screenRoot.addView(nav, new LinearLayout.LayoutParams(-1, -2));
+
+        actionPanelHost = new LinearLayout(this);
+        actionPanelHost.setVisibility(View.GONE);
+        bottomBar = new LinearLayout(this);
+        bottomBar.setVisibility(View.GONE);
+        setContentView(screenRoot);
+    }
+
+    private void addWrongAnswerPrimary(WrongAnswer w) {
         if (w.detail != null && w.detail.length() > 0) {
-            block.addView(createReviewTextBand(w.detail, YELLOW, Color.BLACK));
+            reviewBand(w.detail, YELLOW, Color.BLACK);
         }
-        if (w.isImage) {
-            View image = createReviewImageBand(w.imageFile);
-            if (image != null) block.addView(image);
-        }
-
-        Space gap = new Space(this);
-        block.addView(gap, new LinearLayout.LayoutParams(-1, cmToPx(0.2f)));
-        block.addView(createWrongAndCorrectAnswersView(w.chosenAnswer, w.correctAnswer));
-
-        LinearLayout relatedContainer = new LinearLayout(this);
-        relatedContainer.setOrientation(LinearLayout.VERTICAL);
-        relatedContainer.setVisibility(View.GONE);
-        block.addView(relatedContainer, new LinearLayout.LayoutParams(-1, -2));
-
-        if (w.theme != null && w.theme.trim().length() > 0) {
-            themeView.setOnClickListener(v -> toggleRelatedQuestions(w, relatedContainer));
-        }
-
-        root.addView(block, new LinearLayout.LayoutParams(-1, -2));
+        if (w.isImage) reviewImageBand(w.imageFile);
+        addTwoMillimeterGap();
+        reviewWrongAndCorrectAnswers(w.chosenAnswer, w.correctAnswer);
     }
 
-    private void toggleRelatedQuestions(WrongAnswer w, LinearLayout container) {
-        if (container.getVisibility() == View.VISIBLE) {
-            container.setVisibility(View.GONE);
-            return;
-        }
-        if (Boolean.TRUE.equals(container.getTag())) {
-            container.setVisibility(View.VISIBLE);
-            return;
-        }
-
-        container.setTag(Boolean.TRUE);
-        container.setVisibility(View.VISIBLE);
-        TextView loading = tv("Chargement…", 18, Color.WHITE, Gravity.CENTER, true);
-        container.addView(loading, new LinearLayout.LayoutParams(-1, -2));
-
-        new Thread(() -> {
-            List<Question> related;
-            try {
-                related = loadThemeQuestionQuestions(w.theme, w.question);
-            } catch (Exception e) {
-                related = new ArrayList<>();
+    private void appendAvailableTrio(WrongAnswer w, List<Question> related) {
+        boolean hasOtherAvailable = false;
+        for (Question q : related) {
+            if (q.row != w.row) {
+                hasOtherAvailable = true;
+                break;
             }
-            final List<Question> ready = related;
-            runOnUiThread(() -> {
-                if (!"wrong_answers".equals(phase)) return;
-                container.removeAllViews();
-                boolean first = true;
-                for (Question q : ready) {
-                    if (q.row == w.row) continue;
-                    if (!first) {
-                        Space blockGap = new Space(this);
-                        container.addView(blockGap,
-                                new LinearLayout.LayoutParams(-1, cmToPx(0.5f)));
-                    }
-                    first = false;
-                    if (q.detail != null && q.detail.length() > 0) {
-                        container.addView(createReviewTextBand(q.detail, YELLOW, Color.BLACK));
-                    }
-                    if (q.isImage) {
-                        View image = createReviewImageBand(q.imageFile);
-                        if (image != null) container.addView(image);
-                    }
-                    Space answerGap = new Space(this);
-                    container.addView(answerGap,
-                            new LinearLayout.LayoutParams(-1, cmToPx(0.2f)));
-                    String answer = "";
-                    if (q.correct >= 1 && q.correct <= 4) answer = q.props[q.correct - 1];
-                    container.addView(createReviewTextBand(answer, GREEN, Color.WHITE));
-                }
-                if (first) {
-                    TextView none = tv("Aucune autre question disponible", 18,
-                            Color.WHITE, Gravity.CENTER, true);
-                    container.addView(none, new LinearLayout.LayoutParams(-1, -2));
-                }
-            });
-        }).start();
-    }
-
-    private TextView createReviewTextBand(String text, int color, int textColor) {
-        TextView v = tv(text, 22, textColor, Gravity.CENTER, true);
-        int innerMargin = compactBandPaddingPx();
-        v.setPadding(innerMargin, innerMargin, innerMargin, innerMargin);
-        v.setSingleLine(false);
-        v.setMaxLines(Integer.MAX_VALUE);
-        v.setMinHeight(dp(54));
-        v.setGravity(Gravity.CENTER);
-        v.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
-        setRoundedBackground(v, color, 14);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
-        v.setLayoutParams(lp);
-        return v;
-    }
-
-    private View createReviewImageBand(String imageFileName) {
-        if (imageFileName == null || imageFileName.trim().length() == 0) return null;
-
-        FrameLayout imageArea = new FrameLayout(this);
-        imageArea.setBackgroundColor(Color.BLACK);
-        int innerMargin = compactBandPaddingPx();
-        imageArea.setPadding(innerMargin, innerMargin, innerMargin, innerMargin);
-        setRoundedBackground(imageArea, DARK, 14);
-
-        LinearLayout.LayoutParams areaLp = new LinearLayout.LayoutParams(-1, cmToPx(5.8f));
-        int gap = halfBandGapPx();
-        areaLp.setMargins(0, gap, 0, gap);
-        imageArea.setLayoutParams(areaLp);
-
-        File f = imageFile(imageFileName);
-        Bitmap bm = (f != null && f.exists()) ? decode(f) : null;
-        if (bm == null) {
-            TextView missing = tv("Image introuvable : " + imageFileName,
-                    20, Color.WHITE, Gravity.CENTER, true);
-            setRoundedBackground(missing, RED, 14);
-            FrameLayout.LayoutParams missingLp =
-                    new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
-            missingLp.setMargins(dp(6), dp(6), dp(6), dp(6));
-            imageArea.addView(missing, missingLp);
-            return imageArea;
         }
+        if (!hasOtherAvailable) return;
 
-        ImageView iv = new ImageView(this);
-        iv.setImageBitmap(bm);
-        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        iv.setBackgroundColor(Color.BLACK);
-        imageArea.addView(iv, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
-        return imageArea;
-    }
+        boolean firstRelated = true;
+        for (Question q : related) {
+            if (q.row == w.row) continue;
+            if (!firstRelated) addReviewBlockGap();
+            firstRelated = false;
 
-    private LinearLayout createWrongAndCorrectAnswersView(
-            String wrongAnswer, String correctAnswer
-    ) {
-        String wrong = wrongAnswer == null || wrongAnswer.trim().length() == 0
-                ? "Aucune réponse donnée" : wrongAnswer.trim();
-        String correct = correctAnswer == null ? "" : correctAnswer.trim();
-
-        LinearLayout outer = new LinearLayout(this);
-        outer.setOrientation(LinearLayout.VERTICAL);
-        outer.setGravity(Gravity.CENTER);
-        int twoMillimeters = cmToPx(0.2f);
-        outer.setPadding(twoMillimeters, twoMillimeters,
-                twoMillimeters, twoMillimeters);
-        setRoundedBackgroundWithStroke(
-                outer, Color.rgb(24, 24, 24), 14, Color.WHITE, 1
-        );
-
-        TextView wrongView = tv(wrong, 22, Color.WHITE, Gravity.CENTER, true);
-        wrongView.setSingleLine(false);
-        wrongView.setMaxLines(Integer.MAX_VALUE);
-        wrongView.setMinHeight(dp(48));
-        wrongView.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
-                compactBandPaddingPx(), compactBandPaddingPx());
-        setRoundedBackgroundWithStroke(
-                wrongView, Color.rgb(190, 25, 25), 11, Color.WHITE, 1
-        );
-        outer.addView(wrongView, new LinearLayout.LayoutParams(-1, -2));
-
-        Space innerGap = new Space(this);
-        outer.addView(innerGap,
-                new LinearLayout.LayoutParams(-1, twoMillimeters));
-
-        TextView correctView = tv(correct, 22, Color.WHITE, Gravity.CENTER, true);
-        correctView.setSingleLine(false);
-        correctView.setMaxLines(Integer.MAX_VALUE);
-        correctView.setMinHeight(dp(48));
-        correctView.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
-                compactBandPaddingPx(), compactBandPaddingPx());
-        setRoundedBackgroundWithStroke(
-                correctView, Color.rgb(0, 135, 60), 11, Color.WHITE, 1
-        );
-        outer.addView(correctView, new LinearLayout.LayoutParams(-1, -2));
-        return outer;
+            if (q.detail != null && q.detail.length() > 0) {
+                reviewBandWithMargins(q.detail, YELLOW, Color.BLACK, 0, 0);
+            }
+            if (q.isImage) reviewImageBand(q.imageFile);
+            addTwoMillimeterGap();
+            String answer = "";
+            if (q.correct >= 1 && q.correct <= 4) answer = q.props[q.correct - 1];
+            reviewBandWithMargins(answer, GREEN, Color.WHITE, 0, 0);
+        }
     }
 
     private void addTwoMillimeterGap() {
@@ -1538,18 +1452,17 @@ private void flagAndNext(String status, String msg) {
             classicStreak++;
             goodStreak++;
             if (goodStreak > bestGoodStreak) bestGoodStreak = goodStreak;
+            new Thread(() -> {
+                updateStatusForRow("R", answeredQuestion.row);
+                runOnUiThread(() -> screenRoot.postDelayed(this::continueAfterAnswer, 250));
+            }).start();
         } else {
             wrongAnswers.add(new WrongAnswer(answeredQuestion, choice));
             classicStreak = 0;
             goodStreak = 0;
+            new Thread(() -> updateStatusForRow("R", answeredQuestion.row)).start();
+            screenRoot.postDelayed(this::continueAfterAnswer, 450);
         }
-
-        new Thread(() -> {
-            updateStatusForRow("R", answeredQuestion.row);
-            runOnUiThread(() ->
-                    screenRoot.postDelayed(this::continueAfterAnswer, 320)
-            );
-        }).start();
     }
 
     private void finish(String status) {
@@ -1562,18 +1475,21 @@ private void flagAndNext(String status, String msg) {
             classicStreak = 0;
             if (goodStreak > bestGoodStreak) bestGoodStreak = goodStreak;
             if (mentalStreak > bestMentalStreak) bestMentalStreak = mentalStreak;
+            new Thread(() -> {
+                updateStatusForRow(status, answeredQuestion.row);
+                runOnUiThread(this::continueAfterAnswer);
+            }).start();
         } else {
             revised++;
             goodStreak = 0;
             classicStreak = 0;
             mentalStreak = 0;
             wrongAnswers.add(new WrongAnswer(answeredQuestion, 0));
+            new Thread(() -> {
+                updateStatusForRow(status, answeredQuestion.row);
+                runOnUiThread(this::continueAfterAnswer);
+            }).start();
         }
-
-        new Thread(() -> {
-            updateStatusForRow(status, answeredQuestion.row);
-            runOnUiThread(this::continueAfterAnswer);
-        }).start();
     }
 
     private void updateStatusForRow(String status, long rowNumber) {
