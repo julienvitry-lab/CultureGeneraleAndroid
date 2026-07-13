@@ -462,7 +462,7 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseFixed();
-        add(tv("Culture Générale Android V9.5.4", 33, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V9.5.5", 33, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 23, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 21);
@@ -1481,27 +1481,35 @@ public class MainActivity extends Activity {
     }
 
     private void addStableTrioDetailBand(String detail) {
+        Space topSpacer = new Space(this);
+        root.addView(topSpacer, new LinearLayout.LayoutParams(-1, 0, 1));
+
         TextView v = tv(detail == null ? "" : detail, 22,
                 Color.BLACK, Gravity.CENTER, true);
-        int innerMargin = compactBandPaddingPx();
-        v.setPadding(innerMargin, innerMargin, innerMargin, innerMargin);
+
+        int twoMillimeters = cmToPx(0.2f);
+        v.setPadding(twoMillimeters, twoMillimeters,
+                twoMillimeters, twoMillimeters);
         v.setSingleLine(false);
         v.setMaxLines(Integer.MAX_VALUE);
         v.setGravity(Gravity.CENTER);
         v.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         setRoundedBackgroundWithStroke(v, YELLOW, 14, Color.WHITE, 1);
 
-        // Même taille nominale que les bandeaux vert et rouge.
+        // Même taille nominale que les autres bandeaux.
         // Réduction seulement pour les textes exceptionnellement longs.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             v.setAutoSizeTextTypeUniformWithConfiguration(
                     18, 24, 1, TypedValue.COMPLEX_UNIT_SP);
         }
 
-        LinearLayout.LayoutParams lp =
-                new LinearLayout.LayoutParams(-1, 0, 1);
-        lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
-        root.addView(v, lp);
+        LinearLayout.LayoutParams bandLp =
+                new LinearLayout.LayoutParams(-1, -2);
+        bandLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+        root.addView(v, bandLp);
+
+        Space bottomSpacer = new Space(this);
+        root.addView(bottomSpacer, new LinearLayout.LayoutParams(-1, 0, 1));
     }
 
     private void addTrioPager() {
