@@ -49,6 +49,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
@@ -70,6 +71,7 @@ public class MainActivity extends Activity {
     private final int DARK = Color.rgb(35, 35, 35);
     private final int GREY = Color.rgb(85, 85, 85);
     private final int LIGHT_GREY = Color.rgb(130, 130, 130);
+    private final int NAVY = Color.rgb(18, 45, 92);
 
     private File appFolder, dbFile, imagesFolder, problemsFile;
     private LinearLayout screenRoot;
@@ -89,10 +91,12 @@ public class MainActivity extends Activity {
     private int trioPageIndex = 0;
     private boolean trioAnswerVisible = false;
     private WrongAnswer trioSourceWrongAnswer = null;
+    private String trioReturnMode = "wrong";
 
     private final Set<Long> askedThisSession = new HashSet<>();
     private final List<Question> history = new ArrayList<>();
     private final List<WrongAnswer> wrongAnswers = new ArrayList<>();
+    private final Map<String, Question> goodThemesThisSession = new LinkedHashMap<>();
     private int historyIndex = -1;
 
     private int answered = 0;
@@ -458,7 +462,7 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseFixed();
-        add(tv("Culture Générale Android V9.4.8", 33, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V9.5.0", 33, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 23, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 21);
@@ -577,6 +581,7 @@ public class MainActivity extends Activity {
         askedThisSession.clear();
         history.clear();
         wrongAnswers.clear();
+        goodThemesThisSession.clear();
         historyIndex = -1;
         prefetchedNextQuestion = null;
         prefetchedRelatedQuestions = null;
@@ -824,7 +829,7 @@ public class MainActivity extends Activity {
     }
 
     private void addBottomButton(String text, int color, View.OnClickListener listener) {
-        Button b = btn(text, 16);
+        Button b = btn(text, 17);
         setRoundedBackground(b, color, 16);
         b.setTextColor(Color.WHITE);
         b.setOnClickListener(listener);
@@ -870,6 +875,16 @@ public class MainActivity extends Activity {
         }
         LinearLayout panel = createRightActionPanel();
 
+        addActionPanelButton(panel, "Fin de partie", RED, cmToPx(1.0f), v -> {
+            hideActionPanel();
+            showEndScreen();
+        });
+
+        addActionPanelButton(panel, "Mauvaises réponses", GREY, cmToPx(1.0f), v -> {
+            hideActionPanel();
+            showWrongAnswersScreen();
+        });
+
         if ("choices".equals(phase) || "reveal".equals(phase) || "result".equals(phase)) {
             addActionPanelButton(panel, "Revoir la question", GREY, cmToPx(1.0f), v -> {
                 hideActionPanel();
@@ -882,15 +897,6 @@ public class MainActivity extends Activity {
             });
         }
 
-        addActionPanelButton(panel, "Mauvaises réponses", GREY, cmToPx(1.0f), v -> {
-            hideActionPanel();
-            showWrongAnswersScreen();
-        });
-
-        addActionPanelButton(panel, "Fin de partie", RED, cmToPx(1.0f), v -> {
-            hideActionPanel();
-            showEndScreen();
-        });
         showActionPanel(panel, "menu", 1);
     }
 
@@ -1004,7 +1010,7 @@ public class MainActivity extends Activity {
     }
 
     private void showEndScreen() {
-        if (!"end".equals(phase) && !"wrong_answers".equals(phase) && !"wrong_detail".equals(phase)) {
+        if (!"end".equals(phase) && !"wrong_answers".equals(phase) && !"wrong_detail".equals(phase) && !"good_answers".equals(phase)) {
             phaseBeforeEnd = phase;
         }
         phase = "end";
@@ -1015,9 +1021,13 @@ public class MainActivity extends Activity {
         Space flexibleSpace = new Space(this);
         root.addView(flexibleSpace, new LinearLayout.LayoutParams(-1, 0, 1));
 
+        Button good = btn("Bonnes réponses", 26);
+        good.setOnClickListener(v -> showGoodAnswersScreen());
+        addEndButton(good, false);
+
         Button wrong = btn("Mauvaises réponses", 26);
         wrong.setOnClickListener(v -> showWrongAnswersScreen());
-        addEndButton(wrong, false);
+        addEndButton(wrong, true);
 
         Button resume = btn("Reprendre la partie", 26);
         resume.setOnClickListener(v -> resumeGame());
@@ -1049,6 +1059,49 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.setMargins(0, addTopGap ? cmToPx(0.5f) : 0, 0, 0);
         root.addView(button, lp);
+    }
+
+    private void rememberGoodTheme(Question q) {
+        if (q == null || q.theme == null || q.theme.trim().isEmpty()) return;
+        String key = comparisonKey(q.theme);
+        if (!goodThemesThisSession.containsKey(key)) {
+            goodThemesThisSession.put(key, q);
+        }
+    }
+
+    private void showGoodAnswersScreen() {
+        phase = "good_answers";
+        baseScrollable();
+
+        if (goodThemesThisSession.isEmpty()) {
+            reviewBand("Aucun thème issu d'une bonne réponse dans cette session", DARK, Color.WHITE);
+        } else {
+            for (Question q : goodThemesThisSession.values()) {
+                Button themeButton = btn(q.theme, 22);
+                setRoundedBackgroundWithStroke(themeButton, GREEN, 14, Color.WHITE, 1);
+                themeButton.setTextColor(Color.WHITE);
+                themeButton.setOnClickListener(v -> {
+                    trioReturnMode = "good";
+                    showGoodAnswerDetailPage(q);
+                });
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+                lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+                root.addView(themeButton, lp);
+            }
+        }
+
+        Button back = btn("Fin de partie", 22);
+        setRoundedBackgroundWithStroke(back, BLUE, 14, Color.WHITE, 1);
+        back.setOnClickListener(v -> showEndScreen());
+        LinearLayout.LayoutParams backLp = new LinearLayout.LayoutParams(-1, cmToPx(1.0f));
+        backLp.setMargins(0, cmToPx(0.2f), 0, 0);
+        root.addView(back, backLp);
+    }
+
+    private void showGoodAnswerDetailPage(Question q) {
+        WrongAnswer synthetic = new WrongAnswer(q, q.correct);
+        trioReturnMode = "good";
+        showWrongAnswerDetailPage(synthetic);
     }
 
     private void showWrongAnswersScreen() {
@@ -1105,7 +1158,10 @@ public class MainActivity extends Activity {
         addWrongAnswerPrimary(w);
 
         // Toute la zone de consultation ouvre la page du trio.
-        View.OnClickListener openTrio = v -> showWrongAnswerDetailPage(w);
+        View.OnClickListener openTrio = v -> {
+            trioReturnMode = "wrong";
+            showWrongAnswerDetailPage(w);
+        };
         root.setClickable(true);
         root.setOnClickListener(openTrio);
         centeredHost.setClickable(true);
@@ -1165,6 +1221,7 @@ public class MainActivity extends Activity {
     }
 
     private void showWrongAnswerDetailPage(WrongAnswer w) {
+        if (!"good".equals(trioReturnMode)) trioReturnMode = "wrong";
         phase = "wrong_detail";
         trioSourceWrongAnswer = w;
         trioQuestions.clear();
@@ -1264,21 +1321,21 @@ public class MainActivity extends Activity {
         scroll.setFillViewport(true);
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER);
+        root.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         root.setPadding(dp(10), 0, dp(10), dp(8));
         root.setBackgroundColor(Color.BLACK);
         scroll.addView(root);
         screenRoot.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        if (q.detail != null && !q.detail.isEmpty()) reviewBand(q.detail, YELLOW, Color.BLACK);
+        addStableTrioDetailBand(q.detail);
         if (q.isImage) reviewImageBand(q.imageFile);
         if (trioAnswerVisible) {
             addTwoMillimeterGap();
             String answer = q.correct >= 1 && q.correct <= 4 ? q.props[q.correct - 1] : "";
             reviewBand(answer, GREEN, Color.WHITE);
-            addTrioAssimilateButton(q);
         }
 
+        if (trioAnswerVisible) addTrioAssimilateButton(q);
         addTrioPager();
         addTrioBottomNavigation(true);
         setContentView(screenRoot);
@@ -1286,7 +1343,7 @@ public class MainActivity extends Activity {
 
     private void addTrioAssimilateButton(Question q) {
         Button assimilate = btn("Assimiler", 22);
-        setRoundedBackgroundWithStroke(assimilate, GREEN, 14, Color.WHITE, 1);
+        setRoundedBackgroundWithStroke(assimilate, NAVY, 14, Color.WHITE, 1);
         assimilate.setTextColor(Color.WHITE);
         assimilate.setOnClickListener(v -> {
             assimilate.setEnabled(false);
@@ -1324,8 +1381,27 @@ public class MainActivity extends Activity {
         });
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, cmToPx(1.0f));
-        lp.setMargins(0, cmToPx(0.2f), 0, 0);
-        root.addView(assimilate, lp);
+        lp.setMargins(dp(10), 0, dp(10), cmToPx(0.2f));
+        screenRoot.addView(assimilate, lp);
+    }
+
+    private void addStableTrioDetailBand(String detail) {
+        TextView v = tv(detail == null ? "" : detail, 22, Color.BLACK, Gravity.CENTER, true);
+        int innerMargin = compactBandPaddingPx();
+        v.setPadding(innerMargin, innerMargin, innerMargin, innerMargin);
+        v.setSingleLine(false);
+        v.setMaxLines(6);
+        v.setGravity(Gravity.CENTER);
+        v.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        setRoundedBackgroundWithStroke(v, YELLOW, 14, Color.WHITE, 1);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            v.setAutoSizeTextTypeUniformWithConfiguration(10, 24, 1, TypedValue.COMPLEX_UNIT_SP);
+        }
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, cmToPx(2.2f));
+        lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+        root.addView(v, lp);
     }
 
     private void addTrioPager() {
@@ -1386,7 +1462,10 @@ public class MainActivity extends Activity {
         nav.setPadding(dp(10), 0, dp(10), 0);
 
         Button back = btn("Retour", 22);
-        back.setOnClickListener(v -> showWrongAnswerPage(wrongAnswerPageIndex));
+        back.setOnClickListener(v -> {
+            if ("good".equals(trioReturnMode)) showGoodAnswersScreen();
+            else showWrongAnswerPage(wrongAnswerPageIndex);
+        });
         Button end = btn("Fin", 22);
         setRoundedBackgroundWithStroke(end, BLUE, 14, Color.WHITE, 1);
         end.setOnClickListener(v -> showEndScreen());
@@ -1682,6 +1761,7 @@ private void flagAndNext(String status, String msg) {
             classicOk++;
             classicStreak++;
             goodStreak++;
+            rememberGoodTheme(answeredQuestion);
             if (goodStreak > bestGoodStreak) bestGoodStreak = goodStreak;
             new Thread(() -> {
                 updateStatusForRow("R", answeredQuestion.row);
@@ -1703,6 +1783,7 @@ private void flagAndNext(String status, String msg) {
             mentalOk++;
             goodStreak++;
             mentalStreak++;
+            rememberGoodTheme(answeredQuestion);
             classicStreak = 0;
             if (goodStreak > bestGoodStreak) bestGoodStreak = goodStreak;
             if (mentalStreak > bestMentalStreak) bestMentalStreak = mentalStreak;
