@@ -85,6 +85,10 @@ public class MainActivity extends Activity {
     private String phase = "home";
     private String phaseBeforeEnd = "question";
     private int wrongAnswerPageIndex = 0;
+    private final List<Question> trioQuestions = new ArrayList<>();
+    private int trioPageIndex = 0;
+    private boolean trioAnswerVisible = false;
+    private WrongAnswer trioSourceWrongAnswer = null;
 
     private final Set<Long> askedThisSession = new HashSet<>();
     private final List<Question> history = new ArrayList<>();
@@ -847,11 +851,11 @@ public class MainActivity extends Activity {
             return;
         }
         LinearLayout panel = createRightActionPanel();
-        addActionPanelButton(panel, "P\nProblème ponctuel", RED, cmToPx(2.0f), v -> {
+        addActionPanelButton(panel, "P - Problème ponctuel", RED, cmToPx(1.0f), v -> {
             hideActionPanel();
             flagAndNext("P", "Problème noté");
         });
-        addActionPanelButton(panel, "T\nContenu analogue", RED, cmToPx(2.0f), v -> {
+        addActionPanelButton(panel, "T - Contenu analogue", RED, cmToPx(1.0f), v -> {
             hideActionPanel();
             flagAndNext("T", "Contenu analogue exclu");
         });
@@ -867,18 +871,23 @@ public class MainActivity extends Activity {
         LinearLayout panel = createRightActionPanel();
 
         if ("choices".equals(phase) || "reveal".equals(phase) || "result".equals(phase)) {
-            addActionPanelButton(panel, "Revoir la question", GREY, cmToPx(1.45f), v -> {
+            addActionPanelButton(panel, "Revoir la question", GREY, cmToPx(1.0f), v -> {
                 hideActionPanel();
                 showQuestion();
             });
         } else if (historyIndex > 0) {
-            addActionPanelButton(panel, "Question précédente", GREY, cmToPx(1.45f), v -> {
+            addActionPanelButton(panel, "Question précédente", GREY, cmToPx(1.0f), v -> {
                 hideActionPanel();
                 previousQuestion();
             });
         }
 
-        addActionPanelButton(panel, "Fin de partie", RED, cmToPx(1.45f), v -> {
+        addActionPanelButton(panel, "Mauvaises réponses", GREY, cmToPx(1.0f), v -> {
+            hideActionPanel();
+            showWrongAnswersScreen();
+        });
+
+        addActionPanelButton(panel, "Fin de partie", RED, cmToPx(1.0f), v -> {
             hideActionPanel();
             showEndScreen();
         });
@@ -894,9 +903,11 @@ public class MainActivity extends Activity {
     }
 
     private void addActionPanelButton(LinearLayout panel, String text, int color, int heightPx, View.OnClickListener listener) {
-        Button b = btn(text, 14);
-        b.setSingleLine(false);
-        b.setMaxLines(2);
+        Button b = btn(text, 18);
+        b.setSingleLine(true);
+        b.setMaxLines(1);
+        b.setGravity(Gravity.CENTER);
+        b.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
         setRoundedBackground(b, color, 15);
         b.setOnClickListener(listener);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, heightPx);
@@ -911,17 +922,9 @@ public class MainActivity extends Activity {
     private void showActionPanel(LinearLayout panel, String tag, int columnIndex) {
         hideActionPanel();
         if (actionPanelHost == null) return;
-        int safeColumn = Math.max(0, Math.min(2, columnIndex));
-        for (int i = 0; i < 3; i++) {
-            if (i == safeColumn) {
-                LinearLayout.LayoutParams panelLp = new LinearLayout.LayoutParams(0, -2, 1);
-                panelLp.setMargins(halfBandGapPx(), 0, halfBandGapPx(), halfBandGapPx());
-                actionPanelHost.addView(panel, panelLp);
-            } else {
-                Space space = new Space(this);
-                actionPanelHost.addView(space, new LinearLayout.LayoutParams(0, 1, 1));
-            }
-        }
+        LinearLayout.LayoutParams panelLp = new LinearLayout.LayoutParams(-1, -2);
+        panelLp.setMargins(dp(10), 0, dp(10), halfBandGapPx());
+        actionPanelHost.addView(panel, panelLp);
         actionPanelHost.setTag(tag);
         actionPanelHost.setVisibility(View.VISIBLE);
     }
@@ -1071,8 +1074,6 @@ public class MainActivity extends Activity {
         screenRoot.setOrientation(LinearLayout.VERTICAL);
         screenRoot.setBackgroundColor(Color.BLACK);
 
-        // Une seule mauvaise réponse est affichée par page. Le ScrollView ne sert
-        // qu'aux contenus exceptionnellement longs, jamais à passer d'une erreur à l'autre.
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         FrameLayout centeredHost = new FrameLayout(this);
@@ -1096,7 +1097,6 @@ public class MainActivity extends Activity {
         theme.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
                 compactBandPaddingPx(), compactBandPaddingPx());
         setRoundedBackgroundWithStroke(theme, GREEN, 14, Color.WHITE, 1);
-        theme.setOnClickListener(v -> showWrongAnswerDetailPage(w));
         LinearLayout.LayoutParams themeLp = new LinearLayout.LayoutParams(-1, -2);
         themeLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
         root.addView(theme, themeLp);
@@ -1104,7 +1104,14 @@ public class MainActivity extends Activity {
         reviewBand(w.question, RED, Color.WHITE);
         addWrongAnswerPrimary(w);
 
-        // Barre de navigation : trois emplacements de largeur strictement identique.
+        // Toute la zone de consultation ouvre la page du trio.
+        View.OnClickListener openTrio = v -> showWrongAnswerDetailPage(w);
+        root.setClickable(true);
+        root.setOnClickListener(openTrio);
+        centeredHost.setClickable(true);
+        centeredHost.setOnClickListener(openTrio);
+        theme.setOnClickListener(openTrio);
+
         LinearLayout pager = new LinearLayout(this);
         pager.setOrientation(LinearLayout.HORIZONTAL);
         pager.setGravity(Gravity.CENTER);
@@ -1159,16 +1166,75 @@ public class MainActivity extends Activity {
 
     private void showWrongAnswerDetailPage(WrongAnswer w) {
         phase = "wrong_detail";
+        trioSourceWrongAnswer = w;
+        trioQuestions.clear();
+        trioPageIndex = 0;
+        trioAnswerVisible = false;
+        showTrioLoadingPage(w);
+
+        new Thread(() -> {
+            List<Question> loaded = new ArrayList<>();
+            try {
+                if (w.theme != null && !w.theme.trim().isEmpty()) {
+                    for (Question q : loadThemeQuestionQuestions(w.theme, w.question)) {
+                        if (q.row != w.row) loaded.add(q);
+                    }
+                }
+            } catch (Exception ignored) { }
+            final List<Question> ready = loaded;
+            runOnUiThread(() -> {
+                if (!"wrong_detail".equals(phase) || trioSourceWrongAnswer != w) return;
+                trioQuestions.clear();
+                trioQuestions.addAll(ready);
+                trioPageIndex = 0;
+                trioAnswerVisible = false;
+                showTrioQuestionPage();
+            });
+        }).start();
+    }
+
+    private void showTrioLoadingPage(WrongAnswer w) {
         screenRoot = new LinearLayout(this);
         screenRoot.setOrientation(LinearLayout.VERTICAL);
         screenRoot.setBackgroundColor(Color.BLACK);
+        root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setGravity(Gravity.CENTER);
+        root.setPadding(dp(10), dp(8), dp(10), dp(8));
+        root.setBackgroundColor(Color.BLACK);
+        screenRoot.addView(root, new LinearLayout.LayoutParams(-1, 0, 1));
+        reviewBand("Chargement des questions associées…", DARK, Color.WHITE);
+        addTrioBottomNavigation(false);
+        setContentView(screenRoot);
+    }
+
+    private void showTrioQuestionPage() {
+        if (!"wrong_detail".equals(phase)) return;
+        screenRoot = new LinearLayout(this);
+        screenRoot.setOrientation(LinearLayout.VERTICAL);
+        screenRoot.setBackgroundColor(Color.BLACK);
+
+        if (trioQuestions.isEmpty()) {
+            root = new LinearLayout(this);
+            root.setOrientation(LinearLayout.VERTICAL);
+            root.setGravity(Gravity.CENTER);
+            root.setPadding(dp(10), dp(8), dp(10), dp(8));
+            root.setBackgroundColor(Color.BLACK);
+            screenRoot.addView(root, new LinearLayout.LayoutParams(-1, 0, 1));
+            reviewBand("Aucune autre question disponible dans ce trio", DARK, Color.WHITE);
+            addTrioBottomNavigation(false);
+            setContentView(screenRoot);
+            return;
+        }
+
+        Question q = trioQuestions.get(trioPageIndex);
 
         LinearLayout anchoredTop = new LinearLayout(this);
         anchoredTop.setOrientation(LinearLayout.VERTICAL);
         anchoredTop.setPadding(dp(10), 0, dp(10), 0);
         anchoredTop.setBackgroundColor(Color.BLACK);
 
-        TextView fixedTheme = tv(w.theme == null || w.theme.trim().isEmpty() ? "Sans thème" : w.theme,
+        TextView fixedTheme = tv(q.theme == null || q.theme.trim().isEmpty() ? "Sans thème" : q.theme,
                 22, Color.WHITE, Gravity.CENTER, true);
         fixedTheme.setSingleLine(false);
         fixedTheme.setMaxLines(Integer.MAX_VALUE);
@@ -1181,7 +1247,7 @@ public class MainActivity extends Activity {
         themeLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
         anchoredTop.addView(fixedTheme, themeLp);
 
-        TextView fixedQuestion = tv(w.question, 22, Color.WHITE, Gravity.CENTER, true);
+        TextView fixedQuestion = tv(q.question, 22, Color.WHITE, Gravity.CENTER, true);
         fixedQuestion.setSingleLine(false);
         fixedQuestion.setMaxLines(Integer.MAX_VALUE);
         fixedQuestion.setGravity(Gravity.CENTER);
@@ -1198,31 +1264,77 @@ public class MainActivity extends Activity {
         scroll.setFillViewport(true);
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
+        root.setGravity(Gravity.CENTER);
         root.setPadding(dp(10), 0, dp(10), dp(8));
         root.setBackgroundColor(Color.BLACK);
         scroll.addView(root);
         screenRoot.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        addWrongAnswerPrimary(w);
-
-        if (w.theme != null && !w.theme.trim().isEmpty()) {
-            new Thread(() -> {
-                List<Question> related;
-                try { related = loadThemeQuestionQuestions(w.theme, w.question); }
-                catch (Exception e) { related = new ArrayList<>(); }
-                final List<Question> ready = related;
-                runOnUiThread(() -> {
-                    if (!"wrong_detail".equals(phase)) return;
-                    boolean hasOther = false;
-                    for (Question q : ready) if (q.row != w.row) { hasOther = true; break; }
-                    if (!hasOther) return;
-                    addReviewBlockGap();
-                    appendAvailableTrio(w, ready);
-                });
-            }).start();
+        if (q.detail != null && !q.detail.isEmpty()) reviewBand(q.detail, YELLOW, Color.BLACK);
+        if (q.isImage) reviewImageBand(q.imageFile);
+        if (trioAnswerVisible) {
+            addTwoMillimeterGap();
+            String answer = q.correct >= 1 && q.correct <= 4 ? q.props[q.correct - 1] : "";
+            reviewBand(answer, GREEN, Color.WHITE);
         }
 
-        // Deux boutons ancrés côte à côte, hauteur fixe de 1 cm.
+        addTrioPager();
+        addTrioBottomNavigation(true);
+        setContentView(screenRoot);
+    }
+
+    private void addTrioPager() {
+        LinearLayout pager = new LinearLayout(this);
+        pager.setOrientation(LinearLayout.HORIZONTAL);
+        pager.setGravity(Gravity.CENTER);
+        pager.setPadding(dp(10), 0, dp(10), 0);
+        int gap = cmToPx(0.2f);
+        int height = cmToPx(1.20f);
+
+        Button previous = btn("←", 22);
+        setRoundedBackgroundWithStroke(previous, GREY, 14, Color.WHITE, 1);
+        previous.setOnClickListener(v -> {
+            if (trioPageIndex <= 0) return;
+            trioPageIndex--;
+            trioAnswerVisible = true;
+            showTrioQuestionPage();
+        });
+        if (trioPageIndex == 0) previous.setVisibility(View.INVISIBLE);
+        LinearLayout.LayoutParams previousLp = new LinearLayout.LayoutParams(0, height, 1);
+        previousLp.setMargins(0, 0, gap / 2, 0);
+        pager.addView(previous, previousLp);
+
+        TextView position = tv((trioPageIndex + 1) + " / " + trioQuestions.size(),
+                22, Color.WHITE, Gravity.CENTER, true);
+        position.setSingleLine(true);
+        setRoundedBackgroundWithStroke(position, DARK, 14, Color.WHITE, 1);
+        LinearLayout.LayoutParams positionLp = new LinearLayout.LayoutParams(0, height, 1);
+        positionLp.setMargins(gap / 2, 0, gap / 2, 0);
+        pager.addView(position, positionLp);
+
+        Button next = btn("→", 22);
+        setRoundedBackgroundWithStroke(next, GREY, 14, Color.WHITE, 1);
+        next.setOnClickListener(v -> {
+            if (!trioAnswerVisible) {
+                trioAnswerVisible = true;
+                showTrioQuestionPage();
+            } else if (trioPageIndex < trioQuestions.size() - 1) {
+                trioPageIndex++;
+                trioAnswerVisible = false;
+                showTrioQuestionPage();
+            }
+        });
+        if (trioAnswerVisible && trioPageIndex == trioQuestions.size() - 1) next.setVisibility(View.INVISIBLE);
+        LinearLayout.LayoutParams nextLp = new LinearLayout.LayoutParams(0, height, 1);
+        nextLp.setMargins(gap / 2, 0, 0, 0);
+        pager.addView(next, nextLp);
+
+        LinearLayout.LayoutParams pagerLp = new LinearLayout.LayoutParams(-1, -2);
+        pagerLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+        screenRoot.addView(pager, pagerLp);
+    }
+
+    private void addTrioBottomNavigation(boolean normalDisplay) {
         LinearLayout nav = new LinearLayout(this);
         nav.setOrientation(LinearLayout.HORIZONTAL);
         nav.setGravity(Gravity.CENTER);
@@ -1245,12 +1357,6 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams navLp = new LinearLayout.LayoutParams(-1, -2);
         navLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
         screenRoot.addView(nav, navLp);
-
-        actionPanelHost = new LinearLayout(this);
-        actionPanelHost.setVisibility(View.GONE);
-        bottomBar = new LinearLayout(this);
-        bottomBar.setVisibility(View.GONE);
-        setContentView(screenRoot);
     }
 
     private void addWrongAnswerPrimary(WrongAnswer w) {
