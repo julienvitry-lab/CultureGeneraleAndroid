@@ -462,7 +462,7 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseFixed();
-        add(tv("Culture Générale Android V9.5.6", 33, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V9.5.7", 33, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 23, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 21);
@@ -1379,6 +1379,10 @@ public class MainActivity extends Activity {
                     ? q.props[q.correct - 1] : "";
             addFixedTrioAnswerBand(answer);
             addTrioAssimilateButton(q);
+        } else {
+            // Temps 1 : on réserve exactement la hauteur du temps 2.
+            // Le bandeau jaune reste donc au même emplacement pour la même question.
+            addTrioTimeTwoMirrorSpace();
         }
 
         addTrioPager();
@@ -1489,9 +1493,10 @@ public class MainActivity extends Activity {
         TextView v = tv(detail == null ? "" : detail, 22,
                 Color.BLACK, Gravity.CENTER, true);
 
-        int twoMillimeters = cmToPx(0.2f);
-        v.setPadding(twoMillimeters, twoMillimeters,
-                twoMillimeters, twoMillimeters);
+        int horizontalPadding = cmToPx(0.2f);
+        int verticalPadding = cmToPx(0.5f);
+        v.setPadding(horizontalPadding, verticalPadding,
+                horizontalPadding, verticalPadding);
         v.setSingleLine(false);
         v.setMaxLines(Integer.MAX_VALUE);
         v.setGravity(Gravity.CENTER);
@@ -1513,6 +1518,20 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams hostLp =
                 new LinearLayout.LayoutParams(-1, 0, 1);
         root.addView(centerHost, hostLp);
+    }
+
+    private void addTrioTimeTwoMirrorSpace() {
+        // Hauteur exacte du bandeau réponse, avec ses marges.
+        int answerHeight = cmToPx(1.65f) + (2 * halfBandGapPx());
+        Space answerMirror = new Space(this);
+        screenRoot.addView(answerMirror,
+                new LinearLayout.LayoutParams(-1, answerHeight));
+
+        // Hauteur exacte du bouton Assimiler, avec son espacement inférieur de 2 mm.
+        int assimilateHeight = cmToPx(1.0f) + cmToPx(0.2f);
+        Space assimilateMirror = new Space(this);
+        screenRoot.addView(assimilateMirror,
+                new LinearLayout.LayoutParams(-1, assimilateHeight));
     }
 
     private void addTrioPager() {
