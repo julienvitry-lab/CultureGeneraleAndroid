@@ -462,7 +462,7 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseFixed();
-        add(tv("Culture Générale Android V9.5.0", 33, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V9.5.1", 33, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 23, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 21);
@@ -1073,18 +1073,32 @@ public class MainActivity extends Activity {
         phase = "good_answers";
         baseScrollable();
 
+        // Un thème terminé disparaît de la liste dès le retour à cet écran.
+        List<String> completedKeys = new ArrayList<>();
+        for (Map.Entry<String, Question> entry : goodThemesThisSession.entrySet()) {
+            if (!hasAvailableThemeQuestion(entry.getValue())) completedKeys.add(entry.getKey());
+        }
+        for (String key : completedKeys) goodThemesThisSession.remove(key);
+
         if (goodThemesThisSession.isEmpty()) {
-            reviewBand("Aucun thème issu d'une bonne réponse dans cette session", DARK, Color.WHITE);
+            reviewBand("Aucun thème disponible issu d'une bonne réponse dans cette session",
+                    DARK, Color.WHITE);
         } else {
             for (Question q : goodThemesThisSession.values()) {
                 Button themeButton = btn(q.theme, 22);
+                themeButton.setGravity(Gravity.CENTER);
+                themeButton.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+                themeButton.setSingleLine(false);
+                themeButton.setMaxLines(Integer.MAX_VALUE);
                 setRoundedBackgroundWithStroke(themeButton, GREEN, 14, Color.WHITE, 1);
                 themeButton.setTextColor(Color.WHITE);
                 themeButton.setOnClickListener(v -> {
                     trioReturnMode = "good";
                     showGoodAnswerDetailPage(q);
                 });
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+
+                LinearLayout.LayoutParams lp =
+                        new LinearLayout.LayoutParams(-1, cmToPx(2.0f));
                 lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
                 root.addView(themeButton, lp);
             }
@@ -1093,9 +1107,37 @@ public class MainActivity extends Activity {
         Button back = btn("Fin de partie", 22);
         setRoundedBackgroundWithStroke(back, BLUE, 14, Color.WHITE, 1);
         back.setOnClickListener(v -> showEndScreen());
-        LinearLayout.LayoutParams backLp = new LinearLayout.LayoutParams(-1, cmToPx(1.0f));
+        LinearLayout.LayoutParams backLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(1.0f));
         backLp.setMargins(0, cmToPx(0.2f), 0, 0);
         root.addView(back, backLp);
+    }
+
+    private boolean hasAvailableThemeQuestion(Question q) {
+        if (q == null) return false;
+        SQLiteDatabase db = openDb();
+        Cursor c = null;
+        try {
+            c = db.rawQuery(
+                    "SELECT theme, question, status FROM " + TABLE + " ORDER BY row_number",
+                    null
+            );
+            String targetTheme = comparisonKey(q.theme);
+            String targetQuestion = comparisonKey(q.question);
+            while (c.moveToNext()) {
+                if (!targetTheme.equals(comparisonKey(c.getString(0)))) continue;
+                if (!targetQuestion.equals(comparisonKey(c.getString(1)))) continue;
+                String status = safe(c.getString(2)).toUpperCase(Locale.ROOT);
+                if (!"M".equals(status) && !"P".equals(status) &&
+                        !"T".equals(status) && !"X".equals(status)) {
+                    return true;
+                }
+            }
+            return false;
+        } finally {
+            if (c != null) c.close();
+            db.close();
+        }
     }
 
     private void showGoodAnswerDetailPage(Question q) {
@@ -1234,7 +1276,7 @@ public class MainActivity extends Activity {
             try {
                 if (w.theme != null && !w.theme.trim().isEmpty()) {
                     for (Question q : loadThemeQuestionQuestions(w.theme, w.question)) {
-                        if (q.row != w.row) loaded.add(q);
+                        if ("good".equals(trioReturnMode) || q.row != w.row) loaded.add(q);
                     }
                 }
             } catch (Exception ignored) { }
@@ -1267,6 +1309,7 @@ public class MainActivity extends Activity {
 
     private void showTrioQuestionPage() {
         if (!"wrong_detail".equals(phase)) return;
+
         screenRoot = new LinearLayout(this);
         screenRoot.setOrientation(LinearLayout.VERTICAL);
         screenRoot.setBackgroundColor(Color.BLACK);
@@ -1291,7 +1334,8 @@ public class MainActivity extends Activity {
         anchoredTop.setPadding(dp(10), 0, dp(10), 0);
         anchoredTop.setBackgroundColor(Color.BLACK);
 
-        TextView fixedTheme = tv(q.theme == null || q.theme.trim().isEmpty() ? "Sans thème" : q.theme,
+        TextView fixedTheme = tv(
+                q.theme == null || q.theme.trim().isEmpty() ? "Sans thème" : q.theme,
                 22, Color.WHITE, Gravity.CENTER, true);
         fixedTheme.setSingleLine(false);
         fixedTheme.setMaxLines(Integer.MAX_VALUE);
@@ -1300,7 +1344,8 @@ public class MainActivity extends Activity {
         fixedTheme.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
                 compactBandPaddingPx(), compactBandPaddingPx());
         setRoundedBackgroundWithStroke(fixedTheme, GREEN, 14, Color.WHITE, 1);
-        LinearLayout.LayoutParams themeLp = new LinearLayout.LayoutParams(-1, -2);
+        LinearLayout.LayoutParams themeLp =
+                new LinearLayout.LayoutParams(-1, -2);
         themeLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
         anchoredTop.addView(fixedTheme, themeLp);
 
@@ -1312,33 +1357,91 @@ public class MainActivity extends Activity {
         fixedQuestion.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
                 compactBandPaddingPx(), compactBandPaddingPx());
         setRoundedBackgroundWithStroke(fixedQuestion, RED, 14, Color.WHITE, 1);
-        LinearLayout.LayoutParams questionLp = new LinearLayout.LayoutParams(-1, -2);
+        LinearLayout.LayoutParams questionLp =
+                new LinearLayout.LayoutParams(-1, -2);
         questionLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
         anchoredTop.addView(fixedQuestion, questionLp);
+
         screenRoot.addView(anchoredTop, new LinearLayout.LayoutParams(-1, -2));
 
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
+        // Zone fixe propre à la question courante. Elle est reconstruite à chaque
+        // changement de question, mais reste identique entre son temps 1 et son temps 2.
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
-        root.setPadding(dp(10), 0, dp(10), dp(8));
+        root.setPadding(dp(10), 0, dp(10), dp(6));
         root.setBackgroundColor(Color.BLACK);
-        scroll.addView(root);
-        screenRoot.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        screenRoot.addView(root, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        addStableTrioDetailBand(q.detail);
-        if (q.isImage) reviewImageBand(q.imageFile);
+        // Les questions-images n'ont volontairement aucun bandeau jaune.
+        if (!q.isImage && q.detail != null && !q.detail.trim().isEmpty()) {
+            addStableTrioDetailBand(q.detail);
+        }
+
+        if (q.isImage) {
+            addFixedTrioImage(q.imageFile);
+        }
+
         if (trioAnswerVisible) {
+            String answer = q.correct >= 1 && q.correct <= 4
+                    ? q.props[q.correct - 1] : "";
             addTwoMillimeterGap();
-            String answer = q.correct >= 1 && q.correct <= 4 ? q.props[q.correct - 1] : "";
-            reviewBand(answer, GREEN, Color.WHITE);
+            addFixedTrioAnswerBand(answer);
         }
 
         if (trioAnswerVisible) addTrioAssimilateButton(q);
         addTrioPager();
         addTrioBottomNavigation(true);
         setContentView(screenRoot);
+    }
+
+    private void addFixedTrioImage(String imageFileName) {
+        FrameLayout area = new FrameLayout(this);
+        area.setBackgroundColor(Color.BLACK);
+        area.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
+                compactBandPaddingPx(), compactBandPaddingPx());
+        setRoundedBackgroundWithStroke(area, DARK, 14, Color.WHITE, 1);
+
+        File f = imageFile(imageFileName);
+        Bitmap bm = f != null && f.exists() ? decode(f) : null;
+        if (bm == null) {
+            TextView missing = tv("Image introuvable : " + safe(imageFileName),
+                    18, Color.WHITE, Gravity.CENTER, true);
+            area.addView(missing, new FrameLayout.LayoutParams(
+                    -1, -1, Gravity.CENTER));
+        } else {
+            ImageView image = new ImageView(this);
+            image.setImageBitmap(bm);
+            image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            area.addView(image, new FrameLayout.LayoutParams(
+                    -1, -1, Gravity.CENTER));
+        }
+
+        LinearLayout.LayoutParams lp =
+                new LinearLayout.LayoutParams(-1, 0, 1);
+        lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+        root.addView(area, lp);
+    }
+
+    private void addFixedTrioAnswerBand(String answer) {
+        TextView v = tv(answer, 22, Color.WHITE, Gravity.CENTER, true);
+        v.setSingleLine(false);
+        v.setMaxLines(5);
+        v.setGravity(Gravity.CENTER);
+        v.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        v.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
+                compactBandPaddingPx(), compactBandPaddingPx());
+        setRoundedBackgroundWithStroke(v, GREEN, 14, Color.WHITE, 1);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            v.setAutoSizeTextTypeUniformWithConfiguration(
+                    10, 24, 1, TypedValue.COMPLEX_UNIT_SP);
+        }
+
+        LinearLayout.LayoutParams lp =
+                new LinearLayout.LayoutParams(-1, cmToPx(1.65f));
+        lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+        root.addView(v, lp);
     }
 
     private void addTrioAssimilateButton(Question q) {
@@ -1367,6 +1470,9 @@ public class MainActivity extends Activity {
             if (trioQuestions.isEmpty()) {
                 trioPageIndex = 0;
                 trioAnswerVisible = false;
+                if ("good".equals(trioReturnMode)) {
+                    goodThemesThisSession.remove(comparisonKey(q.theme));
+                }
             } else {
                 trioPageIndex = Math.min(removedIndex, trioQuestions.size() - 1);
                 trioAnswerVisible = false;
