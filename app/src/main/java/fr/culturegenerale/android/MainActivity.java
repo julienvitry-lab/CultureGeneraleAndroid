@@ -462,7 +462,7 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseFixed();
-        add(tv("Culture Générale Android V9.5.1", 33, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V9.5.2", 33, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 23, 54);
             Button b = btn("Autoriser l'accès aux fichiers", 21);
@@ -1073,18 +1073,13 @@ public class MainActivity extends Activity {
         phase = "good_answers";
         baseScrollable();
 
-        // Un thème terminé disparaît de la liste dès le retour à cet écran.
-        List<String> completedKeys = new ArrayList<>();
-        for (Map.Entry<String, Question> entry : goodThemesThisSession.entrySet()) {
-            if (!hasAvailableThemeQuestion(entry.getValue())) completedKeys.add(entry.getKey());
-        }
-        for (String key : completedKeys) goodThemesThisSession.remove(key);
-
+        // Affichage immédiat : aucune lecture complète de la base sur le thread graphique.
+        // Les thèmes terminés sont déjà retirés au moment où leur dernière question est assimilée.
         if (goodThemesThisSession.isEmpty()) {
             reviewBand("Aucun thème disponible issu d'une bonne réponse dans cette session",
                     DARK, Color.WHITE);
         } else {
-            for (Question q : goodThemesThisSession.values()) {
+            for (Question q : new ArrayList<>(goodThemesThisSession.values())) {
                 Button themeButton = btn(q.theme, 22);
                 themeButton.setGravity(Gravity.CENTER);
                 themeButton.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
@@ -1119,21 +1114,14 @@ public class MainActivity extends Activity {
         Cursor c = null;
         try {
             c = db.rawQuery(
-                    "SELECT theme, question, status FROM " + TABLE + " ORDER BY row_number",
-                    null
+                    "SELECT 1 FROM " + TABLE +
+                            " WHERE (status IS NULL OR TRIM(status)='' OR " +
+                            "UPPER(TRIM(status)) NOT IN ('M','P','T','X'))" +
+                            " AND LOWER(TRIM(theme))=LOWER(TRIM(?))" +
+                            " AND LOWER(TRIM(question))=LOWER(TRIM(?)) LIMIT 1",
+                    new String[]{safe(q.theme), safe(q.question)}
             );
-            String targetTheme = comparisonKey(q.theme);
-            String targetQuestion = comparisonKey(q.question);
-            while (c.moveToNext()) {
-                if (!targetTheme.equals(comparisonKey(c.getString(0)))) continue;
-                if (!targetQuestion.equals(comparisonKey(c.getString(1)))) continue;
-                String status = safe(c.getString(2)).toUpperCase(Locale.ROOT);
-                if (!"M".equals(status) && !"P".equals(status) &&
-                        !"T".equals(status) && !"X".equals(status)) {
-                    return true;
-                }
-            }
-            return false;
+            return c.moveToFirst();
         } finally {
             if (c != null) c.close();
             db.close();
@@ -1480,10 +1468,8 @@ public class MainActivity extends Activity {
 
             showTrioQuestionPage();
 
-            new Thread(() -> {
-                updateStatusForRow("M", q.row);
-                remainingInCurrentDomain = countRemaining(currentDomain);
-            }).start();
+            if (remainingInCurrentDomain > 0) remainingInCurrentDomain--;
+            new Thread(() -> updateStatusForRow("M", q.row)).start();
         });
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, cmToPx(1.0f));
@@ -1569,8 +1555,14 @@ public class MainActivity extends Activity {
 
         Button back = btn("Retour", 22);
         back.setOnClickListener(v -> {
-            if ("good".equals(trioReturnMode)) showGoodAnswersScreen();
-            else showWrongAnswerPage(wrongAnswerPageIndex);
+            if ("good".equals(trioReturnMode)) {
+                if (trioSourceWrongAnswer != null && trioQuestions.isEmpty()) {
+                    goodThemesThisSession.remove(comparisonKey(trioSourceWrongAnswer.theme));
+                }
+                showGoodAnswersScreen();
+            } else {
+                showWrongAnswerPage(wrongAnswerPageIndex);
+            }
         });
         Button end = btn("Fin", 22);
         setRoundedBackgroundWithStroke(end, BLUE, 14, Color.WHITE, 1);
@@ -1738,13 +1730,50 @@ public class MainActivity extends Activity {
     }
 
     private List<Question> loadThemeQuestionQuestions(String theme, String question) {
+        List<Question> list = loadThemeQuestionQuestionsFast(theme, question);
+        if (!list.isEmpty()) return list;
+
+        // Secours pour les rares lignes contenant des espaces insécables ou retours ligne atypiques.
+        return loadThemeQuestionQuestionsCompatibility(theme, question);
+    }
+
+    private List<Question> loadThemeQuestionQuestionsFast(String theme, String question) {
         List<Question> list = new ArrayList<>();
         SQLiteDatabase db = openDb();
         Cursor c = null;
         try {
             c = db.rawQuery(
-                    "SELECT row_number, megatheme, theme, question, detail, proposition_a, proposition_b, proposition_c, proposition_d, correct_index, image_file, is_image " +
-                            "FROM " + TABLE + " WHERE (status IS NULL OR TRIM(status)='' OR UPPER(TRIM(status)) NOT IN ('M','P','T','X')) ORDER BY row_number",
+                    "SELECT row_number, megatheme, theme, question, detail, " +
+                            "proposition_a, proposition_b, proposition_c, proposition_d, " +
+                            "correct_index, image_file, is_image " +
+                            "FROM " + TABLE +
+                            " WHERE (status IS NULL OR TRIM(status)='' OR " +
+                            "UPPER(TRIM(status)) NOT IN ('M','P','T','X'))" +
+                            " AND LOWER(TRIM(theme))=LOWER(TRIM(?))" +
+                            " AND LOWER(TRIM(question))=LOWER(TRIM(?))" +
+                            " ORDER BY row_number",
+                    new String[]{safe(theme), safe(question)}
+            );
+            while (c.moveToNext()) list.add(questionFromCursor(c));
+        } finally {
+            if (c != null) c.close();
+            db.close();
+        }
+        return list;
+    }
+
+    private List<Question> loadThemeQuestionQuestionsCompatibility(String theme, String question) {
+        List<Question> list = new ArrayList<>();
+        SQLiteDatabase db = openDb();
+        Cursor c = null;
+        try {
+            c = db.rawQuery(
+                    "SELECT row_number, megatheme, theme, question, detail, " +
+                            "proposition_a, proposition_b, proposition_c, proposition_d, " +
+                            "correct_index, image_file, is_image " +
+                            "FROM " + TABLE +
+                            " WHERE (status IS NULL OR TRIM(status)='' OR " +
+                            "UPPER(TRIM(status)) NOT IN ('M','P','T','X')) ORDER BY row_number",
                     null
             );
             String targetTheme = comparisonKey(theme);
@@ -1752,24 +1781,28 @@ public class MainActivity extends Activity {
             while (c.moveToNext()) {
                 if (!targetTheme.equals(comparisonKey(c.getString(2)))) continue;
                 if (!targetQuestion.equals(comparisonKey(c.getString(3)))) continue;
-                Question q = new Question();
-                q.row = c.getLong(0);
-                q.domain = normalize(c.getString(1));
-                q.theme = safe(c.getString(2));
-                q.question = safe(c.getString(3));
-                q.detail = safe(c.getString(4));
-                for (int i = 0; i < 4; i++) q.props[i] = safe(c.getString(5 + i));
-                q.correct = c.getInt(9);
-                if (q.correct < 1 || q.correct > 4) q.correct = 1;
-                q.imageFile = safe(c.getString(10));
-                q.isImage = c.getInt(11) == 1 || q.imageFile.length() > 0;
-                list.add(q);
+                list.add(questionFromCursor(c));
             }
         } finally {
             if (c != null) c.close();
             db.close();
         }
         return list;
+    }
+
+    private Question questionFromCursor(Cursor c) {
+        Question q = new Question();
+        q.row = c.getLong(0);
+        q.domain = normalize(c.getString(1));
+        q.theme = safe(c.getString(2));
+        q.question = safe(c.getString(3));
+        q.detail = safe(c.getString(4));
+        for (int i = 0; i < 4; i++) q.props[i] = safe(c.getString(5 + i));
+        q.correct = c.getInt(9);
+        if (q.correct < 1 || q.correct > 4) q.correct = 1;
+        q.imageFile = safe(c.getString(10));
+        q.isImage = c.getInt(11) == 1 || q.imageFile.length() > 0;
+        return q;
     }
 
     private long countStatus(String status) {
