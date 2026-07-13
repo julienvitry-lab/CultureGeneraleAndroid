@@ -27,6 +27,7 @@ import android.os.Environment;
 import android.provider.Settings;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -84,6 +85,8 @@ public class MainActivity extends Activity {
     private String currentDomain = null;
     private String phase = "home";
     private String phaseBeforeEnd = "question";
+    private int wrongAnswerPageIndex = 0;
+    private float wrongSwipeStartX = 0f;
 
     private final Set<Long> askedThisSession = new HashSet<>();
     private final List<Question> history = new ArrayList<>();
@@ -1047,19 +1050,59 @@ public class MainActivity extends Activity {
         root.addView(button, lp);
     }
 
-    private void baseWrongAnswersHistory() {
+    private void showWrongAnswersScreen() {
+        if (wrongAnswers.isEmpty()) {
+            phase = "wrong_answers";
+            baseScrollable();
+            reviewBand("Aucune mauvaise réponse dans cette session", DARK, Color.WHITE);
+            Button back = btn("Fin de partie", 22);
+            back.setOnClickListener(v -> showEndScreen());
+            add(back);
+            return;
+        }
+        showWrongAnswerPage(0);
+    }
+
+    private void showWrongAnswerPage(int pageIndex) {
+        phase = "wrong_answers";
+        int maxIndex = wrongAnswers.size() - 1;
+        wrongAnswerPageIndex = Math.max(0, Math.min(pageIndex, maxIndex));
+        WrongAnswer w = wrongAnswers.get(maxIndex - wrongAnswerPageIndex);
+
         screenRoot = new LinearLayout(this);
         screenRoot.setOrientation(LinearLayout.VERTICAL);
         screenRoot.setBackgroundColor(Color.BLACK);
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
+        FrameLayout centeredHost = new FrameLayout(this);
+        centeredHost.setBackgroundColor(Color.BLACK);
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(10), 0, dp(10), dp(8));
+        root.setGravity(Gravity.CENTER);
+        root.setPadding(dp(10), dp(8), dp(10), dp(8));
         root.setBackgroundColor(Color.BLACK);
-        scroll.addView(root);
+        FrameLayout.LayoutParams rootLp = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
+        centeredHost.addView(root, rootLp);
+        scroll.addView(centeredHost, new ScrollView.LayoutParams(-1, -1));
         screenRoot.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        TextView theme = tv(w.theme == null || w.theme.trim().isEmpty() ? "Sans thème" : w.theme,
+                24, Color.WHITE, Gravity.CENTER, true);
+        theme.setSingleLine(false);
+        theme.setMaxLines(Integer.MAX_VALUE);
+        theme.setGravity(Gravity.CENTER);
+        theme.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        theme.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
+                compactBandPaddingPx(), compactBandPaddingPx());
+        setRoundedBackgroundWithStroke(theme, GREEN, 14, Color.WHITE, 1);
+        theme.setOnClickListener(v -> showWrongAnswerDetailPage(w));
+        LinearLayout.LayoutParams themeLp = new LinearLayout.LayoutParams(-1, -2);
+        themeLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+        root.addView(theme, themeLp);
+
+        reviewBand(w.question, RED, Color.WHITE);
+        addWrongAnswerPrimary(w);
 
         Button fixedBack = btn("Fin de partie", 22);
         setRoundedBackgroundWithStroke(fixedBack, BLUE, 14, Color.WHITE, 1);
@@ -1069,40 +1112,28 @@ public class MainActivity extends Activity {
         fixedLp.setMargins(dp(10), halfBandGapPx(), dp(10), halfBandGapPx());
         screenRoot.addView(fixedBack, fixedLp);
 
+        View.OnTouchListener swipeListener = (v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                wrongSwipeStartX = event.getX();
+            } else if (event.getAction() == MotionEvent.ACTION_UP) {
+                float delta = event.getX() - wrongSwipeStartX;
+                int threshold = dp(70);
+                if (delta < -threshold && wrongAnswerPageIndex < maxIndex) {
+                    showWrongAnswerPage(wrongAnswerPageIndex + 1);
+                } else if (delta > threshold && wrongAnswerPageIndex > 0) {
+                    showWrongAnswerPage(wrongAnswerPageIndex - 1);
+                }
+            }
+            return false;
+        };
+        scroll.setOnTouchListener(swipeListener);
+        centeredHost.setOnTouchListener(swipeListener);
+
         actionPanelHost = new LinearLayout(this);
         actionPanelHost.setVisibility(View.GONE);
         bottomBar = new LinearLayout(this);
         bottomBar.setVisibility(View.GONE);
         setContentView(screenRoot);
-    }
-
-    private void showWrongAnswersScreen() {
-        phase = "wrong_answers";
-        baseWrongAnswersHistory();
-        if (wrongAnswers.isEmpty()) {
-            reviewBand("Aucune mauvaise réponse dans cette session", DARK, Color.WHITE);
-            return;
-        }
-        for (int i = wrongAnswers.size() - 1; i >= 0; i--) {
-            WrongAnswer w = wrongAnswers.get(i);
-            addWrongAnswerHistoryBlock(w);
-            if (i > 0) addReviewHorizontalSeparator();
-        }
-    }
-
-    private void addWrongAnswerHistoryBlock(WrongAnswer w) {
-        TextView theme = tv(w.theme == null || w.theme.trim().isEmpty() ? "Sans thème" : w.theme,
-                22, Color.WHITE, Gravity.CENTER, true);
-        theme.setSingleLine(false);
-        theme.setMaxLines(Integer.MAX_VALUE);
-        setRoundedBackgroundWithStroke(theme, GREEN, 14, Color.WHITE, 1);
-        theme.setOnClickListener(v -> showWrongAnswerDetailPage(w));
-        LinearLayout.LayoutParams themeLp = new LinearLayout.LayoutParams(-1, -2);
-        themeLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
-        root.addView(theme, themeLp);
-
-        reviewBand(w.question, RED, Color.WHITE);
-        addWrongAnswerPrimary(w);
     }
 
     private void showWrongAnswerDetailPage(WrongAnswer w) {
@@ -1111,14 +1142,36 @@ public class MainActivity extends Activity {
         screenRoot.setOrientation(LinearLayout.VERTICAL);
         screenRoot.setBackgroundColor(Color.BLACK);
 
+        LinearLayout anchoredTop = new LinearLayout(this);
+        anchoredTop.setOrientation(LinearLayout.VERTICAL);
+        anchoredTop.setPadding(dp(10), 0, dp(10), 0);
+        anchoredTop.setBackgroundColor(Color.BLACK);
+
         TextView fixedTheme = tv(w.theme == null || w.theme.trim().isEmpty() ? "Sans thème" : w.theme,
                 22, Color.WHITE, Gravity.CENTER, true);
         fixedTheme.setSingleLine(false);
         fixedTheme.setMaxLines(Integer.MAX_VALUE);
+        fixedTheme.setGravity(Gravity.CENTER);
+        fixedTheme.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        fixedTheme.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
+                compactBandPaddingPx(), compactBandPaddingPx());
         setRoundedBackgroundWithStroke(fixedTheme, GREEN, 14, Color.WHITE, 1);
         LinearLayout.LayoutParams themeLp = new LinearLayout.LayoutParams(-1, -2);
-        themeLp.setMargins(dp(10), halfBandGapPx(), dp(10), halfBandGapPx());
-        screenRoot.addView(fixedTheme, themeLp);
+        themeLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+        anchoredTop.addView(fixedTheme, themeLp);
+
+        TextView fixedQuestion = tv(w.question, 22, Color.WHITE, Gravity.CENTER, true);
+        fixedQuestion.setSingleLine(false);
+        fixedQuestion.setMaxLines(Integer.MAX_VALUE);
+        fixedQuestion.setGravity(Gravity.CENTER);
+        fixedQuestion.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        fixedQuestion.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
+                compactBandPaddingPx(), compactBandPaddingPx());
+        setRoundedBackgroundWithStroke(fixedQuestion, RED, 14, Color.WHITE, 1);
+        LinearLayout.LayoutParams questionLp = new LinearLayout.LayoutParams(-1, -2);
+        questionLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+        anchoredTop.addView(fixedQuestion, questionLp);
+        screenRoot.addView(anchoredTop, new LinearLayout.LayoutParams(-1, -2));
 
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
@@ -1129,7 +1182,6 @@ public class MainActivity extends Activity {
         scroll.addView(root);
         screenRoot.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        reviewBand(w.question, RED, Color.WHITE);
         addWrongAnswerPrimary(w);
 
         if (w.theme != null && !w.theme.trim().isEmpty()) {
@@ -1150,20 +1202,23 @@ public class MainActivity extends Activity {
         }
 
         LinearLayout nav = new LinearLayout(this);
-        nav.setOrientation(LinearLayout.HORIZONTAL);
+        nav.setOrientation(LinearLayout.VERTICAL);
         nav.setGravity(Gravity.CENTER);
+        nav.setPadding(dp(10), 0, dp(10), 0);
+
         Button back = btn("Retour aux mauvaises réponses", 18);
-        back.setOnClickListener(v -> showWrongAnswersScreen());
+        back.setOnClickListener(v -> showWrongAnswerPage(wrongAnswerPageIndex));
         Button end = btn("Fin de partie", 18);
         setRoundedBackgroundWithStroke(end, BLUE, 14, Color.WHITE, 1);
         end.setOnClickListener(v -> showEndScreen());
+
         int gap = cmToPx(0.2f);
-        LinearLayout.LayoutParams leftLp = new LinearLayout.LayoutParams(0, cmToPx(1.8f), 1);
-        leftLp.setMargins(dp(10), gap / 2, gap / 2, gap / 2);
-        LinearLayout.LayoutParams rightLp = new LinearLayout.LayoutParams(0, cmToPx(1.8f), 1);
-        rightLp.setMargins(gap / 2, gap / 2, dp(10), gap / 2);
-        nav.addView(back, leftLp);
-        nav.addView(end, rightLp);
+        LinearLayout.LayoutParams backLp = new LinearLayout.LayoutParams(-1, cmToPx(1.45f));
+        backLp.setMargins(0, gap / 2, 0, gap / 2);
+        LinearLayout.LayoutParams endLp = new LinearLayout.LayoutParams(-1, cmToPx(1.45f));
+        endLp.setMargins(0, gap / 2, 0, gap / 2);
+        nav.addView(back, backLp);
+        nav.addView(end, endLp);
         screenRoot.addView(nav, new LinearLayout.LayoutParams(-1, -2));
 
         actionPanelHost = new LinearLayout(this);
