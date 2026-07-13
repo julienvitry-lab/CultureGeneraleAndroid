@@ -27,7 +27,6 @@ import android.os.Environment;
 import android.provider.Settings;
 import android.util.TypedValue;
 import android.view.Gravity;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -86,7 +85,6 @@ public class MainActivity extends Activity {
     private String phase = "home";
     private String phaseBeforeEnd = "question";
     private int wrongAnswerPageIndex = 0;
-    private float wrongSwipeStartX = 0f;
 
     private final Set<Long> askedThisSession = new HashSet<>();
     private final List<Question> history = new ArrayList<>();
@@ -1073,6 +1071,8 @@ public class MainActivity extends Activity {
         screenRoot.setOrientation(LinearLayout.VERTICAL);
         screenRoot.setBackgroundColor(Color.BLACK);
 
+        // Une seule mauvaise réponse est affichée par page. Le ScrollView ne sert
+        // qu'aux contenus exceptionnellement longs, jamais à passer d'une erreur à l'autre.
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         FrameLayout centeredHost = new FrameLayout(this);
@@ -1104,6 +1104,44 @@ public class MainActivity extends Activity {
         reviewBand(w.question, RED, Color.WHITE);
         addWrongAnswerPrimary(w);
 
+        // Barre de navigation : trois emplacements de largeur strictement identique.
+        LinearLayout pager = new LinearLayout(this);
+        pager.setOrientation(LinearLayout.HORIZONTAL);
+        pager.setGravity(Gravity.CENTER);
+        pager.setPadding(dp(10), 0, dp(10), 0);
+        int gap = cmToPx(0.2f);
+        int pagerHeight = cmToPx(1.20f);
+
+        Button previous = btn("←", 22);
+        setRoundedBackgroundWithStroke(previous, GREY, 14, Color.WHITE, 1);
+        previous.setOnClickListener(v -> showWrongAnswerPage(wrongAnswerPageIndex - 1));
+        if (wrongAnswerPageIndex == 0) previous.setVisibility(View.INVISIBLE);
+        LinearLayout.LayoutParams previousLp = new LinearLayout.LayoutParams(0, pagerHeight, 1);
+        previousLp.setMargins(0, 0, gap / 2, 0);
+        pager.addView(previous, previousLp);
+
+        TextView position = tv((wrongAnswerPageIndex + 1) + " / " + wrongAnswers.size(),
+                22, Color.WHITE, Gravity.CENTER, true);
+        position.setSingleLine(true);
+        position.setGravity(Gravity.CENTER);
+        position.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        setRoundedBackgroundWithStroke(position, DARK, 14, Color.WHITE, 1);
+        LinearLayout.LayoutParams positionLp = new LinearLayout.LayoutParams(0, pagerHeight, 1);
+        positionLp.setMargins(gap / 2, 0, gap / 2, 0);
+        pager.addView(position, positionLp);
+
+        Button next = btn("→", 22);
+        setRoundedBackgroundWithStroke(next, GREY, 14, Color.WHITE, 1);
+        next.setOnClickListener(v -> showWrongAnswerPage(wrongAnswerPageIndex + 1));
+        if (wrongAnswerPageIndex == maxIndex) next.setVisibility(View.INVISIBLE);
+        LinearLayout.LayoutParams nextLp = new LinearLayout.LayoutParams(0, pagerHeight, 1);
+        nextLp.setMargins(gap / 2, 0, 0, 0);
+        pager.addView(next, nextLp);
+
+        LinearLayout.LayoutParams pagerLp = new LinearLayout.LayoutParams(-1, -2);
+        pagerLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+        screenRoot.addView(pager, pagerLp);
+
         Button fixedBack = btn("Fin de partie", 22);
         setRoundedBackgroundWithStroke(fixedBack, BLUE, 14, Color.WHITE, 1);
         fixedBack.setOnClickListener(v -> showEndScreen());
@@ -1111,23 +1149,6 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams fixedLp = new LinearLayout.LayoutParams(-1, -2);
         fixedLp.setMargins(dp(10), halfBandGapPx(), dp(10), halfBandGapPx());
         screenRoot.addView(fixedBack, fixedLp);
-
-        View.OnTouchListener swipeListener = (v, event) -> {
-            if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                wrongSwipeStartX = event.getX();
-            } else if (event.getAction() == MotionEvent.ACTION_UP) {
-                float delta = event.getX() - wrongSwipeStartX;
-                int threshold = dp(70);
-                if (delta < -threshold && wrongAnswerPageIndex < maxIndex) {
-                    showWrongAnswerPage(wrongAnswerPageIndex + 1);
-                } else if (delta > threshold && wrongAnswerPageIndex > 0) {
-                    showWrongAnswerPage(wrongAnswerPageIndex - 1);
-                }
-            }
-            return false;
-        };
-        scroll.setOnTouchListener(swipeListener);
-        centeredHost.setOnTouchListener(swipeListener);
 
         actionPanelHost = new LinearLayout(this);
         actionPanelHost.setVisibility(View.GONE);
@@ -1201,25 +1222,29 @@ public class MainActivity extends Activity {
             }).start();
         }
 
+        // Deux boutons ancrés côte à côte, hauteur fixe de 1 cm.
         LinearLayout nav = new LinearLayout(this);
-        nav.setOrientation(LinearLayout.VERTICAL);
+        nav.setOrientation(LinearLayout.HORIZONTAL);
         nav.setGravity(Gravity.CENTER);
         nav.setPadding(dp(10), 0, dp(10), 0);
 
-        Button back = btn("Retour aux mauvaises réponses", 18);
+        Button back = btn("Retour", 22);
         back.setOnClickListener(v -> showWrongAnswerPage(wrongAnswerPageIndex));
-        Button end = btn("Fin de partie", 18);
+        Button end = btn("Fin", 22);
         setRoundedBackgroundWithStroke(end, BLUE, 14, Color.WHITE, 1);
         end.setOnClickListener(v -> showEndScreen());
 
-        int gap = cmToPx(0.2f);
-        LinearLayout.LayoutParams backLp = new LinearLayout.LayoutParams(-1, cmToPx(1.45f));
-        backLp.setMargins(0, gap / 2, 0, gap / 2);
-        LinearLayout.LayoutParams endLp = new LinearLayout.LayoutParams(-1, cmToPx(1.45f));
-        endLp.setMargins(0, gap / 2, 0, gap / 2);
+        int navGap = cmToPx(0.2f);
+        int navHeight = cmToPx(1.0f);
+        LinearLayout.LayoutParams backLp = new LinearLayout.LayoutParams(0, navHeight, 1);
+        backLp.setMargins(0, 0, navGap / 2, 0);
+        LinearLayout.LayoutParams endLp = new LinearLayout.LayoutParams(0, navHeight, 1);
+        endLp.setMargins(navGap / 2, 0, 0, 0);
         nav.addView(back, backLp);
         nav.addView(end, endLp);
-        screenRoot.addView(nav, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams navLp = new LinearLayout.LayoutParams(-1, -2);
+        navLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+        screenRoot.addView(nav, navLp);
 
         actionPanelHost = new LinearLayout(this);
         actionPanelHost.setVisibility(View.GONE);
