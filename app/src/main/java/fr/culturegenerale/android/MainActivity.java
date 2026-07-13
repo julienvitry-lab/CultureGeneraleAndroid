@@ -458,16 +458,16 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseFixed();
-        add(tv("Culture Générale Android V9.4.6", 32, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture Générale Android V9.4.8", 33, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
-            band("Accès fichiers Android à autoriser", RED, Color.WHITE, 22, 54);
-            Button b = btn("Autoriser l'accès aux fichiers", 20);
+            band("Accès fichiers Android à autoriser", RED, Color.WHITE, 23, 54);
+            Button b = btn("Autoriser l'accès aux fichiers", 21);
             b.setOnClickListener(v -> askAccess());
             add(b);
             return;
         }
         if (!dbFile.exists()) {
-            band("Base SQLite introuvable : " + dbFile.getAbsolutePath(), RED, Color.WHITE, 18, 60);
+            band("Base SQLite introuvable : " + dbFile.getAbsolutePath(), RED, Color.WHITE, 19, 60);
             return;
         }
         migrateLegacyImageFlags();
@@ -490,7 +490,7 @@ public class MainActivity extends Activity {
             for (int col = 0; col < 2; col++) {
                 String d = DOMAINS[rowIndex * 2 + col];
                 long n = domainCounts.getOrDefault(d, 0L);
-                Button b = btn(d + "\n(" + n + ")", 20);
+                Button b = btn(d + "\n(" + n + ")", 21);
                 b.setSingleLine(false);
                 b.setMaxLines(3);
                 setRoundedBackgroundWithStroke(b, domainBandColor(d), 16, Color.WHITE, 1);
@@ -509,7 +509,7 @@ public class MainActivity extends Activity {
 
         long total = 0;
         for (long v : domainCounts.values()) total += v;
-        Button all = btn("Tous les domaines\n(" + total + ")", 23);
+        Button all = btn("Tous les domaines\n(" + total + ")", 24);
         all.setSingleLine(false);
         all.setMaxLines(3);
         setRoundedBackgroundWithStroke(all, Color.BLACK, 16, Color.WHITE, 1);
@@ -1276,11 +1276,56 @@ public class MainActivity extends Activity {
             addTwoMillimeterGap();
             String answer = q.correct >= 1 && q.correct <= 4 ? q.props[q.correct - 1] : "";
             reviewBand(answer, GREEN, Color.WHITE);
+            addTrioAssimilateButton(q);
         }
 
         addTrioPager();
         addTrioBottomNavigation(true);
         setContentView(screenRoot);
+    }
+
+    private void addTrioAssimilateButton(Question q) {
+        Button assimilate = btn("Assimiler", 22);
+        setRoundedBackgroundWithStroke(assimilate, GREEN, 14, Color.WHITE, 1);
+        assimilate.setTextColor(Color.WHITE);
+        assimilate.setOnClickListener(v -> {
+            assimilate.setEnabled(false);
+
+            int removedIndex = trioPageIndex;
+            if (removedIndex >= 0 && removedIndex < trioQuestions.size()
+                    && trioQuestions.get(removedIndex).row == q.row) {
+                trioQuestions.remove(removedIndex);
+            } else {
+                for (int i = 0; i < trioQuestions.size(); i++) {
+                    if (trioQuestions.get(i).row == q.row) {
+                        trioQuestions.remove(i);
+                        removedIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            // Même enchaînement que la flèche droite au temps 2 :
+            // la question courante est retirée puis la question suivante apparaît au temps 1.
+            if (trioQuestions.isEmpty()) {
+                trioPageIndex = 0;
+                trioAnswerVisible = false;
+            } else {
+                trioPageIndex = Math.min(removedIndex, trioQuestions.size() - 1);
+                trioAnswerVisible = false;
+            }
+
+            showTrioQuestionPage();
+
+            new Thread(() -> {
+                updateStatusForRow("M", q.row);
+                remainingInCurrentDomain = countRemaining(currentDomain);
+            }).start();
+        });
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, cmToPx(1.0f));
+        lp.setMargins(0, cmToPx(0.2f), 0, 0);
+        root.addView(assimilate, lp);
     }
 
     private void addTrioPager() {
