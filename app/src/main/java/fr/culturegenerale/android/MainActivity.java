@@ -56,6 +56,7 @@ import java.util.Random;
 import java.util.Set;
 
 public class MainActivity extends Activity {
+    private static final String APP_VERSION = "V9.6.0";
     private static final String APP_FOLDER = "Culture Générale";
     private static final String DB_NAME = "questions_base.sqlite";
     private static final String TABLE = "questions";
@@ -462,16 +463,16 @@ public class MainActivity extends Activity {
         phase = "home";
         current = null;
         baseFixed();
-        add(tv("Culture Générale Android V9.5.9", 33, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture Générale", 34, Color.WHITE, Gravity.CENTER, true));
         if (!hasAccess()) {
-            band("Accès fichiers Android à autoriser", RED, Color.WHITE, 23, 54);
-            Button b = btn("Autoriser l'accès aux fichiers", 21);
+            band("Accès fichiers Android à autoriser", RED, Color.WHITE, 24, 54);
+            Button b = btn("Autoriser l'accès aux fichiers", 22);
             b.setOnClickListener(v -> askAccess());
             add(b);
             return;
         }
         if (!dbFile.exists()) {
-            band("Base SQLite introuvable : " + dbFile.getAbsolutePath(), RED, Color.WHITE, 19, 60);
+            band("Base SQLite introuvable : " + dbFile.getAbsolutePath(), RED, Color.WHITE, 20, 60);
             return;
         }
         migrateLegacyImageFlags();
@@ -494,7 +495,7 @@ public class MainActivity extends Activity {
             for (int col = 0; col < 2; col++) {
                 String d = DOMAINS[rowIndex * 2 + col];
                 long n = domainCounts.getOrDefault(d, 0L);
-                Button b = btn(d + "\n(" + n + ")", 21);
+                Button b = btn(d + "\n(" + n + ")", 22);
                 b.setSingleLine(false);
                 b.setMaxLines(3);
                 setRoundedBackgroundWithStroke(b, domainBandColor(d), 16, Color.WHITE, 1);
@@ -513,7 +514,7 @@ public class MainActivity extends Activity {
 
         long total = 0;
         for (long v : domainCounts.values()) total += v;
-        Button all = btn("Tous les domaines\n(" + total + ")", 24);
+        Button all = btn("Tous les domaines\n(" + total + ")", 25);
         all.setSingleLine(false);
         all.setMaxLines(3);
         setRoundedBackgroundWithStroke(all, Color.BLACK, 16, Color.WHITE, 1);
@@ -807,16 +808,16 @@ public class MainActivity extends Activity {
     private void setQuestionBottomBar() {
         bottomBar.setVisibility(View.VISIBLE);
         bottomBar.removeAllViews();
-        addBottomButton("Signaler", RED, v -> showProblemMenu());
-        addBottomButton("Menu", BLUE, v -> showMainMenu());
+        addBottomButton("Menu", RED, v -> showMainMenu());
+        addBottomButton("←", BLUE, v -> goBackFromGameScreen());
         addBottomButton("Propositions", GREEN, v -> showChoices());
     }
 
     private void setChoicesBottomBar() {
         bottomBar.setVisibility(View.VISIBLE);
         bottomBar.removeAllViews();
-        addBottomButton("Signaler", RED, v -> showProblemMenu());
-        addBottomButton("Menu", BLUE, v -> showMainMenu());
+        addBottomButton("Menu", RED, v -> showMainMenu());
+        addBottomButton("←", BLUE, v -> showQuestion());
         addBottomButton("Révéler", GREEN, v -> revealMental());
     }
 
@@ -849,6 +850,17 @@ public class MainActivity extends Activity {
     // Désactivé volontairement
 }
 
+    private void goBackFromGameScreen() {
+        hideActionPanel();
+        if ("choices".equals(phase) || "reveal".equals(phase) || "result".equals(phase)) {
+            showQuestion();
+        } else if (historyIndex > 0) {
+            previousQuestion();
+        } else {
+            showHome();
+        }
+    }
+
     private void showProblemMenu() {
         if (actionPanelHost != null && actionPanelHost.getVisibility() == View.VISIBLE &&
                 "problem".equals(actionPanelHost.getTag())) {
@@ -873,6 +885,7 @@ public class MainActivity extends Activity {
             hideActionPanel();
             return;
         }
+
         LinearLayout panel = createRightActionPanel();
 
         addActionPanelButton(panel, "Fin de partie", RED, cmToPx(1.0f), v -> {
@@ -880,24 +893,49 @@ public class MainActivity extends Activity {
             showEndScreen();
         });
 
+        addActionPanelButton(panel, "Signaler", GREY, cmToPx(1.0f), v -> {
+            showSignalSubmenu();
+        });
+
+        addActionPanelButton(panel, "Assimiler", NAVY, cmToPx(1.0f), v -> {
+            showAssimilateSubmenu();
+        });
+
+        showActionPanel(panel, "menu", 0);
+    }
+
+    private void showSignalSubmenu() {
+        LinearLayout panel = createRightActionPanel();
+
+        addActionPanelButton(panel, "Contenu analogue", RED, cmToPx(1.0f), v -> {
+            hideActionPanel();
+            flagAndNext("T", "Contenu analogue exclu");
+        });
+
+        addActionPanelButton(panel, "Problème ponctuel", RED, cmToPx(1.0f), v -> {
+            hideActionPanel();
+            flagAndNext("P", "Problème noté");
+        });
+
+        addActionPanelButton(panel, "Retour", GREY, cmToPx(1.0f), v -> showMainMenu());
+        showActionPanel(panel, "signal_submenu", 0);
+    }
+
+    private void showAssimilateSubmenu() {
+        LinearLayout panel = createRightActionPanel();
+
         addActionPanelButton(panel, "Mauvaises réponses", GREY, cmToPx(1.0f), v -> {
             hideActionPanel();
             showWrongAnswersScreen();
         });
 
-        if ("choices".equals(phase) || "reveal".equals(phase) || "result".equals(phase)) {
-            addActionPanelButton(panel, "Revoir la question", GREY, cmToPx(1.0f), v -> {
-                hideActionPanel();
-                showQuestion();
-            });
-        } else if (historyIndex > 0) {
-            addActionPanelButton(panel, "Question précédente", GREY, cmToPx(1.0f), v -> {
-                hideActionPanel();
-                previousQuestion();
-            });
-        }
+        addActionPanelButton(panel, "Bonnes réponses", GREEN, cmToPx(1.0f), v -> {
+            hideActionPanel();
+            showGoodAnswersScreen();
+        });
 
-        showActionPanel(panel, "menu", 1);
+        addActionPanelButton(panel, "Retour", GREY, cmToPx(1.0f), v -> showMainMenu());
+        showActionPanel(panel, "assimilate_submenu", 0);
     }
 
     private LinearLayout createRightActionPanel() {
@@ -1064,22 +1102,23 @@ public class MainActivity extends Activity {
     private void rememberGoodTheme(Question q) {
         if (q == null || q.theme == null || q.theme.trim().isEmpty()) return;
         String key = comparisonKey(q.theme);
-        if (!goodThemesThisSession.containsKey(key)) {
-            goodThemesThisSession.put(key, q);
-        }
+        // Une nouvelle bonne réponse replace le thème en tête de la consultation.
+        goodThemesThisSession.remove(key);
+        goodThemesThisSession.put(key, q);
     }
 
     private void showGoodAnswersScreen() {
         phase = "good_answers";
         baseScrollable();
 
-        // Affichage immédiat : aucune lecture complète de la base sur le thread graphique.
-        // Les thèmes terminés sont déjà retirés au moment où leur dernière question est assimilée.
-        if (goodThemesThisSession.isEmpty()) {
+        List<Question> themes = new ArrayList<>(goodThemesThisSession.values());
+        java.util.Collections.reverse(themes);
+
+        if (themes.isEmpty()) {
             reviewBand("Aucun thème disponible issu d'une bonne réponse dans cette session",
                     DARK, Color.WHITE);
         } else {
-            for (Question q : new ArrayList<>(goodThemesThisSession.values())) {
+            for (Question q : themes) {
                 Button themeButton = btn(q.theme, 22);
                 themeButton.setGravity(Gravity.CENTER);
                 themeButton.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
@@ -1099,13 +1138,16 @@ public class MainActivity extends Activity {
             }
         }
 
-        Button back = btn("Fin de partie", 22);
-        setRoundedBackgroundWithStroke(back, BLUE, 14, Color.WHITE, 1);
-        back.setOnClickListener(v -> showEndScreen());
-        LinearLayout.LayoutParams backLp =
+        bottomBar.setVisibility(View.VISIBLE);
+        bottomBar.removeAllViews();
+        Button finishButton = btn("Fin de partie", 22);
+        setRoundedBackgroundWithStroke(finishButton, BLUE, 14, Color.WHITE, 1);
+        finishButton.setTextColor(Color.WHITE);
+        finishButton.setOnClickListener(v -> showEndScreen());
+        LinearLayout.LayoutParams finishLp =
                 new LinearLayout.LayoutParams(-1, cmToPx(1.0f));
-        backLp.setMargins(0, cmToPx(0.2f), 0, 0);
-        root.addView(back, backLp);
+        finishLp.setMargins(dp(10), 0, dp(10), cmToPx(0.2f));
+        bottomBar.addView(finishButton, finishLp);
     }
 
     private boolean hasAvailableThemeQuestion(Question q) {
