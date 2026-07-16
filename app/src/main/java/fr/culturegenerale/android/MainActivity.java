@@ -46,6 +46,7 @@ import java.io.BufferedWriter;
 import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
 import java.util.ArrayList;
+import java.text.Normalizer;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -54,9 +55,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.Collections;
 
 public class MainActivity extends Activity {
-    private static final String APP_VERSION = "V9.6.0";
+    private static final String APP_VERSION = "V10.0.0";
     private static final String APP_FOLDER = "Culture Générale";
     private static final String DB_NAME = "questions_base.sqlite";
     private static final String TABLE = "questions";
@@ -87,6 +89,13 @@ public class MainActivity extends Activity {
     private String currentDomain = null;
     private String phase = "home";
     private String phaseBeforeEnd = "question";
+    private String gameMode = "challenge";
+    private String revisionMode = "normal";
+    private String revisionDomain = null;
+    private String revisionStartTheme = "";
+    private final List<Question> revisionQuestions = new ArrayList<>();
+    private int revisionIndex = 0;
+    private boolean revisionAnswerVisible = false;
     private int wrongAnswerPageIndex = 0;
     private final List<Question> trioQuestions = new ArrayList<>();
     private int trioPageIndex = 0;
@@ -462,24 +471,63 @@ public class MainActivity extends Activity {
     private void showHome() {
         phase = "home";
         current = null;
+        gameMode = "home";
         baseFixed();
         add(tv("Culture Générale", 34, Color.WHITE, Gravity.CENTER, true));
+
         if (!hasAccess()) {
             band("Accès fichiers Android à autoriser", RED, Color.WHITE, 24, 54);
-            Button b = btn("Autoriser l'accès aux fichiers", 22);
-            b.setOnClickListener(v -> askAccess());
-            add(b);
+            Button permission = btn("Autoriser l'accès aux fichiers", 22);
+            permission.setOnClickListener(v -> askAccess());
+            add(permission);
             return;
         }
         if (!dbFile.exists()) {
-            band("Base SQLite introuvable : " + dbFile.getAbsolutePath(), RED, Color.WHITE, 20, 60);
+            band("Base SQLite introuvable : " + dbFile.getAbsolutePath(),
+                    RED, Color.WHITE, 20, 60);
             return;
         }
+
         migrateLegacyImageFlags();
         exportProblemsP(false);
-	Map<String, Long> domainCounts = countDomains();
 
-        int gap = cmToPx(0.2f); // 2 mm exactement entre les rubriques
+        Space topSpace = new Space(this);
+        root.addView(topSpace, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        Button challenge = btn("DÉFI\nQuestions aléatoires", 25);
+        challenge.setSingleLine(false);
+        challenge.setMaxLines(3);
+        setRoundedBackgroundWithStroke(challenge, GREEN, 18, Color.WHITE, 1);
+        challenge.setTextColor(Color.WHITE);
+        challenge.setOnClickListener(v -> showChallengeDomains());
+        LinearLayout.LayoutParams challengeLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(3.0f));
+        challengeLp.setMargins(0, cmToPx(0.2f), 0, cmToPx(0.25f));
+        root.addView(challenge, challengeLp);
+
+        Button revision = btn("RÉVISION\nQuestions dans l'ordre", 25);
+        revision.setSingleLine(false);
+        revision.setMaxLines(3);
+        setRoundedBackgroundWithStroke(revision, BLUE, 18, Color.WHITE, 1);
+        revision.setTextColor(Color.WHITE);
+        revision.setOnClickListener(v -> showRevisionModeChoice());
+        LinearLayout.LayoutParams revisionLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(3.0f));
+        revisionLp.setMargins(0, cmToPx(0.25f), 0, cmToPx(0.2f));
+        root.addView(revision, revisionLp);
+
+        Space bottomSpace = new Space(this);
+        root.addView(bottomSpace, new LinearLayout.LayoutParams(-1, 0, 1));
+    }
+
+    private void showChallengeDomains() {
+        phase = "challenge_domains";
+        gameMode = "challenge";
+        baseFixed();
+        add(tv("Mode Défi", 32, Color.WHITE, Gravity.CENTER, true));
+
+        Map<String, Long> domainCounts = countDomains();
+        int gap = cmToPx(0.2f);
         int halfGap = cmToPx(0.10f);
 
         LinearLayout selector = new LinearLayout(this);
@@ -498,29 +546,540 @@ public class MainActivity extends Activity {
                 Button b = btn(d + "\n(" + n + ")", 22);
                 b.setSingleLine(false);
                 b.setMaxLines(3);
-                setRoundedBackgroundWithStroke(b, domainBandColor(d), 16, Color.WHITE, 1);
+                setRoundedBackgroundWithStroke(
+                        b, domainBandColor(d), 16, Color.WHITE, 1);
                 b.setTextColor(domainBandTextColor(d));
                 b.setOnClickListener(v -> startDomain(d));
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, 1);
+                LinearLayout.LayoutParams lp =
+                        new LinearLayout.LayoutParams(0, -1, 1);
                 if (col == 0) lp.setMargins(0, 0, halfGap, 0);
                 else lp.setMargins(halfGap, 0, 0, 0);
                 row.addView(b, lp);
             }
 
             selector.addView(row, new LinearLayout.LayoutParams(-1, 0, 1));
-            Space verticalGap = new Space(this);
-            selector.addView(verticalGap, new LinearLayout.LayoutParams(-1, gap));
+            if (rowIndex < 3) {
+                Space verticalGap = new Space(this);
+                selector.addView(verticalGap,
+                        new LinearLayout.LayoutParams(-1, gap));
+            }
         }
 
         long total = 0;
-        for (long v : domainCounts.values()) total += v;
+        for (long value : domainCounts.values()) total += value;
         Button all = btn("Tous les domaines\n(" + total + ")", 25);
         all.setSingleLine(false);
         all.setMaxLines(3);
         setRoundedBackgroundWithStroke(all, Color.BLACK, 16, Color.WHITE, 1);
         all.setTextColor(Color.WHITE);
         all.setOnClickListener(v -> startDomain(null));
-        selector.addView(all, new LinearLayout.LayoutParams(-1, 0, 1));
+        LinearLayout.LayoutParams allLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(2.0f));
+        allLp.setMargins(0, gap, 0, 0);
+        selector.addView(all, allLp);
+
+        Button back = btn("Retour", 22);
+        back.setOnClickListener(v -> showHome());
+        LinearLayout.LayoutParams backLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(1.0f));
+        backLp.setMargins(0, cmToPx(0.2f), 0, cmToPx(0.2f));
+        root.addView(back, backLp);
+    }
+
+    private void showRevisionModeChoice() {
+        phase = "revision_mode";
+        gameMode = "revision";
+        baseFixed();
+        add(tv("Mode Révision", 32, Color.WHITE, Gravity.CENTER, true));
+
+        Space top = new Space(this);
+        root.addView(top, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        Button normal = btn("NORMAL\nToute la base", 25);
+        normal.setSingleLine(false);
+        normal.setMaxLines(3);
+        setRoundedBackgroundWithStroke(normal, GREEN, 18, Color.WHITE, 1);
+        normal.setOnClickListener(v -> {
+            revisionMode = "normal";
+            showRevisionDomains();
+        });
+        LinearLayout.LayoutParams normalLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(3.0f));
+        normalLp.setMargins(0, cmToPx(0.2f), 0, cmToPx(0.25f));
+        root.addView(normal, normalLp);
+
+        Button ultimate = btn("ULTIMATE\nQuestions encore disponibles", 25);
+        ultimate.setSingleLine(false);
+        ultimate.setMaxLines(3);
+        setRoundedBackgroundWithStroke(ultimate, NAVY, 18, Color.WHITE, 1);
+        ultimate.setOnClickListener(v -> {
+            revisionMode = "ultimate";
+            showRevisionDomains();
+        });
+        LinearLayout.LayoutParams ultimateLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(3.0f));
+        ultimateLp.setMargins(0, cmToPx(0.25f), 0, cmToPx(0.2f));
+        root.addView(ultimate, ultimateLp);
+
+        Space bottom = new Space(this);
+        root.addView(bottom, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        Button back = btn("Retour", 22);
+        back.setOnClickListener(v -> showHome());
+        root.addView(back, new LinearLayout.LayoutParams(-1, cmToPx(1.0f)));
+    }
+
+    private void showRevisionDomains() {
+        phase = "revision_domains";
+        baseScrollable();
+        add(tv("Révision " +
+                ("ultimate".equals(revisionMode) ? "Ultimate" : "Normale"),
+                30, Color.WHITE, Gravity.CENTER, true));
+
+        for (String domain : DOMAINS) {
+            Button b = btn(domain, 23);
+            setRoundedBackgroundWithStroke(
+                    b, domainBandColor(domain), 16, Color.WHITE, 1);
+            b.setTextColor(domainBandTextColor(domain));
+            b.setOnClickListener(v -> {
+                revisionDomain = domain;
+                showRevisionLetters();
+            });
+            LinearLayout.LayoutParams lp =
+                    new LinearLayout.LayoutParams(-1, cmToPx(1.6f));
+            lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+            root.addView(b, lp);
+        }
+
+        Button back = btn("Retour", 22);
+        back.setOnClickListener(v -> showRevisionModeChoice());
+        LinearLayout.LayoutParams backLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(1.0f));
+        backLp.setMargins(0, cmToPx(0.2f), 0, cmToPx(0.2f));
+        root.addView(back, backLp);
+    }
+
+    private void showRevisionLetters() {
+        phase = "revision_letters";
+        baseFixed();
+        add(tv(revisionDomain, 30, Color.WHITE, Gravity.CENTER, true));
+        band("Choisissez la première lettre du thème",
+                DARK, Color.WHITE, 20, 54);
+
+        List<String> themes = loadOrderedRevisionThemes(revisionDomain, revisionMode);
+        Map<String, Boolean> letters = new java.util.LinkedHashMap<>();
+        for (String theme : themes) letters.put(themeInitial(theme), true);
+
+        LinearLayout grid = new LinearLayout(this);
+        grid.setOrientation(LinearLayout.VERTICAL);
+        grid.setGravity(Gravity.CENTER);
+        root.addView(grid, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        List<String> letterList = new ArrayList<>(letters.keySet());
+        int index = 0;
+        while (index < letterList.size()) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER);
+
+            for (int col = 0; col < 5; col++) {
+                if (index >= letterList.size()) {
+                    Space empty = new Space(this);
+                    row.addView(empty, new LinearLayout.LayoutParams(0, -1, 1));
+                    continue;
+                }
+                String letter = letterList.get(index++);
+                Button b = btn(letter, 22);
+                b.setOnClickListener(v -> showRevisionThemes(letter));
+                LinearLayout.LayoutParams lp =
+                        new LinearLayout.LayoutParams(0, -1, 1);
+                lp.setMargins(dp(3), dp(3), dp(3), dp(3));
+                row.addView(b, lp);
+            }
+            grid.addView(row, new LinearLayout.LayoutParams(-1, 0, 1));
+        }
+
+        Button back = btn("Retour", 22);
+        back.setOnClickListener(v -> showRevisionDomains());
+        root.addView(back, new LinearLayout.LayoutParams(-1, cmToPx(1.0f)));
+    }
+
+    private void showRevisionThemes(String initial) {
+        phase = "revision_themes";
+        baseScrollable();
+        add(tv("Thèmes commençant par " + initial,
+                28, Color.WHITE, Gravity.CENTER, true));
+
+        List<String> themes = loadOrderedRevisionThemes(revisionDomain, revisionMode);
+        for (String theme : themes) {
+            if (!initial.equals(themeInitial(theme))) continue;
+            Button b = btn(theme, 22);
+            b.setSingleLine(false);
+            b.setMaxLines(Integer.MAX_VALUE);
+            setRoundedBackgroundWithStroke(b, GREEN, 14, Color.WHITE, 1);
+            b.setOnClickListener(v -> startRevisionAtTheme(theme));
+            LinearLayout.LayoutParams lp =
+                    new LinearLayout.LayoutParams(-1, cmToPx(1.8f));
+            lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+            root.addView(b, lp);
+        }
+
+        Button back = btn("Retour", 22);
+        back.setOnClickListener(v -> showRevisionLetters());
+        LinearLayout.LayoutParams backLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(1.0f));
+        backLp.setMargins(0, cmToPx(0.2f), 0, cmToPx(0.2f));
+        root.addView(back, backLp);
+    }
+
+    private String revisionWhereClause() {
+        if ("ultimate".equals(revisionMode)) {
+            return "(status IS NULL OR TRIM(status)='' OR " +
+                    "UPPER(TRIM(status)) NOT IN ('M','P','T','X'))";
+        }
+        return "1=1";
+    }
+
+    private List<String> loadOrderedRevisionThemes(String domain, String mode) {
+        List<String> themes = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        SQLiteDatabase db = openDb();
+        Cursor c = null;
+        try {
+            c = db.rawQuery(
+                    "SELECT theme FROM " + TABLE +
+                            " WHERE LOWER(TRIM(megatheme))=LOWER(TRIM(?))" +
+                            " AND " + revisionWhereClause() +
+                            " ORDER BY row_number",
+                    new String[]{domain}
+            );
+            while (c.moveToNext()) {
+                String theme = safe(c.getString(0)).trim();
+                if (theme.isEmpty()) continue;
+                String key = comparisonKey(theme);
+                if (seen.add(key)) themes.add(theme);
+            }
+        } finally {
+            if (c != null) c.close();
+            db.close();
+        }
+        return themes;
+    }
+
+    private String themeInitial(String theme) {
+        String value = safe(theme).trim();
+        if (value.isEmpty()) return "#";
+        String normalized = Normalizer.normalize(value, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "");
+        if (normalized.isEmpty()) return "#";
+        char first = Character.toUpperCase(normalized.charAt(0));
+        return Character.isLetter(first) ? String.valueOf(first) : "#";
+    }
+
+    private void startRevisionAtTheme(String theme) {
+        revisionStartTheme = theme;
+        revisionQuestions.clear();
+        revisionQuestions.addAll(loadRevisionSequence(
+                revisionDomain, theme, revisionMode));
+
+        if (revisionQuestions.isEmpty()) {
+            baseScrollable();
+            band("Aucune question disponible à partir de ce thème",
+                    RED, Color.WHITE, 22, 70);
+            Button back = btn("Retour", 22);
+            back.setOnClickListener(v -> showRevisionThemes(themeInitial(theme)));
+            add(back);
+            return;
+        }
+
+        revisionIndex = 0;
+        revisionAnswerVisible = false;
+        gameMode = "revision";
+        showRevisionQuestion();
+    }
+
+    private List<Question> loadRevisionSequence(
+            String domain, String startTheme, String mode) {
+        List<Question> list = new ArrayList<>();
+        SQLiteDatabase db = openDb();
+        Cursor c = null;
+        try {
+            c = db.rawQuery(
+                    "SELECT row_number, megatheme, theme, question, detail, " +
+                            "proposition_a, proposition_b, proposition_c, proposition_d, " +
+                            "correct_index, image_file, is_image FROM " + TABLE +
+                            " WHERE LOWER(TRIM(megatheme))=LOWER(TRIM(?))" +
+                            " AND " + revisionWhereClause() +
+                            " ORDER BY row_number",
+                    new String[]{domain}
+            );
+
+            boolean started = false;
+            String startKey = comparisonKey(startTheme);
+            while (c.moveToNext()) {
+                String theme = safe(c.getString(2));
+                if (!started && startKey.equals(comparisonKey(theme))) started = true;
+                if (!started) continue;
+                list.add(questionFromCursor(c));
+            }
+        } finally {
+            if (c != null) c.close();
+            db.close();
+        }
+        return list;
+    }
+
+    private void showRevisionQuestion() {
+        phase = "revision_question";
+        gameMode = "revision";
+        baseFixed();
+
+        if (revisionQuestions.isEmpty() ||
+                revisionIndex < 0 || revisionIndex >= revisionQuestions.size()) {
+            showRevisionThemes(themeInitial(revisionStartTheme));
+            return;
+        }
+
+        Question q = revisionQuestions.get(revisionIndex);
+        current = q;
+
+        upperBand(q.theme, GREEN, Color.WHITE, 25, 48);
+        TextView themeView = (TextView) root.getChildAt(root.getChildCount() - 1);
+        themeView.setSingleLine(false);
+        themeView.setMaxLines(3);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            themeView.setAutoSizeTextTypeUniformWithConfiguration(
+                    14, 25, 1, TypedValue.COMPLEX_UNIT_SP);
+        }
+
+        upperBand(q.question, RED, Color.WHITE, 25, 58);
+        TextView questionView = (TextView) root.getChildAt(root.getChildCount() - 1);
+        questionView.setSingleLine(false);
+        questionView.setMaxLines(3);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            questionView.setAutoSizeTextTypeUniformWithConfiguration(
+                    14, 25, 1, TypedValue.COMPLEX_UNIT_SP);
+        }
+
+        if (q.isImage) {
+            addRevisionImage(q.imageFile);
+        } else if (!q.detail.trim().isEmpty()) {
+            addRevisionDetail(q.detail);
+        } else {
+            Space middle = new Space(this);
+            root.addView(middle, new LinearLayout.LayoutParams(-1, 0, 1));
+        }
+
+        if (revisionAnswerVisible) {
+            addRevisionAnswer(q);
+            addRevisionAssimilateButton(q);
+        } else {
+            addRevisionHiddenAnswerSpace();
+        }
+
+        addRevisionPager();
+        setContentView(screenRoot);
+    }
+
+    private void addRevisionDetail(String detail) {
+        FrameLayout host = new FrameLayout(this);
+        host.setBackgroundColor(Color.BLACK);
+
+        TextView detailView = tv(detail, 22, Color.BLACK, Gravity.CENTER, true);
+        detailView.setPadding(cmToPx(0.2f), cmToPx(0.5f),
+                cmToPx(0.2f), cmToPx(0.5f));
+        detailView.setSingleLine(false);
+        detailView.setMaxLines(Integer.MAX_VALUE);
+        detailView.setGravity(Gravity.CENTER);
+        detailView.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        setRoundedBackgroundWithStroke(
+                detailView, YELLOW, 14, Color.WHITE, 1);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            detailView.setAutoSizeTextTypeUniformWithConfiguration(
+                    18, 24, 1, TypedValue.COMPLEX_UNIT_SP);
+        }
+
+        FrameLayout.LayoutParams detailLp =
+                new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
+        host.addView(detailView, detailLp);
+        root.addView(host, new LinearLayout.LayoutParams(-1, 0, 1));
+    }
+
+    private void addRevisionImage(String imageFileName) {
+        FrameLayout area = new FrameLayout(this);
+        area.setBackgroundColor(Color.BLACK);
+        File file = imageFile(imageFileName);
+        Bitmap bitmap = file != null && file.exists() ? decode(file) : null;
+
+        if (bitmap == null) {
+            TextView missing = tv("Image introuvable",
+                    20, Color.WHITE, Gravity.CENTER, true);
+            area.addView(missing,
+                    new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+        } else {
+            ImageView image = new ImageView(this);
+            image.setImageBitmap(bitmap);
+            image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            area.addView(image,
+                    new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+        }
+        root.addView(area, new LinearLayout.LayoutParams(-1, 0, 1));
+    }
+
+    private void addRevisionAnswer(Question q) {
+        String answer = q.correct >= 1 && q.correct <= 4
+                ? q.props[q.correct - 1] : "";
+        TextView answerView = tv(answer, 22, Color.WHITE, Gravity.CENTER, true);
+        answerView.setSingleLine(false);
+        answerView.setMaxLines(4);
+        setRoundedBackgroundWithStroke(
+                answerView, GREEN, 14, Color.WHITE, 1);
+        LinearLayout.LayoutParams lp =
+                new LinearLayout.LayoutParams(-1, cmToPx(1.6f));
+        lp.setMargins(dp(10), halfBandGapPx(),
+                dp(10), halfBandGapPx());
+        screenRoot.addView(answerView, lp);
+    }
+
+    private void addRevisionAssimilateButton(Question q) {
+        Button assimilate = btn(
+                isQuestionMentallyAssimilated(q.row) ? "Déjà assimilée" : "Assimiler",
+                22);
+        setRoundedBackgroundWithStroke(
+                assimilate, NAVY, 14, Color.WHITE, 1);
+        assimilate.setEnabled(!isQuestionMentallyAssimilated(q.row));
+        assimilate.setOnClickListener(v -> assimilateRevisionQuestion(q));
+
+        LinearLayout.LayoutParams lp =
+                new LinearLayout.LayoutParams(-1, cmToPx(1.0f));
+        lp.setMargins(dp(10), 0, dp(10), cmToPx(0.2f));
+        screenRoot.addView(assimilate, lp);
+    }
+
+    private void addRevisionHiddenAnswerSpace() {
+        Space answer = new Space(this);
+        screenRoot.addView(answer,
+                new LinearLayout.LayoutParams(-1,
+                        cmToPx(1.6f) + (2 * halfBandGapPx())));
+        Space assimilate = new Space(this);
+        screenRoot.addView(assimilate,
+                new LinearLayout.LayoutParams(-1,
+                        cmToPx(1.0f) + cmToPx(0.2f)));
+    }
+
+    private boolean isQuestionMentallyAssimilated(long row) {
+        SQLiteDatabase db = openDb();
+        Cursor c = null;
+        try {
+            c = db.rawQuery(
+                    "SELECT status FROM " + TABLE +
+                            " WHERE row_number=? LIMIT 1",
+                    new String[]{String.valueOf(row)}
+            );
+            return c.moveToFirst() &&
+                    "M".equalsIgnoreCase(safe(c.getString(0)).trim());
+        } finally {
+            if (c != null) c.close();
+            db.close();
+        }
+    }
+
+    private void assimilateRevisionQuestion(Question q) {
+        updateStatusForRow("M", q.row);
+
+        if ("ultimate".equals(revisionMode)) {
+            revisionQuestions.remove(revisionIndex);
+            if (revisionQuestions.isEmpty()) {
+                showRevisionThemes(themeInitial(revisionStartTheme));
+                return;
+            }
+            if (revisionIndex >= revisionQuestions.size()) {
+                revisionIndex = revisionQuestions.size() - 1;
+            }
+        } else if (revisionIndex < revisionQuestions.size() - 1) {
+            revisionIndex++;
+        }
+
+        revisionAnswerVisible = false;
+        showRevisionQuestion();
+    }
+
+    private void addRevisionPager() {
+        LinearLayout pager = new LinearLayout(this);
+        pager.setOrientation(LinearLayout.HORIZONTAL);
+        pager.setGravity(Gravity.CENTER);
+        int gap = cmToPx(0.2f);
+
+        Button previous = btn("←", 22);
+        previous.setVisibility(revisionIndex > 0 ? View.VISIBLE : View.INVISIBLE);
+        previous.setOnClickListener(v -> {
+            if (revisionIndex <= 0) return;
+            revisionIndex--;
+            revisionAnswerVisible = true;
+            showRevisionQuestion();
+        });
+
+        TextView position = tv(
+                (revisionIndex + 1) + " / " + revisionQuestions.size(),
+                22, Color.WHITE, Gravity.CENTER, true);
+        setRoundedBackgroundWithStroke(
+                position, DARK, 14, Color.WHITE, 1);
+
+        Button next = btn("→", 22);
+        boolean atLast = revisionIndex >= revisionQuestions.size() - 1;
+        next.setVisibility(atLast && revisionAnswerVisible
+                ? View.INVISIBLE : View.VISIBLE);
+        next.setOnClickListener(v -> {
+            if (!revisionAnswerVisible) {
+                revisionAnswerVisible = true;
+            } else if (revisionIndex < revisionQuestions.size() - 1) {
+                revisionIndex++;
+                revisionAnswerVisible = false;
+            }
+            showRevisionQuestion();
+        });
+
+        LinearLayout.LayoutParams leftLp =
+                new LinearLayout.LayoutParams(0, cmToPx(1.25f), 1);
+        leftLp.setMargins(0, 0, gap / 2, 0);
+        pager.addView(previous, leftLp);
+
+        LinearLayout.LayoutParams centerLp =
+                new LinearLayout.LayoutParams(0, cmToPx(1.25f), 1);
+        centerLp.setMargins(gap / 2, 0, gap / 2, 0);
+        pager.addView(position, centerLp);
+
+        LinearLayout.LayoutParams rightLp =
+                new LinearLayout.LayoutParams(0, cmToPx(1.25f), 1);
+        rightLp.setMargins(gap / 2, 0, 0, 0);
+        pager.addView(next, rightLp);
+
+        screenRoot.addView(pager,
+                new LinearLayout.LayoutParams(-1, cmToPx(1.25f)));
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.CENTER);
+
+        Button back = btn("Retour", 22);
+        back.setOnClickListener(v ->
+                showRevisionThemes(themeInitial(revisionStartTheme)));
+        Button end = btn("Fin", 22);
+        setRoundedBackgroundWithStroke(end, BLUE, 14, Color.WHITE, 1);
+        end.setOnClickListener(v -> showHome());
+
+        LinearLayout.LayoutParams actionLeft =
+                new LinearLayout.LayoutParams(0, cmToPx(1.0f), 1);
+        actionLeft.setMargins(0, cmToPx(0.2f), gap / 2, cmToPx(0.2f));
+        actions.addView(back, actionLeft);
+
+        LinearLayout.LayoutParams actionRight =
+                new LinearLayout.LayoutParams(0, cmToPx(1.0f), 1);
+        actionRight.setMargins(gap / 2, cmToPx(0.2f), 0, cmToPx(0.2f));
+        actions.addView(end, actionRight);
+
+        screenRoot.addView(actions,
+                new LinearLayout.LayoutParams(-1, cmToPx(1.4f)));
     }
 
     private Map<String, Long> countDomains() {
@@ -573,6 +1132,7 @@ public class MainActivity extends Activity {
 }
 
     private void startDomain(String domain) {
+        gameMode = "challenge";
         currentDomain = domain;
         answered = mentalOk = classicOk = revised = goodStreak = classicStreak = bestGoodStreak = mentalStreak = bestMentalStreak = 0;
         lastQuestionsPopupAt = 0;
