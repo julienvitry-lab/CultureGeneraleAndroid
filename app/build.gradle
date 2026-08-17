@@ -3,6 +3,17 @@ plugins {
     id 'com.google.gms.google-services'
 }
 
+def ciKeystorePath = System.getenv('ANDROID_KEYSTORE_PATH')
+def ciKeystorePassword = System.getenv('ANDROID_KEYSTORE_PASSWORD')
+def ciKeyAlias = System.getenv('ANDROID_KEY_ALIAS')
+def ciKeyPassword = System.getenv('ANDROID_KEY_PASSWORD')
+
+def hasPermanentSigning =
+        ciKeystorePath != null && !ciKeystorePath.trim().isEmpty() &&
+        ciKeystorePassword != null && !ciKeystorePassword.trim().isEmpty() &&
+        ciKeyAlias != null && !ciKeyAlias.trim().isEmpty() &&
+        ciKeyPassword != null && !ciKeyPassword.trim().isEmpty()
+
 android {
     namespace 'fr.culturegenerale.android'
     compileSdk 35
@@ -13,6 +24,25 @@ android {
         targetSdk 35
         versionCode 943
         versionName '9.4.3-t-theme-question'
+    }
+
+    signingConfigs {
+        permanent {
+            if (hasPermanentSigning) {
+                storeFile file(ciKeystorePath)
+                storePassword ciKeystorePassword
+                keyAlias ciKeyAlias
+                keyPassword ciKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            if (hasPermanentSigning) {
+                signingConfig signingConfigs.permanent
+            }
+        }
     }
 }
 
