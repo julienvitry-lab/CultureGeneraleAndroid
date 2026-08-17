@@ -58,13 +58,20 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.Collections;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.DocumentChange;
 import com.google.firebase.firestore.DocumentReference;
+import com.google.firebase.firestore.FieldPath;
 import com.google.firebase.firestore.FieldValue;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.ListenerRegistration;
 import com.google.firebase.firestore.QueryDocumentSnapshot;
+import com.google.firebase.firestore.SetOptions;
+import com.google.firebase.firestore.Source;
 import com.google.firebase.firestore.WriteBatch;
 
 public class MainActivity extends Activity {
@@ -103,6 +110,9 @@ public class MainActivity extends Activity {
     private static final int CLOUD_BUCKET_COUNT = 64;
     private static final String SYNC_PREFS = "synccloud";
     private static final String SYNC_BASELINE_UID = "baseline_uid";
+    private static final String SYNC_LIVE_UID = "live_uid";
+    private ListenerRegistration liveStatusListener;
+    private final ExecutorService cloudDbExecutor = Executors.newSingleThreadExecutor();
     private String phaseBeforeEnd = "question";
     private String gameMode = "challenge";
     private String revisionMode = "normal";
@@ -196,6 +206,24 @@ public class MainActivity extends Activity {
                 "home".equals(phase)) {
             showHome();
         }
+    }
+
+    @Override protected void onStart() {
+        super.onStart();
+        if (isLiveSyncActivatedForCurrentUser()) {
+            startLiveStatusSync();
+        }
+    }
+
+    @Override protected void onStop() {
+        stopLiveStatusSync();
+        super.onStop();
+    }
+
+    @Override protected void onDestroy() {
+        stopLiveStatusSync();
+        cloudDbExecutor.shutdownNow();
+        super.onDestroy();
     }
 
     @Override public void onConfigurationChanged(Configuration newConfig) {
@@ -348,12 +376,17 @@ public class MainActivity extends Activity {
             return;
         }
 
-        // Si cet appareil a déjà appliqué la baseline pour cet UID,
-        // on ne bloque plus le démarrage.
+        // Baseline déjà appliquée : lors du premier passage à LIVE,
+        // on demande explicitement quelle source doit faire foi.
         String appliedUid = getSharedPreferences(SYNC_PREFS, MODE_PRIVATE)
                 .getString(SYNC_BASELINE_UID, "");
         if (user.getUid().equals(appliedUid)) {
-            showHome();
+            if (isLiveSyncActivatedForCurrentUser()) {
+                startLiveStatusSync();
+                showHome();
+            } else {
+                showLiveActivationChoice();
+            }
             return;
         }
 
@@ -464,21 +497,32 @@ public class MainActivity extends Activity {
 
             add(tv(
                     "Une progression commune existe déjà.\n\n" +
-                    "Cet appareil peut maintenant la récupérer.",
+                    "Choisissez la source à conserver pour ce premier passage en synchronisation LIVE.",
                     18, Color.WHITE, Gravity.CENTER, false
             ));
 
             Space spacer = new Space(this);
             root.addView(spacer, new LinearLayout.LayoutParams(-1, 0, 1));
 
-            Button pull = btn("Récupérer la progression\ndepuis le cloud", 21);
+            Button keep = btn("Garder cet appareil\net envoyer ses changements", 20);
+            keep.setSingleLine(false);
+            keep.setMaxLines(3);
+            setRoundedBackground(keep, GREEN, 16);
+            keep.setOnClickListener(v -> mergeLocalProgressIntoCloud());
+            LinearLayout.LayoutParams keepLp =
+                    new LinearLayout.LayoutParams(-1, cmToPx(2.4f));
+            keepLp.setMargins(0, dp(8), 0, dp(8));
+            root.addView(keep, keepLp);
+
+            Button pull = btn("Utiliser le cloud\ncomme référence", 20);
             pull.setSingleLine(false);
             pull.setMaxLines(3);
             setRoundedBackground(pull, BLUE, 16);
             pull.setOnClickListener(v -> downloadBaselineFromCloud());
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, cmToPx(2.4f));
-            lp.setMargins(0, dp(8), 0, dp(8));
-            root.addView(pull, lp);
+            LinearLayout.LayoutParams pullLp =
+                    new LinearLayout.LayoutParams(-1, cmToPx(2.4f));
+            pullLp.setMargins(0, dp(8), 0, dp(8));
+            root.addView(pull, pullLp);
 
             Button offline = btn("Continuer hors ligne", 18);
             offline.setOnClickListener(v -> showHome());
@@ -582,10 +626,12 @@ public class MainActivity extends Activity {
                     }
 
                     markBaselineApplied(user.getUid());
+                    markLiveSyncActivated(user.getUid());
+                    startLiveStatusSync();
 
                     Toast.makeText(
                             this,
-                            finalStatusCount + " statuts sauvegardés dans le cloud",
+                            finalStatusCount + " statuts sauvegardés · synchronisation active",
                             Toast.LENGTH_LONG
                     ).show();
 
@@ -713,8 +759,10 @@ public class MainActivity extends Activity {
 
         runOnUiThread(() -> {
             markBaselineApplied(uid);
+            markLiveSyncActivated(uid);
+            startLiveStatusSync();
 
-            String message = finalApplied + " statuts récupérés";
+            String message = finalApplied + " statuts récupérés · synchronisation active";
             if (finalMissing > 0) {
                 message += " · " + finalMissing + " ID absents localement";
             }
@@ -722,6 +770,375 @@ public class MainActivity extends Activity {
             Toast.makeText(this, message, Toast.LENGTH_LONG).show();
             showHome();
         });
+    }
+
+
+    /**
+     * SYNCLOUD001-LIVE
+     *
+     * Les 64 documents statusBuckets servent désormais à la fois de photographie
+     * initiale et de canal de synchronisation en temps réel.
+     *
+     * Firestore Android conserve les écritures hors connexion. Lorsqu'Internet
+     * revient, les écritures en attente sont envoyées automatiquement.
+     */
+    private boolean isLiveSyncActivatedForCurrentUser() {
+        FirebaseUser user = firebaseAuth == null ? null : firebaseAuth.getCurrentUser();
+        if (user == null) return false;
+
+        String liveUid = getSharedPreferences(SYNC_PREFS, MODE_PRIVATE)
+                .getString(SYNC_LIVE_UID, "");
+        return user.getUid().equals(liveUid);
+    }
+
+    private void markLiveSyncActivated(String uid) {
+        getSharedPreferences(SYNC_PREFS, MODE_PRIVATE)
+                .edit()
+                .putString(SYNC_LIVE_UID, uid == null ? "" : uid)
+                .apply();
+    }
+
+    private String normalizeCloudStatus(String status) {
+        String value = safe(status).trim().toUpperCase(Locale.ROOT);
+        if ("M".equals(value)) return "A";
+        if ("I".equals(value)) return "P";
+        return value;
+    }
+
+    /**
+     * Cas typique de la tablette lors du premier passage à LIVE :
+     * on choisit soit de conserver ses changements locaux, soit de reprendre
+     * exactement le cloud.
+     */
+    private void showLiveActivationChoice() {
+        phase = "cloud_live_choice";
+        current = null;
+        gameMode = "cloud";
+        baseFixed();
+
+        add(tv("Culture Générale", 34, Color.WHITE, Gravity.CENTER, true));
+        band("Activer la synchronisation LIVE", BLUE, Color.WHITE, 21, 54);
+
+        add(tv(
+                "La progression de départ est déjà connue sur cet appareil.\\n\\n" +
+                "Pour ce premier passage seulement, choisissez quelle source doit faire foi.",
+                17, Color.WHITE, Gravity.CENTER, false
+        ));
+
+        Space spacer = new Space(this);
+        root.addView(spacer, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        Button local = btn("Garder les changements\\nde cet appareil", 20);
+        local.setSingleLine(false);
+        local.setMaxLines(3);
+        setRoundedBackground(local, GREEN, 16);
+        local.setOnClickListener(v -> mergeLocalProgressIntoCloud());
+        LinearLayout.LayoutParams localLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(2.4f));
+        localLp.setMargins(0, dp(8), 0, dp(8));
+        root.addView(local, localLp);
+
+        Button cloud = btn("Utiliser le cloud\\ncomme référence", 20);
+        cloud.setSingleLine(false);
+        cloud.setMaxLines(3);
+        setRoundedBackground(cloud, BLUE, 16);
+        cloud.setOnClickListener(v -> downloadBaselineFromCloud());
+        LinearLayout.LayoutParams cloudLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(2.4f));
+        cloudLp.setMargins(0, dp(8), 0, dp(8));
+        root.addView(cloud, cloudLp);
+
+        Button offline = btn("Continuer hors ligne", 18);
+        offline.setOnClickListener(v -> showHome());
+        add(offline);
+    }
+
+    /**
+     * Fusion de transition :
+     * - télécharge l'état Cloud courant ;
+     * - conserve tous les statuts Cloud ;
+     * - ajoute/remplace uniquement les statuts NON VIDES présents localement.
+     *
+     * Ainsi, une ancienne question assimilée dans le cloud ne disparaît pas
+     * simplement parce qu'elle est vide dans une vieille copie locale.
+     */
+    private void mergeLocalProgressIntoCloud() {
+        FirebaseUser user = firebaseAuth == null ? null : firebaseAuth.getCurrentUser();
+        if (user == null) {
+            showLoginScreen();
+            return;
+        }
+
+        showCloudProgress("Comparaison de cet appareil avec le cloud...");
+
+        firestore.collection("users")
+                .document(user.getUid())
+                .collection("statusBuckets")
+                .get(Source.SERVER)
+                .addOnCompleteListener(this, task -> {
+                    if (!task.isSuccessful() || task.getResult() == null) {
+                        showCloudBaselineError(
+                                "Impossible de lire la progression Cloud.\\n" +
+                                "Aucune donnée locale n'a été modifiée."
+                        );
+                        return;
+                    }
+
+                    final List<Map<String, Object>> mergedBuckets = new ArrayList<>();
+                    for (int i = 0; i < CLOUD_BUCKET_COUNT; i++) {
+                        mergedBuckets.add(new HashMap<>());
+                    }
+
+                    for (QueryDocumentSnapshot document : task.getResult()) {
+                        Long bucketLong = document.getLong("bucket");
+                        int bucket = bucketLong == null ? -1 : bucketLong.intValue();
+                        if (bucket < 0 || bucket >= CLOUD_BUCKET_COUNT) continue;
+
+                        Object raw = document.get("statuses");
+                        if (!(raw instanceof Map)) continue;
+
+                        Map<?, ?> values = (Map<?, ?>) raw;
+                        for (Map.Entry<?, ?> entry : values.entrySet()) {
+                            if (entry.getKey() == null || entry.getValue() == null) continue;
+                            String originalId = String.valueOf(entry.getKey()).trim();
+                            String status = normalizeCloudStatus(String.valueOf(entry.getValue()));
+                            if (originalId.length() > 0) {
+                                mergedBuckets.get(bucket).put(originalId, status);
+                            }
+                        }
+                    }
+
+                    new Thread(() -> {
+                        int differences = 0;
+                        SQLiteDatabase db = openDb();
+                        Cursor c = null;
+
+                        try {
+                            c = db.rawQuery(
+                                    "SELECT original_id, status FROM " + TABLE +
+                                            " WHERE TRIM(COALESCE(status,''))<>''",
+                                    null
+                            );
+
+                            while (c.moveToNext()) {
+                                String originalId = safe(c.getString(0)).trim();
+                                String status = normalizeCloudStatus(c.getString(1));
+                                if (originalId.length() == 0 || status.length() == 0) continue;
+
+                                int bucket = cloudBucketFor(originalId);
+                                Object previous = mergedBuckets.get(bucket).get(originalId);
+                                String previousStatus =
+                                        previous == null ? "" :
+                                                normalizeCloudStatus(String.valueOf(previous));
+
+                                if (!status.equals(previousStatus)) differences++;
+                                mergedBuckets.get(bucket).put(originalId, status);
+                            }
+                        } finally {
+                            if (c != null) c.close();
+                            db.close();
+                        }
+
+                        final int finalDifferences = differences;
+
+                        runOnUiThread(() -> {
+                            showCloudProgress(
+                                    "Envoi de " + finalDifferences +
+                                            " changement(s) vers le cloud..."
+                            );
+
+                            DocumentReference userRef =
+                                    firestore.collection("users").document(user.getUid());
+                            WriteBatch batch = firestore.batch();
+                            int totalStatuses = 0;
+
+                            for (int i = 0; i < CLOUD_BUCKET_COUNT; i++) {
+                                Map<String, Object> statuses = mergedBuckets.get(i);
+                                totalStatuses += statuses.size();
+
+                                Map<String, Object> doc = new HashMap<>();
+                                doc.put("schema", 2);
+                                doc.put("bucket", i);
+                                doc.put("count", statuses.size());
+                                doc.put("statuses", statuses);
+                                doc.put("updatedAt", FieldValue.serverTimestamp());
+
+                                batch.set(
+                                        userRef.collection("statusBuckets")
+                                                .document(String.format(Locale.ROOT, "b%02d", i)),
+                                        doc
+                                );
+                            }
+
+                            Map<String, Object> meta = new HashMap<>();
+                            meta.put("initialized", true);
+                            meta.put("schema", 2);
+                            meta.put("bucketCount", CLOUD_BUCKET_COUNT);
+                            meta.put("statusCount", totalStatuses);
+                            meta.put("liveEnabled", true);
+                            meta.put("updatedAt", FieldValue.serverTimestamp());
+
+                            batch.set(
+                                    userRef.collection("meta").document("sync"),
+                                    meta,
+                                    SetOptions.merge()
+                            );
+
+                            batch.commit().addOnCompleteListener(this, commitTask -> {
+                                if (!commitTask.isSuccessful()) {
+                                    showCloudBaselineError(
+                                            "Échec de la fusion avec le cloud.\\n" +
+                                            "La progression locale reste intacte."
+                                    );
+                                    return;
+                                }
+
+                                markBaselineApplied(user.getUid());
+                                markLiveSyncActivated(user.getUid());
+                                startLiveStatusSync();
+
+                                Toast.makeText(
+                                        this,
+                                        finalDifferences +
+                                                " changement(s) fusionné(s) · LIVE actif",
+                                        Toast.LENGTH_LONG
+                                ).show();
+
+                                showHome();
+                            });
+                        });
+                    }).start();
+                });
+    }
+
+    private void startLiveStatusSync() {
+        if (!isLiveSyncActivatedForCurrentUser()) return;
+        if (liveStatusListener != null) return;
+
+        FirebaseUser user = firebaseAuth == null ? null : firebaseAuth.getCurrentUser();
+        if (user == null || firestore == null) return;
+
+        liveStatusListener = firestore.collection("users")
+                .document(user.getUid())
+                .collection("statusBuckets")
+                .addSnapshotListener((snapshots, error) -> {
+                    if (error != null || snapshots == null) return;
+
+                    for (DocumentChange change : snapshots.getDocumentChanges()) {
+                        QueryDocumentSnapshot document = change.getDocument();
+                        Object raw = document.get("statuses");
+                        if (!(raw instanceof Map)) continue;
+
+                        final Map<String, String> statuses = new HashMap<>();
+                        Map<?, ?> values = (Map<?, ?>) raw;
+
+                        for (Map.Entry<?, ?> entry : values.entrySet()) {
+                            if (entry.getKey() == null || entry.getValue() == null) continue;
+                            String originalId = String.valueOf(entry.getKey()).trim();
+                            String status =
+                                    normalizeCloudStatus(String.valueOf(entry.getValue()));
+                            if (originalId.length() > 0) {
+                                statuses.put(originalId, status);
+                            }
+                        }
+
+                        if (!statuses.isEmpty()) {
+                            cloudDbExecutor.execute(() -> applyLiveBucketToLocal(statuses));
+                        }
+                    }
+                });
+    }
+
+    private void stopLiveStatusSync() {
+        if (liveStatusListener != null) {
+            liveStatusListener.remove();
+            liveStatusListener = null;
+        }
+    }
+
+    private void applyLiveBucketToLocal(Map<String, String> statuses) {
+        if (statuses == null || statuses.isEmpty()) return;
+        if (!hasAccess() || !dbFile.exists()) return;
+
+        SQLiteDatabase db = openDb();
+        SQLiteStatement update = null;
+
+        try {
+            db.beginTransaction();
+            update = db.compileStatement(
+                    "UPDATE " + TABLE +
+                            " SET status=? WHERE original_id=? " +
+                            "AND COALESCE(status,'')<>?"
+            );
+
+            for (Map.Entry<String, String> entry : statuses.entrySet()) {
+                String originalId = safe(entry.getKey()).trim();
+                String status = normalizeCloudStatus(entry.getValue());
+                if (originalId.length() == 0) continue;
+
+                update.clearBindings();
+                update.bindString(1, status);
+                update.bindString(2, originalId);
+                update.bindString(3, status);
+                update.executeUpdateDelete();
+            }
+
+            db.setTransactionSuccessful();
+        } finally {
+            if (update != null) update.close();
+            if (db.inTransaction()) db.endTransaction();
+            db.close();
+        }
+    }
+
+    private void pushStatusToCloudForRow(long rowNumber, String status) {
+        if (!isLiveSyncActivatedForCurrentUser()) return;
+        if (!hasAccess() || !dbFile.exists()) return;
+
+        SQLiteDatabase db = openDb();
+        Cursor c = null;
+        String originalId = "";
+
+        try {
+            c = db.rawQuery(
+                    "SELECT original_id FROM " + TABLE +
+                            " WHERE row_number=? LIMIT 1",
+                    new String[]{String.valueOf(rowNumber)}
+            );
+            if (c.moveToFirst()) {
+                originalId = safe(c.getString(0)).trim();
+            }
+        } finally {
+            if (c != null) c.close();
+            db.close();
+        }
+
+        pushStatusToCloudForOriginalId(originalId, status);
+    }
+
+    private void pushStatusToCloudForOriginalId(String originalId, String status) {
+        if (!isLiveSyncActivatedForCurrentUser()) return;
+
+        FirebaseUser user = firebaseAuth == null ? null : firebaseAuth.getCurrentUser();
+        if (user == null || firestore == null) return;
+
+        originalId = safe(originalId).trim();
+        if (originalId.length() == 0) return;
+
+        String normalizedStatus = normalizeCloudStatus(status);
+        int bucket = cloudBucketFor(originalId);
+
+        DocumentReference bucketRef = firestore.collection("users")
+                .document(user.getUid())
+                .collection("statusBuckets")
+                .document(String.format(Locale.ROOT, "b%02d", bucket));
+
+        // FieldPath permet d'utiliser original_id comme clé même s'il contient
+        // des caractères spéciaux interprétés par la syntaxe des chemins.
+        bucketRef.update(
+                FieldPath.of("statuses", originalId),
+                normalizedStatus
+        );
     }
 
     private void markBaselineApplied(String uid) {
@@ -3106,37 +3523,54 @@ private void flagAndNext(String status, String msg) {
         int newlyExcluded = 0;
         String targetTheme = comparisonKey(current.theme);
         String targetQuestion = comparisonKey(current.question);
+        List<String> originalIdsToSync = new ArrayList<>();
 
         try {
             db.beginTransaction();
             // Une exclusion T concerne toutes les lignes ayant le même thème
             // et la même question. Le détail n'entre plus dans la comparaison.
             c = db.rawQuery(
-                    "SELECT row_number, theme, question, status FROM " + TABLE,
+                    "SELECT row_number, original_id, theme, question, status FROM " + TABLE,
                     null
             );
-            update = db.compileStatement("UPDATE " + TABLE + " SET status='T' WHERE row_number=?");
+            update = db.compileStatement(
+                    "UPDATE " + TABLE + " SET status='T' WHERE row_number=?"
+            );
 
             while (c.moveToNext()) {
-                if (!targetTheme.equals(comparisonKey(c.getString(1)))) continue;
-                if (!targetQuestion.equals(comparisonKey(c.getString(2)))) continue;
+                if (!targetTheme.equals(comparisonKey(c.getString(2)))) continue;
+                if (!targetQuestion.equals(comparisonKey(c.getString(3)))) continue;
 
-                String existingStatus = safe(c.getString(3)).toUpperCase(Locale.ROOT);
+                String existingStatus =
+                        safe(c.getString(4)).toUpperCase(Locale.ROOT);
                 if ("X".equals(existingStatus) || "T".equals(existingStatus)) continue;
 
                 update.clearBindings();
                 update.bindLong(1, c.getLong(0));
-                newlyExcluded += update.executeUpdateDelete();
+                int affected = update.executeUpdateDelete();
+                newlyExcluded += affected;
+
+                if (affected > 0) {
+                    String originalId = safe(c.getString(1)).trim();
+                    if (originalId.length() > 0) {
+                        originalIdsToSync.add(originalId);
+                    }
+                }
             }
 
             db.setTransactionSuccessful();
-            return newlyExcluded;
         } finally {
             if (c != null) c.close();
             if (update != null) update.close();
             if (db.inTransaction()) db.endTransaction();
             db.close();
         }
+
+        for (String originalId : originalIdsToSync) {
+            pushStatusToCloudForOriginalId(originalId, "T");
+        }
+
+        return newlyExcluded;
     }
 
     private String comparisonKey(String value) {
@@ -3215,19 +3649,33 @@ private void flagAndNext(String status, String msg) {
     }
 
     private void updateStatusForRow(String status, long rowNumber) {
+        String normalizedStatus = normalizeCloudStatus(status);
         SQLiteDatabase db = openDb();
         try {
             db.execSQL("UPDATE " + TABLE + " SET status=? WHERE row_number=?",
-                    new Object[]{status, rowNumber});
+                    new Object[]{normalizedStatus, rowNumber});
         } finally {
             db.close();
         }
+        pushStatusToCloudForRow(rowNumber, normalizedStatus);
     }
 
     private void updateStatus(String status) {
+        if (current == null) return;
+        String normalizedStatus = normalizeCloudStatus(status);
+        long rowNumber = current.row;
+
         SQLiteDatabase db = openDb();
-        try { db.execSQL("UPDATE " + TABLE + " SET status=? WHERE row_number=?", new Object[]{status, current.row}); }
-        finally { db.close(); }
+        try {
+            db.execSQL(
+                    "UPDATE " + TABLE + " SET status=? WHERE row_number=?",
+                    new Object[]{normalizedStatus, rowNumber}
+            );
+        } finally {
+            db.close();
+        }
+
+        pushStatusToCloudForRow(rowNumber, normalizedStatus);
     }
 
 	private void previousQuestion() {
