@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "678537092067",
+    "project_id": "culturegeneralesync",
+    "storage_bucket": "culturegeneralesync.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:678537092067:android:4ff80b8caa9a0f33a41ed6",
+        "android_client_info": {
+          "package_name": "fr.culturegenerale.android"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBHAVR_Td-VozN7MzMyZqJ046h1T_ggRDc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
