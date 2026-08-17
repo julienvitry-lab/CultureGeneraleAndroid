@@ -22,8 +22,8 @@ android {
         applicationId 'fr.culturegenerale.android'
         minSdk 23
         targetSdk 35
-        versionCode 943
-        versionName '9.4.3-t-theme-question'
+        versionCode 944
+        versionName '9.4.4-sign001-test'
     }
 
     signingConfigs {
