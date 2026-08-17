@@ -387,7 +387,7 @@ public class MainActivity extends Activity {
                 .getString(SYNC_BASELINE_UID, "");
         if (user.getUid().equals(appliedUid)) {
             if (isLiveSyncActivatedForCurrentUser()) {
-                performLiveCatchupThenShowHome();
+                showHome();
             } else {
                 showLiveActivationChoice();
             }
@@ -1260,6 +1260,93 @@ public class MainActivity extends Activity {
         return differences;
     }
 
+
+    private String liveBucketHashKey(String bucketId) {
+        FirebaseUser user = firebaseAuth == null ? null : firebaseAuth.getCurrentUser();
+        String uid = user == null ? "none" : user.getUid();
+        return "bucket_hash_" + uid + "_" + safe(bucketId);
+    }
+
+    private String fingerprintStatuses(Map<String, String> statuses) {
+        if (statuses == null || statuses.isEmpty()) return "0";
+
+        List<String> keys = new ArrayList<>(statuses.keySet());
+        Collections.sort(keys);
+
+        int hash = 1;
+        for (String key : keys) {
+            String value = normalizeCloudStatus(statuses.get(key));
+            hash = 31 * hash + safe(key).hashCode();
+            hash = 31 * hash + value.hashCode();
+        }
+        return Integer.toHexString(hash);
+    }
+
+    /**
+     * Applique un bucket sans index SQLite :
+     * un seul balayage de la table permet de retrouver les rowid concernés,
+     * puis les UPDATE se font directement par rowid.
+     */
+    private void applyBucketEfficiently(Map<String, String> statuses) {
+        if (statuses == null || statuses.isEmpty()) return;
+        if (!hasAccess() || !dbFile.exists()) return;
+
+        Set<String> wanted = new HashSet<>(statuses.keySet());
+        Map<String, Long> rowIds = new HashMap<>();
+
+        SQLiteDatabase db = openDb();
+        Cursor c = null;
+        SQLiteStatement update = null;
+
+        try {
+            c = db.rawQuery(
+                    "SELECT rowid, original_id FROM " + TABLE,
+                    null
+            );
+
+            while (c.moveToNext() && !wanted.isEmpty()) {
+                String originalId = safe(c.getString(1)).trim();
+                if (wanted.remove(originalId)) {
+                    rowIds.put(originalId, c.getLong(0));
+                }
+            }
+            c.close();
+            c = null;
+
+            if (rowIds.isEmpty()) return;
+
+            db.beginTransaction();
+            try {
+                update = db.compileStatement(
+                        "UPDATE " + TABLE +
+                                " SET status=? WHERE rowid=? " +
+                                "AND COALESCE(status,'')<>?"
+                );
+
+                for (Map.Entry<String, String> entry : statuses.entrySet()) {
+                    Long rowId = rowIds.get(entry.getKey());
+                    if (rowId == null) continue;
+
+                    String status = normalizeCloudStatus(entry.getValue());
+
+                    update.clearBindings();
+                    update.bindString(1, status);
+                    update.bindLong(2, rowId);
+                    update.bindString(3, status);
+                    update.executeUpdateDelete();
+                }
+
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+            }
+        } finally {
+            if (c != null) c.close();
+            if (update != null) update.close();
+            db.close();
+        }
+    }
+
     private void startLiveStatusSync() {
         if (!isLiveSyncActivatedForCurrentUser()) return;
         if (liveStatusListener != null) return;
@@ -1280,33 +1367,67 @@ public class MainActivity extends Activity {
                         final String bucketId = document.getId();
                         final Map<String, String> currentStatuses =
                                 extractStatusesFromDocument(document);
+                        final String currentHash =
+                                fingerprintStatuses(currentStatuses);
 
-                        Map<String, String> previousStatuses;
-                        synchronized (liveBucketCacheLock) {
-                            Map<String, String> cached =
-                                    liveBucketCache.get(bucketId);
-                            previousStatuses =
-                                    cached == null ? null : new HashMap<>(cached);
-                            liveBucketCache.put(
-                                    bucketId,
-                                    new HashMap<>(currentStatuses)
-                            );
+                        String savedHash = getSharedPreferences(
+                                SYNC_PREFS, MODE_PRIVATE
+                        ).getString(liveBucketHashKey(bucketId), "");
+
+                        // Première exécution de FIX2 :
+                        // les deux appareils viennent d'être alignés par la baseline.
+                        // On mémorise l'état courant sans réécrire 66 000 statuts.
+                        if (TextUtils.isEmpty(savedHash)) {
+                            getSharedPreferences(SYNC_PREFS, MODE_PRIVATE)
+                                    .edit()
+                                    .putString(
+                                            liveBucketHashKey(bucketId),
+                                            currentHash
+                                    )
+                                    .apply();
+
+                            synchronized (liveBucketCacheLock) {
+                                liveBucketCache.put(
+                                        bucketId,
+                                        new HashMap<>(currentStatuses)
+                                );
+                            }
+                            continue;
                         }
 
-                        final Map<String, String> differences =
-                                diffBucketStatuses(
-                                        previousStatuses,
-                                        currentStatuses
+                        if (savedHash.equals(currentHash)) {
+                            synchronized (liveBucketCacheLock) {
+                                liveBucketCache.put(
+                                        bucketId,
+                                        new HashMap<>(currentStatuses)
                                 );
+                            }
+                            continue;
+                        }
 
-                        if (differences.isEmpty()) continue;
-
+                        // Un bucket a réellement changé depuis la dernière ouverture.
+                        // ~1/64 de la progression au maximum, jamais 66 000 statuts.
                         cloudDbExecutor.execute(() -> {
                             try {
-                                ensureLiveSyncIndexes();
-                                applyLiveChangesToLocal(differences);
+                                applyBucketEfficiently(currentStatuses);
+
+                                getSharedPreferences(
+                                        SYNC_PREFS, MODE_PRIVATE
+                                ).edit()
+                                        .putString(
+                                            liveBucketHashKey(bucketId),
+                                            currentHash
+                                        )
+                                        .apply();
+
+                                synchronized (liveBucketCacheLock) {
+                                    liveBucketCache.put(
+                                            bucketId,
+                                            new HashMap<>(currentStatuses)
+                                    );
+                                }
                             } catch (Exception ignored) {
-                                // Une synchronisation ne doit jamais fermer le jeu.
+                                // Une erreur Cloud ne doit jamais fermer l'application.
                             }
                         });
                     }
@@ -3998,14 +4119,6 @@ private void flagAndNext(String status, String msg) {
             try {
                 db.execSQL("UPDATE " + TABLE + " SET status='A' WHERE UPPER(TRIM(status))='M'");
                 db.execSQL("UPDATE " + TABLE + " SET status='P' WHERE UPPER(TRIM(status))='I'");
-                db.execSQL(
-                        "CREATE INDEX IF NOT EXISTS idx_questions_original_id " +
-                                "ON " + TABLE + "(original_id)"
-                );
-                db.execSQL(
-                        "CREATE INDEX IF NOT EXISTS idx_questions_row_number " +
-                                "ON " + TABLE + "(row_number)"
-                );
                 db.setTransactionSuccessful();
             } finally {
                 db.endTransaction();
