@@ -61,6 +61,11 @@ import java.util.Collections;
 
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.DocumentReference;
+import com.google.firebase.firestore.FieldValue;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QueryDocumentSnapshot;
+import com.google.firebase.firestore.WriteBatch;
 
 public class MainActivity extends Activity {
     private static final String APP_VERSION = "V10.0.0";
@@ -94,6 +99,10 @@ public class MainActivity extends Activity {
     private String currentDomain = null;
     private String phase = "home";
     private FirebaseAuth firebaseAuth;
+    private FirebaseFirestore firestore;
+    private static final int CLOUD_BUCKET_COUNT = 64;
+    private static final String SYNC_PREFS = "synccloud";
+    private static final String SYNC_BASELINE_UID = "baseline_uid";
     private String phaseBeforeEnd = "question";
     private String gameMode = "challenge";
     private String revisionMode = "normal";
@@ -172,10 +181,11 @@ public class MainActivity extends Activity {
         problemsFile = new File(appFolder, "PROBLEMES_P.csv");
         loadFont();
         firebaseAuth = FirebaseAuth.getInstance();
+        firestore = FirebaseFirestore.getInstance();
         if (firebaseAuth.getCurrentUser() == null) {
             showLoginScreen();
         } else {
-            showHome();
+            routeAfterAuthentication();
         }
     }
 
@@ -301,7 +311,7 @@ public class MainActivity extends Activity {
                                     Toast.LENGTH_LONG
                             ).show();
 
-                            showHome();
+                            routeAfterAuthentication();
                         } else {
                             String message = "Connexion impossible.";
                             if (task.getException() != null &&
@@ -318,6 +328,425 @@ public class MainActivity extends Activity {
                 new LinearLayout.LayoutParams(-1, cmToPx(1.8f));
         loginLp.setMargins(0, dp(8), 0, dp(8));
         root.addView(login, loginLp);
+    }
+
+
+    /**
+     * SYNCLOUD001-BASELINE
+     * Initialise une seule fois la progression commune.
+     *
+     * Cas 1 : le cloud est vide -> cet appareil peut devenir la référence.
+     * Cas 2 : le cloud existe -> cet appareil récupère la référence.
+     *
+     * Après cette étape, téléphone et tablette possèdent exactement le même
+     * état de la colonne status. La synchronisation en direct viendra ensuite.
+     */
+    private void routeAfterAuthentication() {
+        FirebaseUser user = firebaseAuth == null ? null : firebaseAuth.getCurrentUser();
+        if (user == null) {
+            showLoginScreen();
+            return;
+        }
+
+        // Si cet appareil a déjà appliqué la baseline pour cet UID,
+        // on ne bloque plus le démarrage.
+        String appliedUid = getSharedPreferences(SYNC_PREFS, MODE_PRIVATE)
+                .getString(SYNC_BASELINE_UID, "");
+        if (user.getUid().equals(appliedUid)) {
+            showHome();
+            return;
+        }
+
+        // L'accès SQLite reste prioritaire : si le dossier n'est pas accessible,
+        // l'écran habituel gérera l'autorisation.
+        if (!hasAccess() || !dbFile.exists()) {
+            showHome();
+            return;
+        }
+
+        showCloudBaselineChecking();
+
+        firestore.collection("users")
+                .document(user.getUid())
+                .collection("meta")
+                .document("sync")
+                .get()
+                .addOnCompleteListener(this, task -> {
+                    if (!task.isSuccessful()) {
+                        showCloudBaselineError(
+                                "Impossible de vérifier le cloud.\n" +
+                                "Vous pouvez continuer hors ligne."
+                        );
+                        return;
+                    }
+
+                    boolean initialized = task.getResult() != null
+                            && task.getResult().exists()
+                            && Boolean.TRUE.equals(task.getResult().getBoolean("initialized"));
+
+                    showCloudBaselineChoice(!initialized);
+                });
+    }
+
+    private void showCloudBaselineChecking() {
+        phase = "cloud_baseline";
+        current = null;
+        gameMode = "cloud";
+        baseFixed();
+
+        add(tv("Culture Générale", 34, Color.WHITE, Gravity.CENTER, true));
+        band("Synchronisation Cloud", BLUE, Color.WHITE, 22, 54);
+
+        Space top = new Space(this);
+        root.addView(top, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        add(tv("Vérification de la progression commune...",
+                18, Color.WHITE, Gravity.CENTER, false));
+
+        Space bottom = new Space(this);
+        root.addView(bottom, new LinearLayout.LayoutParams(-1, 0, 1));
+    }
+
+    private void showCloudBaselineError(String message) {
+        phase = "cloud_baseline";
+        baseFixed();
+
+        add(tv("Culture Générale", 34, Color.WHITE, Gravity.CENTER, true));
+        band("Synchronisation Cloud", RED, Color.WHITE, 22, 54);
+
+        Space top = new Space(this);
+        root.addView(top, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        add(tv(message, 18, Color.WHITE, Gravity.CENTER, false));
+
+        Space middle = new Space(this);
+        root.addView(middle, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        Button offline = btn("Continuer hors ligne", 21);
+        offline.setOnClickListener(v -> showHome());
+        add(offline);
+    }
+
+    private void showCloudBaselineChoice(boolean cloudIsEmpty) {
+        phase = "cloud_baseline";
+        current = null;
+        gameMode = "cloud";
+        baseFixed();
+
+        add(tv("Culture Générale", 34, Color.WHITE, Gravity.CENTER, true));
+
+        if (cloudIsEmpty) {
+            band("Première synchronisation", GREEN, Color.WHITE, 22, 54);
+
+            add(tv(
+                    "Aucune progression n'est encore enregistrée dans le cloud.\n\n" +
+                    "Choisissez l'appareil qui contient la progression à conserver.",
+                    18, Color.WHITE, Gravity.CENTER, false
+            ));
+
+            Space spacer = new Space(this);
+            root.addView(spacer, new LinearLayout.LayoutParams(-1, 0, 1));
+
+            Button keep = btn("Garder cet appareil\net l'envoyer au cloud", 21);
+            keep.setSingleLine(false);
+            keep.setMaxLines(3);
+            setRoundedBackground(keep, GREEN, 16);
+            keep.setOnClickListener(v -> uploadBaselineToCloud());
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, cmToPx(2.4f));
+            lp.setMargins(0, dp(8), 0, dp(8));
+            root.addView(keep, lp);
+
+            Button offline = btn("Continuer hors ligne", 18);
+            offline.setOnClickListener(v -> showHome());
+            add(offline);
+        } else {
+            band("Progression Cloud détectée", BLUE, Color.WHITE, 22, 54);
+
+            add(tv(
+                    "Une progression commune existe déjà.\n\n" +
+                    "Cet appareil peut maintenant la récupérer.",
+                    18, Color.WHITE, Gravity.CENTER, false
+            ));
+
+            Space spacer = new Space(this);
+            root.addView(spacer, new LinearLayout.LayoutParams(-1, 0, 1));
+
+            Button pull = btn("Récupérer la progression\ndepuis le cloud", 21);
+            pull.setSingleLine(false);
+            pull.setMaxLines(3);
+            setRoundedBackground(pull, BLUE, 16);
+            pull.setOnClickListener(v -> downloadBaselineFromCloud());
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, cmToPx(2.4f));
+            lp.setMargins(0, dp(8), 0, dp(8));
+            root.addView(pull, lp);
+
+            Button offline = btn("Continuer hors ligne", 18);
+            offline.setOnClickListener(v -> showHome());
+            add(offline);
+        }
+    }
+
+    private int cloudBucketFor(String originalId) {
+        if (originalId == null) return 0;
+        return Math.floorMod(originalId.hashCode(), CLOUD_BUCKET_COUNT);
+    }
+
+    private void uploadBaselineToCloud() {
+        FirebaseUser user = firebaseAuth == null ? null : firebaseAuth.getCurrentUser();
+        if (user == null) {
+            showLoginScreen();
+            return;
+        }
+
+        showCloudProgress("Préparation de la progression locale...");
+
+        new Thread(() -> {
+            final List<Map<String, Object>> buckets = new ArrayList<>();
+            for (int i = 0; i < CLOUD_BUCKET_COUNT; i++) {
+                buckets.add(new HashMap<>());
+            }
+
+            int statusCount = 0;
+            SQLiteDatabase db = openDb();
+            Cursor c = null;
+            try {
+                c = db.rawQuery(
+                        "SELECT original_id, status FROM " + TABLE +
+                                " WHERE TRIM(COALESCE(status,''))<>''",
+                        null
+                );
+
+                while (c.moveToNext()) {
+                    String originalId = safe(c.getString(0)).trim();
+                    String status = safe(c.getString(1)).trim().toUpperCase(Locale.ROOT);
+                    if (originalId.length() == 0 || status.length() == 0) continue;
+
+                    // Sécurité supplémentaire pour les anciennes bases.
+                    if ("M".equals(status)) status = "A";
+                    if ("I".equals(status)) status = "P";
+
+                    buckets.get(cloudBucketFor(originalId)).put(originalId, status);
+                    statusCount++;
+                }
+            } finally {
+                if (c != null) c.close();
+                db.close();
+            }
+
+            final int finalStatusCount = statusCount;
+
+            runOnUiThread(() -> {
+                showCloudProgress(
+                        "Envoi de " + finalStatusCount +
+                        " statuts vers le cloud..."
+                );
+
+                DocumentReference userRef =
+                        firestore.collection("users").document(user.getUid());
+                WriteBatch batch = firestore.batch();
+
+                for (int i = 0; i < CLOUD_BUCKET_COUNT; i++) {
+                    Map<String, Object> doc = new HashMap<>();
+                    doc.put("schema", 1);
+                    doc.put("bucket", i);
+                    doc.put("count", buckets.get(i).size());
+                    doc.put("statuses", buckets.get(i));
+                    doc.put("updatedAt", FieldValue.serverTimestamp());
+
+                    batch.set(
+                            userRef.collection("statusBuckets")
+                                    .document(String.format(Locale.ROOT, "b%02d", i)),
+                            doc
+                    );
+                }
+
+                Map<String, Object> meta = new HashMap<>();
+                meta.put("initialized", true);
+                meta.put("schema", 1);
+                meta.put("bucketCount", CLOUD_BUCKET_COUNT);
+                meta.put("statusCount", finalStatusCount);
+                meta.put("updatedAt", FieldValue.serverTimestamp());
+
+                batch.set(
+                        userRef.collection("meta").document("sync"),
+                        meta
+                );
+
+                batch.commit().addOnCompleteListener(this, task -> {
+                    if (!task.isSuccessful()) {
+                        showCloudBaselineError(
+                                "Échec de l'envoi vers le cloud.\n" +
+                                "Aucune progression locale n'a été supprimée."
+                        );
+                        return;
+                    }
+
+                    markBaselineApplied(user.getUid());
+
+                    Toast.makeText(
+                            this,
+                            finalStatusCount + " statuts sauvegardés dans le cloud",
+                            Toast.LENGTH_LONG
+                    ).show();
+
+                    showHome();
+                });
+            });
+        }).start();
+    }
+
+    private void downloadBaselineFromCloud() {
+        FirebaseUser user = firebaseAuth == null ? null : firebaseAuth.getCurrentUser();
+        if (user == null) {
+            showLoginScreen();
+            return;
+        }
+
+        showCloudProgress("Téléchargement de la progression Cloud...");
+
+        firestore.collection("users")
+                .document(user.getUid())
+                .collection("statusBuckets")
+                .get()
+                .addOnCompleteListener(this, task -> {
+                    if (!task.isSuccessful() || task.getResult() == null) {
+                        showCloudBaselineError(
+                                "Impossible de télécharger la progression Cloud.\n" +
+                                "La base locale n'a pas été modifiée."
+                        );
+                        return;
+                    }
+
+                    final Map<String, String> cloudStatuses = new HashMap<>();
+
+                    for (QueryDocumentSnapshot document : task.getResult()) {
+                        Object raw = document.get("statuses");
+                        if (!(raw instanceof Map)) continue;
+
+                        Map<?, ?> values = (Map<?, ?>) raw;
+                        for (Map.Entry<?, ?> entry : values.entrySet()) {
+                            if (entry.getKey() == null || entry.getValue() == null) continue;
+
+                            String originalId = String.valueOf(entry.getKey()).trim();
+                            String status = String.valueOf(entry.getValue()).trim().toUpperCase(Locale.ROOT);
+
+                            if ("M".equals(status)) status = "A";
+                            if ("I".equals(status)) status = "P";
+
+                            if (originalId.length() > 0 && status.length() > 0) {
+                                cloudStatuses.put(originalId, status);
+                            }
+                        }
+                    }
+
+                    showCloudProgress(
+                            "Application de " + cloudStatuses.size() +
+                            " statuts sur cet appareil..."
+                    );
+
+                    new Thread(() -> applyCloudBaseline(user.getUid(), cloudStatuses)).start();
+                });
+    }
+
+    private void applyCloudBaseline(String uid, Map<String, String> cloudStatuses) {
+        int applied = 0;
+        int missing = 0;
+
+        SQLiteDatabase db = openDb();
+        Cursor c = null;
+        SQLiteStatement update = null;
+
+        try {
+            // original_id est unique dans la base. On construit une table de correspondance
+            // en mémoire pour éviter des dizaines de milliers de recherches SQL coûteuses.
+            Map<String, Long> rowByOriginalId = new HashMap<>(240000);
+
+            c = db.rawQuery(
+                    "SELECT row_number, original_id FROM " + TABLE,
+                    null
+            );
+
+            while (c.moveToNext()) {
+                String originalId = safe(c.getString(1)).trim();
+                if (originalId.length() > 0) {
+                    rowByOriginalId.put(originalId, c.getLong(0));
+                }
+            }
+            c.close();
+            c = null;
+
+            db.beginTransaction();
+            try {
+                // La baseline Cloud est une photographie complète :
+                // on repart donc de zéro avant de la réappliquer.
+                db.execSQL("UPDATE " + TABLE + " SET status=''");
+
+                update = db.compileStatement(
+                        "UPDATE " + TABLE + " SET status=? WHERE row_number=?"
+                );
+
+                for (Map.Entry<String, String> entry : cloudStatuses.entrySet()) {
+                    Long row = rowByOriginalId.get(entry.getKey());
+                    if (row == null) {
+                        missing++;
+                        continue;
+                    }
+
+                    update.clearBindings();
+                    update.bindString(1, entry.getValue());
+                    update.bindLong(2, row);
+                    applied += update.executeUpdateDelete();
+                }
+
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+            }
+        } finally {
+            if (c != null) c.close();
+            if (update != null) update.close();
+            db.close();
+        }
+
+        final int finalApplied = applied;
+        final int finalMissing = missing;
+
+        runOnUiThread(() -> {
+            markBaselineApplied(uid);
+
+            String message = finalApplied + " statuts récupérés";
+            if (finalMissing > 0) {
+                message += " · " + finalMissing + " ID absents localement";
+            }
+
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+            showHome();
+        });
+    }
+
+    private void markBaselineApplied(String uid) {
+        getSharedPreferences(SYNC_PREFS, MODE_PRIVATE)
+                .edit()
+                .putString(SYNC_BASELINE_UID, uid == null ? "" : uid)
+                .apply();
+    }
+
+    private void showCloudProgress(String message) {
+        phase = "cloud_baseline";
+        current = null;
+        gameMode = "cloud";
+        baseFixed();
+
+        add(tv("Culture Générale", 34, Color.WHITE, Gravity.CENTER, true));
+        band("Synchronisation Cloud", BLUE, Color.WHITE, 22, 54);
+
+        Space top = new Space(this);
+        root.addView(top, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        add(tv(message, 18, Color.WHITE, Gravity.CENTER, false));
+
+        Space bottom = new Space(this);
+        root.addView(bottom, new LinearLayout.LayoutParams(-1, 0, 1));
     }
 
     private void loadFont() {
