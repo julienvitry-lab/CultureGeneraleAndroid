@@ -22,8 +22,8 @@ android {
         applicationId 'fr.culturegenerale.android'
         minSdk 23
         targetSdk 35
-        versionCode 946
-        versionName '9.4.6-synccloud001-live'
+        versionCode 947
+        versionName '9.4.7-synccloud001-live-fix1'
     }
 
     signingConfigs {

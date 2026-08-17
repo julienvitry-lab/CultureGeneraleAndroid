@@ -113,6 +113,9 @@ public class MainActivity extends Activity {
     private static final String SYNC_LIVE_UID = "live_uid";
     private ListenerRegistration liveStatusListener;
     private final ExecutorService cloudDbExecutor = Executors.newSingleThreadExecutor();
+    private final Object liveBucketCacheLock = new Object();
+    private final Map<String, Map<String, String>> liveBucketCache = new HashMap<>();
+    private volatile boolean liveCatchupInProgress = false;
     private String phaseBeforeEnd = "question";
     private String gameMode = "challenge";
     private String revisionMode = "normal";
@@ -210,7 +213,9 @@ public class MainActivity extends Activity {
 
     @Override protected void onStart() {
         super.onStart();
-        if (isLiveSyncActivatedForCurrentUser()) {
+        if (isLiveSyncActivatedForCurrentUser()
+                && "home".equals(phase)
+                && !liveCatchupInProgress) {
             startLiveStatusSync();
         }
     }
@@ -382,8 +387,7 @@ public class MainActivity extends Activity {
                 .getString(SYNC_BASELINE_UID, "");
         if (user.getUid().equals(appliedUid)) {
             if (isLiveSyncActivatedForCurrentUser()) {
-                startLiveStatusSync();
-                showHome();
+                performLiveCatchupThenShowHome();
             } else {
                 showLiveActivationChoice();
             }
@@ -1011,11 +1015,258 @@ public class MainActivity extends Activity {
                 });
     }
 
+    private void ensureLiveSyncIndexes() {
+        if (!hasAccess() || !dbFile.exists()) return;
+
+        SQLiteDatabase db = openDb();
+        try {
+            db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS idx_questions_original_id " +
+                            "ON " + TABLE + "(original_id)"
+            );
+            db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS idx_questions_row_number " +
+                            "ON " + TABLE + "(row_number)"
+            );
+        } finally {
+            db.close();
+        }
+    }
+
+    private Map<String, String> extractStatusesFromDocument(
+            QueryDocumentSnapshot document) {
+        Map<String, String> statuses = new HashMap<>();
+        if (document == null) return statuses;
+
+        Object raw = document.get("statuses");
+        if (!(raw instanceof Map)) return statuses;
+
+        Map<?, ?> values = (Map<?, ?>) raw;
+        for (Map.Entry<?, ?> entry : values.entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null) continue;
+
+            String originalId = String.valueOf(entry.getKey()).trim();
+            String status =
+                    normalizeCloudStatus(String.valueOf(entry.getValue()));
+
+            if (originalId.length() > 0) {
+                statuses.put(originalId, status);
+            }
+        }
+        return statuses;
+    }
+
+    /**
+     * À chaque démarrage du processus, on rattrape d'abord les éventuelles
+     * modifications faites sur l'autre appareil pendant que celui-ci était fermé.
+     *
+     * L'écran de jeu n'est affiché qu'après ce rattrapage : aucune grosse écriture
+     * SQLite ne peut donc entrer en collision avec "Défi / Questions aléatoires".
+     */
+    private void performLiveCatchupThenShowHome() {
+        if (liveCatchupInProgress) return;
+
+        if (!hasAccess() || !dbFile.exists()) {
+            showHome();
+            return;
+        }
+
+        liveCatchupInProgress = true;
+        stopLiveStatusSync();
+        showCloudProgress("Mise à jour de la progression Cloud...");
+
+        FirebaseUser user =
+                firebaseAuth == null ? null : firebaseAuth.getCurrentUser();
+
+        if (user == null || firestore == null) {
+            liveCatchupInProgress = false;
+            showLoginScreen();
+            return;
+        }
+
+        firestore.collection("users")
+                .document(user.getUid())
+                .collection("statusBuckets")
+                .get()
+                .addOnCompleteListener(this, task -> {
+                    if (!task.isSuccessful() || task.getResult() == null) {
+                        // Le hors-ligne reste prioritaire : on ne bloque pas le jeu.
+                        liveCatchupInProgress = false;
+                        showHome();
+                        startLiveStatusSync();
+                        return;
+                    }
+
+                    final Map<String, Map<String, String>> cloudBuckets =
+                            new HashMap<>();
+                    final Map<String, String> cloudStatuses = new HashMap<>();
+
+                    for (QueryDocumentSnapshot document : task.getResult()) {
+                        Map<String, String> bucket =
+                                extractStatusesFromDocument(document);
+                        cloudBuckets.put(document.getId(), bucket);
+                        cloudStatuses.putAll(bucket);
+                    }
+
+                    cloudDbExecutor.execute(() -> {
+                        int changed = 0;
+
+                        try {
+                            ensureLiveSyncIndexes();
+                            changed = applyCloudCatchupToLocal(cloudStatuses);
+
+                            synchronized (liveBucketCacheLock) {
+                                liveBucketCache.clear();
+                                for (Map.Entry<String, Map<String, String>> entry
+                                        : cloudBuckets.entrySet()) {
+                                    liveBucketCache.put(
+                                            entry.getKey(),
+                                            new HashMap<>(entry.getValue())
+                                    );
+                                }
+                            }
+                        } catch (Exception ignored) {
+                            // Une erreur cloud ne doit jamais fermer l'application.
+                        }
+
+                        final int finalChanged = changed;
+
+                        runOnUiThread(() -> {
+                            liveCatchupInProgress = false;
+                            showHome();
+                            startLiveStatusSync();
+
+                            if (finalChanged > 0) {
+                                Toast.makeText(
+                                        this,
+                                        finalChanged +
+                                                " changement(s) Cloud récupéré(s)",
+                                        Toast.LENGTH_SHORT
+                                ).show();
+                            }
+                        });
+                    });
+                });
+    }
+
+    /**
+     * Compare la photographie Cloud au SQLite avant d'écrire.
+     * On ne modifie donc que les lignes réellement différentes.
+     */
+    private int applyCloudCatchupToLocal(Map<String, String> cloudStatuses) {
+        if (cloudStatuses == null) return 0;
+        if (!hasAccess() || !dbFile.exists()) return 0;
+
+        SQLiteDatabase db = openDb();
+        Cursor c = null;
+        SQLiteStatement update = null;
+
+        Map<String, String> localStatuses = new HashMap<>();
+        int changed = 0;
+
+        try {
+            c = db.rawQuery(
+                    "SELECT original_id, COALESCE(status,'') FROM " + TABLE +
+                            " WHERE TRIM(COALESCE(status,''))<>''",
+                    null
+            );
+
+            while (c.moveToNext()) {
+                String originalId = safe(c.getString(0)).trim();
+                if (originalId.length() == 0) continue;
+                localStatuses.put(
+                        originalId,
+                        normalizeCloudStatus(c.getString(1))
+                );
+            }
+            c.close();
+            c = null;
+
+            Map<String, String> differences = new HashMap<>();
+
+            for (Map.Entry<String, String> entry : cloudStatuses.entrySet()) {
+                String originalId = safe(entry.getKey()).trim();
+                String cloudStatus = normalizeCloudStatus(entry.getValue());
+                String localStatus =
+                        normalizeCloudStatus(localStatuses.get(originalId));
+
+                if (!cloudStatus.equals(localStatus)) {
+                    differences.put(originalId, cloudStatus);
+                }
+            }
+
+            // Un statut local absent du cloud correspond à une question normale.
+            // Après activation LIVE, le cloud est la référence commune.
+            for (Map.Entry<String, String> entry : localStatuses.entrySet()) {
+                if (!cloudStatuses.containsKey(entry.getKey())) {
+                    differences.put(entry.getKey(), "");
+                }
+            }
+
+            if (differences.isEmpty()) return 0;
+
+            db.beginTransaction();
+            try {
+                update = db.compileStatement(
+                        "UPDATE " + TABLE +
+                                " SET status=? WHERE original_id=? " +
+                                "AND COALESCE(status,'')<>?"
+                );
+
+                for (Map.Entry<String, String> entry : differences.entrySet()) {
+                    update.clearBindings();
+                    update.bindString(1, entry.getValue());
+                    update.bindString(2, entry.getKey());
+                    update.bindString(3, entry.getValue());
+                    changed += update.executeUpdateDelete();
+                }
+
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+            }
+        } finally {
+            if (c != null) c.close();
+            if (update != null) update.close();
+            db.close();
+        }
+
+        return changed;
+    }
+
+    private Map<String, String> diffBucketStatuses(
+            Map<String, String> previous,
+            Map<String, String> current) {
+
+        Map<String, String> differences = new HashMap<>();
+        Set<String> ids = new HashSet<>();
+
+        if (previous != null) ids.addAll(previous.keySet());
+        if (current != null) ids.addAll(current.keySet());
+
+        for (String originalId : ids) {
+            String before = previous == null
+                    ? ""
+                    : normalizeCloudStatus(previous.get(originalId));
+            String after = current == null
+                    ? ""
+                    : normalizeCloudStatus(current.get(originalId));
+
+            if (!before.equals(after)) {
+                differences.put(originalId, after);
+            }
+        }
+
+        return differences;
+    }
+
     private void startLiveStatusSync() {
         if (!isLiveSyncActivatedForCurrentUser()) return;
         if (liveStatusListener != null) return;
+        if (liveCatchupInProgress) return;
 
-        FirebaseUser user = firebaseAuth == null ? null : firebaseAuth.getCurrentUser();
+        FirebaseUser user =
+                firebaseAuth == null ? null : firebaseAuth.getCurrentUser();
         if (user == null || firestore == null) return;
 
         liveStatusListener = firestore.collection("users")
@@ -1026,25 +1277,38 @@ public class MainActivity extends Activity {
 
                     for (DocumentChange change : snapshots.getDocumentChanges()) {
                         QueryDocumentSnapshot document = change.getDocument();
-                        Object raw = document.get("statuses");
-                        if (!(raw instanceof Map)) continue;
+                        final String bucketId = document.getId();
+                        final Map<String, String> currentStatuses =
+                                extractStatusesFromDocument(document);
 
-                        final Map<String, String> statuses = new HashMap<>();
-                        Map<?, ?> values = (Map<?, ?>) raw;
+                        Map<String, String> previousStatuses;
+                        synchronized (liveBucketCacheLock) {
+                            Map<String, String> cached =
+                                    liveBucketCache.get(bucketId);
+                            previousStatuses =
+                                    cached == null ? null : new HashMap<>(cached);
+                            liveBucketCache.put(
+                                    bucketId,
+                                    new HashMap<>(currentStatuses)
+                            );
+                        }
 
-                        for (Map.Entry<?, ?> entry : values.entrySet()) {
-                            if (entry.getKey() == null || entry.getValue() == null) continue;
-                            String originalId = String.valueOf(entry.getKey()).trim();
-                            String status =
-                                    normalizeCloudStatus(String.valueOf(entry.getValue()));
-                            if (originalId.length() > 0) {
-                                statuses.put(originalId, status);
+                        final Map<String, String> differences =
+                                diffBucketStatuses(
+                                        previousStatuses,
+                                        currentStatuses
+                                );
+
+                        if (differences.isEmpty()) continue;
+
+                        cloudDbExecutor.execute(() -> {
+                            try {
+                                ensureLiveSyncIndexes();
+                                applyLiveChangesToLocal(differences);
+                            } catch (Exception ignored) {
+                                // Une synchronisation ne doit jamais fermer le jeu.
                             }
-                        }
-
-                        if (!statuses.isEmpty()) {
-                            cloudDbExecutor.execute(() -> applyLiveBucketToLocal(statuses));
-                        }
+                        });
                     }
                 });
     }
@@ -1056,7 +1320,11 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void applyLiveBucketToLocal(Map<String, String> statuses) {
+    /**
+     * En LIVE, un changement sur une question n'entraîne plus la réécriture
+     * d'environ 1 000 statuts du bucket : seules les différences sont appliquées.
+     */
+    private void applyLiveChangesToLocal(Map<String, String> statuses) {
         if (statuses == null || statuses.isEmpty()) return;
         if (!hasAccess() || !dbFile.exists()) return;
 
@@ -1452,7 +1720,17 @@ public class MainActivity extends Activity {
         }
     }
 
-    private SQLiteDatabase openDb() { return SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE); }
+    private SQLiteDatabase openDb() {
+        SQLiteDatabase db = SQLiteDatabase.openDatabase(
+                dbFile.getAbsolutePath(),
+                null,
+                SQLiteDatabase.OPEN_READWRITE
+        );
+        try {
+            db.execSQL("PRAGMA busy_timeout=5000");
+        } catch (Exception ignored) { }
+        return db;
+    }
 
     private void showHome() {
         if (firebaseAuth != null && firebaseAuth.getCurrentUser() == null) {
@@ -2076,17 +2354,34 @@ public class MainActivity extends Activity {
     private Map<String, Long> countDomains() {
         Map<String, Long> map = new HashMap<>();
         for (String d : DOMAINS) map.put(d, 0L);
-        SQLiteDatabase db = openDb();
+
+        SQLiteDatabase db = null;
+        Cursor c = null;
         try {
-            Cursor c = db.rawQuery("SELECT megatheme, COUNT(*) FROM " + TABLE + " WHERE " + availableWhere(false) + " GROUP BY megatheme", null);
-            try {
-                while (c.moveToNext()) {
-                    String d = normalize(c.getString(0));
-                    long n = c.getLong(1);
-                    map.put(d, (map.containsKey(d) ? map.get(d) : 0) + n);
-                }
-            } finally { c.close(); }
-        } finally { db.close(); }
+            db = openDb();
+            c = db.rawQuery(
+                    "SELECT megatheme, COUNT(*) FROM " + TABLE +
+                            " WHERE " + availableWhere(false) +
+                            " GROUP BY megatheme",
+                    null
+            );
+
+            while (c.moveToNext()) {
+                String d = normalize(c.getString(0));
+                long n = c.getLong(1);
+                map.put(d, (map.containsKey(d) ? map.get(d) : 0) + n);
+            }
+        } catch (Exception e) {
+            Toast.makeText(
+                    this,
+                    "Base occupée par la synchronisation. Réessayez dans un instant.",
+                    Toast.LENGTH_SHORT
+            ).show();
+        } finally {
+            if (c != null) c.close();
+            if (db != null) db.close();
+        }
+
         return map;
     }
 
@@ -3703,6 +3998,14 @@ private void flagAndNext(String status, String msg) {
             try {
                 db.execSQL("UPDATE " + TABLE + " SET status='A' WHERE UPPER(TRIM(status))='M'");
                 db.execSQL("UPDATE " + TABLE + " SET status='P' WHERE UPPER(TRIM(status))='I'");
+                db.execSQL(
+                        "CREATE INDEX IF NOT EXISTS idx_questions_original_id " +
+                                "ON " + TABLE + "(original_id)"
+                );
+                db.execSQL(
+                        "CREATE INDEX IF NOT EXISTS idx_questions_row_number " +
+                                "ON " + TABLE + "(row_number)"
+                );
                 db.setTransactionSuccessful();
             } finally {
                 db.endTransaction();
