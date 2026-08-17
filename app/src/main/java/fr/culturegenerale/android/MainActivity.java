@@ -59,12 +59,12 @@ import java.util.Collections;
 
 public class MainActivity extends Activity {
     private static final String APP_VERSION = "V10.0.0";
-    private static final String APP_FOLDER = "Culture Générale";
+    private static final String APP_FOLDER = "Culture GÃ©nÃ©rale";
     private static final String DB_NAME = "questions_base.sqlite";
     private static final String TABLE = "questions";
     private static final String[] DOMAINS = new String[]{
-            "Animaux et Plantes", "Culture Classique", "Culture Générale", "Culture Moderne",
-            "Géographie", "Histoire", "Sciences et Techniques", "Sport"
+            "Animaux et Plantes", "Culture Classique", "Culture GÃ©nÃ©rale", "Culture Moderne",
+            "GÃ©ographie", "Histoire", "Sciences et Techniques", "Sport"
     };
     private static final String[] IMG_EXT = new String[]{".jpg", ".jpeg", ".png", ".webp", ".bmp"};
     private final int BLUE = Color.rgb(0, 86, 180);
@@ -123,7 +123,7 @@ public class MainActivity extends Activity {
     private int lastCombinedPopupAt = 0;
     private long remainingInCurrentDomain = 0;
 
-    // Préchargement léger pour fluidifier les transitions sans modifier la logique de jeu.
+    // PrÃ©chargement lÃ©ger pour fluidifier les transitions sans modifier la logique de jeu.
     private volatile Question prefetchedNextQuestion = null;
     private volatile List<Question> prefetchedRelatedQuestions = null;
     private volatile String prefetchedRelatedThemeKey = "";
@@ -176,7 +176,7 @@ public class MainActivity extends Activity {
     @Override public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         // Les vues utilisent des poids et des tailles adaptatives : elles se redimensionnent
-        // sans redémarrer la partie lors du passage paysage / portrait.
+        // sans redÃ©marrer la partie lors du passage paysage / portrait.
         if (transientPopup != null && transientPopup.isShowing()) transientPopup.dismiss();
     }
 
@@ -185,7 +185,7 @@ public class MainActivity extends Activity {
             appFont = getResources().getFont(R.font.comfortaa_bold);
         } catch (Exception e) {
             appFont = Typeface.DEFAULT_BOLD;
-            Toast.makeText(this, "Erreur : la police Comfortaa intégrée n'a pas été trouvée", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Erreur : la police Comfortaa intÃ©grÃ©e n'a pas Ã©tÃ© trouvÃ©e", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -405,7 +405,7 @@ public class MainActivity extends Activity {
 
     private void singleLineBand(String text, int color, int textColor, int maxSp, int minSp, int minHeightDp, int topMarginPx, int bottomMarginPx) {
         TextView v = tv(text, maxSp - 2, textColor, Gravity.CENTER, true);
-        int innerMargin = compactBandPaddingPx(); // marges internes réduites
+        int innerMargin = compactBandPaddingPx(); // marges internes rÃ©duites
         v.setPadding(innerMargin, innerMargin, innerMargin, innerMargin);
         v.setSingleLine(true);
         v.setMaxLines(1);
@@ -425,7 +425,7 @@ public class MainActivity extends Activity {
 
     private void upperBand(String text, int color, int textColor, int sp, int minHeightDp) {
         TextView v = tv(text, sp, textColor, Gravity.CENTER, true);
-        int innerMargin = compactBandPaddingPx(); // marges internes réduites
+        int innerMargin = compactBandPaddingPx(); // marges internes rÃ©duites
         v.setPadding(innerMargin, innerMargin, innerMargin, innerMargin);
         v.setMinHeight(dp(minHeightDp));
         setRoundedBackground(v, color, 14);
@@ -473,11 +473,11 @@ public class MainActivity extends Activity {
         current = null;
         gameMode = "home";
         baseFixed();
-        add(tv("Culture Générale", 34, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Culture GÃ©nÃ©rale", 34, Color.WHITE, Gravity.CENTER, true));
 
         if (!hasAccess()) {
-            band("Accès fichiers Android à autoriser", RED, Color.WHITE, 24, 54);
-            Button permission = btn("Autoriser l'accès aux fichiers", 22);
+            band("AccÃ¨s fichiers Android Ã  autoriser", RED, Color.WHITE, 24, 54);
+            Button permission = btn("Autoriser l'accÃ¨s aux fichiers", 22);
             permission.setOnClickListener(v -> askAccess());
             add(permission);
             return;
@@ -488,13 +488,13 @@ public class MainActivity extends Activity {
             return;
         }
 
-        migrateLegacyImageFlags();
+        migrateLegacyStatuses();
         exportProblemsP(false);
 
         Space topSpace = new Space(this);
         root.addView(topSpace, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        Button challenge = btn("DÉFI\nQuestions aléatoires", 25);
+        Button challenge = btn("DÃ‰FI\nQuestions alÃ©atoires", 25);
         challenge.setSingleLine(false);
         challenge.setMaxLines(3);
         setRoundedBackgroundWithStroke(challenge, GREEN, 18, Color.WHITE, 1);
@@ -505,7 +505,7 @@ public class MainActivity extends Activity {
         challengeLp.setMargins(0, cmToPx(0.2f), 0, cmToPx(0.25f));
         root.addView(challenge, challengeLp);
 
-        Button revision = btn("RÉVISION\nQuestions dans l'ordre", 25);
+        Button revision = btn("RÃ‰VISION\nQuestions dans l'ordre", 25);
         revision.setSingleLine(false);
         revision.setMaxLines(3);
         setRoundedBackgroundWithStroke(revision, BLUE, 18, Color.WHITE, 1);
@@ -524,7 +524,7 @@ public class MainActivity extends Activity {
         phase = "challenge_domains";
         gameMode = "challenge";
         baseFixed();
-        add(tv("Mode Défi", 32, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Mode DÃ©fi", 32, Color.WHITE, Gravity.CENTER, true));
 
         Map<String, Long> domainCounts = countDomains();
         int gap = cmToPx(0.2f);
@@ -590,7 +590,7 @@ public class MainActivity extends Activity {
         phase = "revision_mode";
         gameMode = "revision";
         baseFixed();
-        add(tv("Mode Révision", 32, Color.WHITE, Gravity.CENTER, true));
+        add(tv("Mode RÃ©vision", 32, Color.WHITE, Gravity.CENTER, true));
 
         Space top = new Space(this);
         root.addView(top, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -632,7 +632,7 @@ public class MainActivity extends Activity {
     private void showRevisionDomains() {
         phase = "revision_domains";
         baseScrollable();
-        add(tv("Révision " +
+        add(tv("RÃ©vision " +
                 ("ultimate".equals(revisionMode) ? "Ultimate" : "Normale"),
                 30, Color.WHITE, Gravity.CENTER, true));
 
@@ -663,7 +663,7 @@ public class MainActivity extends Activity {
         phase = "revision_letters";
         baseFixed();
         add(tv(revisionDomain, 30, Color.WHITE, Gravity.CENTER, true));
-        band("Choisissez la première lettre du thème",
+        band("Choisissez la premiÃ¨re lettre du thÃ¨me",
                 DARK, Color.WHITE, 20, 54);
 
         List<String> themes = loadOrderedRevisionThemes(revisionDomain, revisionMode);
@@ -707,7 +707,7 @@ public class MainActivity extends Activity {
     private void showRevisionThemes(String initial) {
         phase = "revision_themes";
         baseScrollable();
-        add(tv("Thèmes commençant par " + initial,
+        add(tv("ThÃ¨mes commenÃ§ant par " + initial,
                 28, Color.WHITE, Gravity.CENTER, true));
 
         List<String> themes = loadOrderedRevisionThemes(revisionDomain, revisionMode);
@@ -735,7 +735,7 @@ public class MainActivity extends Activity {
     private String revisionWhereClause() {
         if ("ultimate".equals(revisionMode)) {
             return "(status IS NULL OR TRIM(status)='' OR " +
-                    "UPPER(TRIM(status)) NOT IN ('M','P','T','X'))";
+                    "UPPER(TRIM(status)) NOT IN ('A','P','T','X'))";
         }
         return "1=1";
     }
@@ -784,7 +784,7 @@ public class MainActivity extends Activity {
 
         if (revisionQuestions.isEmpty()) {
             baseScrollable();
-            band("Aucune question disponible à partir de ce thème",
+            band("Aucune question disponible Ã  partir de ce thÃ¨me",
                     RED, Color.WHITE, 22, 70);
             Button back = btn("Retour", 22);
             back.setOnClickListener(v -> showRevisionThemes(themeInitial(theme)));
@@ -943,11 +943,11 @@ public class MainActivity extends Activity {
 
     private void addRevisionAssimilateButton(Question q) {
         Button assimilate = btn(
-                isQuestionMentallyAssimilated(q.row) ? "Déjà assimilée" : "Assimiler",
+                isQuestionAssimilated(q.row) ? "DÃ©jÃ  assimilÃ©e" : "Assimiler",
                 22);
         setRoundedBackgroundWithStroke(
                 assimilate, NAVY, 14, Color.WHITE, 1);
-        assimilate.setEnabled(!isQuestionMentallyAssimilated(q.row));
+        assimilate.setEnabled(!isQuestionAssimilated(q.row));
         assimilate.setOnClickListener(v -> assimilateRevisionQuestion(q));
 
         LinearLayout.LayoutParams lp =
@@ -967,7 +967,7 @@ public class MainActivity extends Activity {
                         cmToPx(1.0f) + cmToPx(0.2f)));
     }
 
-    private boolean isQuestionMentallyAssimilated(long row) {
+    private boolean isQuestionAssimilated(long row) {
         SQLiteDatabase db = openDb();
         Cursor c = null;
         try {
@@ -977,7 +977,7 @@ public class MainActivity extends Activity {
                     new String[]{String.valueOf(row)}
             );
             return c.moveToFirst() &&
-                    "M".equalsIgnoreCase(safe(c.getString(0)).trim());
+                    "A".equalsIgnoreCase(safe(c.getString(0)).trim());
         } finally {
             if (c != null) c.close();
             db.close();
@@ -985,7 +985,7 @@ public class MainActivity extends Activity {
     }
 
     private void assimilateRevisionQuestion(Question q) {
-        updateStatusForRow("M", q.row);
+        updateStatusForRow("A", q.row);
 
         if ("ultimate".equals(revisionMode)) {
             revisionQuestions.remove(revisionIndex);
@@ -1010,7 +1010,7 @@ public class MainActivity extends Activity {
         pager.setGravity(Gravity.CENTER);
         int gap = cmToPx(0.2f);
 
-        Button previous = btn("←", 22);
+        Button previous = btn("â†", 22);
         previous.setVisibility(revisionIndex > 0 ? View.VISIBLE : View.INVISIBLE);
         previous.setOnClickListener(v -> {
             if (revisionIndex <= 0) return;
@@ -1025,7 +1025,7 @@ public class MainActivity extends Activity {
         setRoundedBackgroundWithStroke(
                 position, DARK, 14, Color.WHITE, 1);
 
-        Button next = btn("→", 22);
+        Button next = btn("â†’", 22);
         boolean atLast = revisionIndex >= revisionQuestions.size() - 1;
         next.setVisibility(atLast && revisionAnswerVisible
                 ? View.INVISIBLE : View.VISIBLE);
@@ -1109,23 +1109,23 @@ public class MainActivity extends Activity {
     }
 
     private String availableWhere(boolean domain) {
-    // Questions réellement disponibles : non assimilées mentalement et non exclues.
-    // Les questions posées classiquement restent disponibles, mais ne sont reprises
-    // qu'après épuisement des questions jamais posées.
-    String w = "(status IS NULL OR TRIM(status)='' OR UPPER(TRIM(status)) NOT IN ('M','P','T','X'))";
+    // Questions rÃ©ellement disponibles : non assimilÃ©es et non exclues.
+    // Les questions posÃ©es classiquement restent disponibles, mais ne sont reprises
+    // qu'aprÃ¨s Ã©puisement des questions jamais posÃ©es.
+    String w = "(status IS NULL OR TRIM(status)='' OR UPPER(TRIM(status)) NOT IN ('A','P','T','X'))";
     if (domain) w += " AND LOWER(TRIM(megatheme))=LOWER(TRIM(?))";
     return w;
 }
 
     private String playableWhere(boolean domain) {
-    // Pot recyclable : utilisé uniquement lorsque toutes les questions jamais posées
-    // du mégathème ont été vues. M, P, T et X restent exclues.
+    // Pot recyclable : utilisÃ© uniquement lorsque toutes les questions jamais posÃ©es
+    // du mÃ©gathÃ¨me ont Ã©tÃ© vues. A, P, T et X restent exclues.
     return availableWhere(domain);
 }
 
     private String neverAskedWhere(boolean domain) {
-    // Priorité absolue : tirer uniquement les questions jamais posées.
-    // Les questions déjà vues ne reviennent qu'après épuisement de ce stock.
+    // PrioritÃ© absolue : tirer uniquement les questions jamais posÃ©es.
+    // Les questions dÃ©jÃ  vues ne reviennent qu'aprÃ¨s Ã©puisement de ce stock.
     String w = "(status IS NULL OR TRIM(status)='')";
     if (domain) w += " AND LOWER(TRIM(megatheme))=LOWER(TRIM(?))";
     return w;
@@ -1154,7 +1154,7 @@ public class MainActivity extends Activity {
     private void nextQuestion() {
         try {
             // Recalcul uniquement au moment du tirage d'une nouvelle question :
-            // R = questions disponibles non assimilées mentalement, hors P/T/X.
+            // R = questions disponibles non assimilÃ©es, hors P/T/X.
             remainingInCurrentDomain = countRemaining(currentDomain);
             Question q = takePrefetchedNextQuestion();
             if (q == null) q = loadFreshQuestion(currentDomain);
@@ -1196,7 +1196,7 @@ public class MainActivity extends Activity {
         final String domainSnapshot = currentDomain;
         if (snapshot == null || screenRoot == null) return;
 
-        // Un seul préchargement léger, décalé après l'affichage. On évite ainsi deux
+        // Un seul prÃ©chargement lÃ©ger, dÃ©calÃ© aprÃ¨s l'affichage. On Ã©vite ainsi deux
         // lectures SQLite concurrentes pendant que l'utilisateur ouvre les propositions.
         screenRoot.postDelayed(() -> new Thread(() -> {
             try {
@@ -1217,15 +1217,15 @@ public class MainActivity extends Activity {
     private Question loadFreshQuestion(String domain) {
         Question q = null;
 
-        // Phase 1 : tant qu'il existe des questions jamais posées, on ne tire que celles-là.
+        // Phase 1 : tant qu'il existe des questions jamais posÃ©es, on ne tire que celles-lÃ .
         for (int tries = 0; tries < 60; tries++) {
             q = loadRandom(domain, true);
             if (q == null) break;
             if (!askedThisSession.contains(q.row)) return q;
         }
 
-        // Phase 2 : lorsque toutes les questions jamais posées ont été vues,
-        // on remet dans le pot les questions classiques / à revoir, mais jamais M/P/T/X.
+        // Phase 2 : lorsque toutes les questions jamais posÃ©es ont Ã©tÃ© vues,
+        // on remet dans le pot les questions classiques / Ã  revoir, mais jamais A/P/T/X.
         for (int tries = 0; tries < 60; tries++) {
             q = loadRandom(domain, false);
             if (q == null) return null;
@@ -1362,14 +1362,14 @@ public class MainActivity extends Activity {
             else setRoundedBackgroundWithStroke(b, GREY, 18, Color.WHITE, 1);
         }
         setBottomBarEnabled(false);
-        // La couleur des propositions constitue désormais l'unique retour visuel.
+        // La couleur des propositions constitue dÃ©sormais l'unique retour visuel.
     }
 
     private void setQuestionBottomBar() {
         bottomBar.setVisibility(View.VISIBLE);
         bottomBar.removeAllViews();
         addBottomButton("Menu", RED, v -> showMainMenu());
-        addBottomButton("←", BLUE, v -> goBackFromGameScreen());
+        addBottomButton("â†", BLUE, v -> goBackFromGameScreen());
         addBottomButton("Propositions", GREEN, v -> showChoices());
     }
 
@@ -1377,16 +1377,16 @@ public class MainActivity extends Activity {
         bottomBar.setVisibility(View.VISIBLE);
         bottomBar.removeAllViews();
         addBottomButton("Menu", RED, v -> showMainMenu());
-        addBottomButton("←", BLUE, v -> showQuestion());
-        addBottomButton("Révéler", GREEN, v -> revealMental());
+        addBottomButton("â†", BLUE, v -> showQuestion());
+        addBottomButton("RÃ©vÃ©ler", GREEN, v -> revealMental());
     }
 
     private void setRevealBottomBar() {
         bottomBar.setVisibility(View.VISIBLE);
         bottomBar.removeAllViews();
-        addBottomButton("À revoir", RED, v -> finish("R"));
+        addBottomButton("Ã€ revoir", RED, v -> finish("R"));
         addBottomButton("Menu", BLUE, v -> showMainMenu());
-        addBottomButton("Assimilée", GREEN, v -> finish("M"));
+        addBottomButton("AssimilÃ©e", GREEN, v -> finish("A"));
     }
 
     private void addBottomButton(String text, int color, View.OnClickListener listener) {
@@ -1407,7 +1407,7 @@ public class MainActivity extends Activity {
     }
 
     private void showTransientMessage(String message, int color) {
-    // Désactivé volontairement
+    // DÃ©sactivÃ© volontairement
 }
 
     private void goBackFromGameScreen() {
@@ -1428,9 +1428,9 @@ public class MainActivity extends Activity {
             return;
         }
         LinearLayout panel = createRightActionPanel();
-        addActionPanelButton(panel, "P - Problème ponctuel", RED, cmToPx(1.0f), v -> {
+        addActionPanelButton(panel, "P - ProblÃ¨me ponctuel", RED, cmToPx(1.0f), v -> {
             hideActionPanel();
-            flagAndNext("P", "Problème noté");
+            flagAndNext("P", "ProblÃ¨me notÃ©");
         });
         addActionPanelButton(panel, "T - Contenu analogue", RED, cmToPx(1.0f), v -> {
             hideActionPanel();
@@ -1472,9 +1472,9 @@ public class MainActivity extends Activity {
             flagAndNext("T", "Contenu analogue exclu");
         });
 
-        addActionPanelButton(panel, "Problème ponctuel", RED, cmToPx(1.0f), v -> {
+        addActionPanelButton(panel, "ProblÃ¨me ponctuel", RED, cmToPx(1.0f), v -> {
             hideActionPanel();
-            flagAndNext("P", "Problème noté");
+            flagAndNext("P", "ProblÃ¨me notÃ©");
         });
 
         addActionPanelButton(panel, "Retour", GREY, cmToPx(1.0f), v -> showMainMenu());
@@ -1484,12 +1484,12 @@ public class MainActivity extends Activity {
     private void showAssimilateSubmenu() {
         LinearLayout panel = createRightActionPanel();
 
-        addActionPanelButton(panel, "Mauvaises réponses", GREY, cmToPx(1.0f), v -> {
+        addActionPanelButton(panel, "Mauvaises rÃ©ponses", GREY, cmToPx(1.0f), v -> {
             hideActionPanel();
             showWrongAnswersScreen();
         });
 
-        addActionPanelButton(panel, "Bonnes réponses", GREEN, cmToPx(1.0f), v -> {
+        addActionPanelButton(panel, "Bonnes rÃ©ponses", GREEN, cmToPx(1.0f), v -> {
             hideActionPanel();
             showGoodAnswersScreen();
         });
@@ -1536,10 +1536,10 @@ public class MainActivity extends Activity {
     private void showStatsMenu() {
         String message;
         try {
-            message = "Base en temps réel\n" +
-                    "Assimilées mentales (M) : " + countStatus("M") + "\n" +
-                    "À revoir (R) : " + countStatus("R") + "\n" +
-                    "Problèmes (P) : " + countStatus("P") + "\n" +
+            message = "Base en temps rÃ©el\n" +
+                    "AssimilÃ©es (A) : " + countStatus("A") + "\n" +
+                    "Ã€ revoir (R) : " + countStatus("R") + "\n" +
+                    "ProblÃ¨mes (P) : " + countStatus("P") + "\n" +
                     "Contenus analogues exclus (T) : " + countStatus("T") + "\n" +
                     "Exclusions manuelles (X) : " + countStatus("X");
         } catch (Exception e) {
@@ -1547,7 +1547,7 @@ public class MainActivity extends Activity {
         }
 
         new AlertDialog.Builder(this)
-                .setTitle("Statistiques détaillées")
+                .setTitle("Statistiques dÃ©taillÃ©es")
                 .setMessage(message)
                 .setPositiveButton("Fermer", null)
                 .show();
@@ -1619,11 +1619,11 @@ public class MainActivity extends Activity {
         Space flexibleSpace = new Space(this);
         root.addView(flexibleSpace, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        Button good = btn("Bonnes réponses", 26);
+        Button good = btn("Bonnes rÃ©ponses", 26);
         good.setOnClickListener(v -> showGoodAnswersScreen());
         addEndButton(good, false);
 
-        Button wrong = btn("Mauvaises réponses", 26);
+        Button wrong = btn("Mauvaises rÃ©ponses", 26);
         wrong.setOnClickListener(v -> showWrongAnswersScreen());
         addEndButton(wrong, true);
 
@@ -1662,7 +1662,7 @@ public class MainActivity extends Activity {
     private void rememberGoodTheme(Question q) {
         if (q == null || q.theme == null || q.theme.trim().isEmpty()) return;
         String key = comparisonKey(q.theme);
-        // Une nouvelle bonne réponse replace le thème en tête de la consultation.
+        // Une nouvelle bonne rÃ©ponse replace le thÃ¨me en tÃªte de la consultation.
         goodThemesThisSession.remove(key);
         goodThemesThisSession.put(key, q);
     }
@@ -1675,7 +1675,7 @@ public class MainActivity extends Activity {
         java.util.Collections.reverse(themes);
 
         if (themes.isEmpty()) {
-            reviewBand("Aucun thème disponible issu d'une bonne réponse dans cette session",
+            reviewBand("Aucun thÃ¨me disponible issu d'une bonne rÃ©ponse dans cette session",
                     DARK, Color.WHITE);
         } else {
             for (Question q : themes) {
@@ -1718,7 +1718,7 @@ public class MainActivity extends Activity {
             c = db.rawQuery(
                     "SELECT 1 FROM " + TABLE +
                             " WHERE (status IS NULL OR TRIM(status)='' OR " +
-                            "UPPER(TRIM(status)) NOT IN ('M','P','T','X'))" +
+                            "UPPER(TRIM(status)) NOT IN ('A','P','T','X'))" +
                             " AND LOWER(TRIM(theme))=LOWER(TRIM(?))" +
                             " AND LOWER(TRIM(question))=LOWER(TRIM(?)) LIMIT 1",
                     new String[]{safe(q.theme), safe(q.question)}
@@ -1740,7 +1740,7 @@ public class MainActivity extends Activity {
         if (wrongAnswers.isEmpty()) {
             phase = "wrong_answers";
             baseScrollable();
-            reviewBand("Aucune mauvaise réponse dans cette session", DARK, Color.WHITE);
+            reviewBand("Aucune mauvaise rÃ©ponse dans cette session", DARK, Color.WHITE);
             Button back = btn("Fin de partie", 22);
             back.setOnClickListener(v -> showEndScreen());
             add(back);
@@ -1773,7 +1773,7 @@ public class MainActivity extends Activity {
         scroll.addView(centeredHost, new ScrollView.LayoutParams(-1, -1));
         screenRoot.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        TextView theme = tv(w.theme == null || w.theme.trim().isEmpty() ? "Sans thème" : w.theme,
+        TextView theme = tv(w.theme == null || w.theme.trim().isEmpty() ? "Sans thÃ¨me" : w.theme,
                 24, Color.WHITE, Gravity.CENTER, true);
         theme.setSingleLine(false);
         theme.setMaxLines(Integer.MAX_VALUE);
@@ -1807,7 +1807,7 @@ public class MainActivity extends Activity {
         int gap = cmToPx(0.2f);
         int pagerHeight = cmToPx(1.20f);
 
-        Button previous = btn("←", 22);
+        Button previous = btn("â†", 22);
         setRoundedBackgroundWithStroke(previous, GREY, 14, Color.WHITE, 1);
         previous.setOnClickListener(v -> showWrongAnswerPage(wrongAnswerPageIndex - 1));
         if (wrongAnswerPageIndex == 0) previous.setVisibility(View.INVISIBLE);
@@ -1825,7 +1825,7 @@ public class MainActivity extends Activity {
         positionLp.setMargins(gap / 2, 0, gap / 2, 0);
         pager.addView(position, positionLp);
 
-        Button next = btn("→", 22);
+        Button next = btn("â†’", 22);
         setRoundedBackgroundWithStroke(next, GREY, 14, Color.WHITE, 1);
         next.setOnClickListener(v -> showWrongAnswerPage(wrongAnswerPageIndex + 1));
         if (wrongAnswerPageIndex == maxIndex) next.setVisibility(View.INVISIBLE);
@@ -1892,7 +1892,7 @@ public class MainActivity extends Activity {
         root.setPadding(dp(10), dp(8), dp(10), dp(8));
         root.setBackgroundColor(Color.BLACK);
         screenRoot.addView(root, new LinearLayout.LayoutParams(-1, 0, 1));
-        reviewBand("Chargement des questions associées…", DARK, Color.WHITE);
+        reviewBand("Chargement des questions associÃ©esâ€¦", DARK, Color.WHITE);
         addTrioBottomNavigation(false);
         setContentView(screenRoot);
     }
@@ -1925,7 +1925,7 @@ public class MainActivity extends Activity {
         anchoredTop.setBackgroundColor(Color.BLACK);
 
         TextView fixedTheme = tv(
-                q.theme == null || q.theme.trim().isEmpty() ? "Sans thème" : q.theme,
+                q.theme == null || q.theme.trim().isEmpty() ? "Sans thÃ¨me" : q.theme,
                 22, Color.WHITE, Gravity.CENTER, true);
         fixedTheme.setSingleLine(false);
         fixedTheme.setMaxLines(Integer.MAX_VALUE);
@@ -1954,7 +1954,7 @@ public class MainActivity extends Activity {
 
         screenRoot.addView(anchoredTop, new LinearLayout.LayoutParams(-1, -2));
 
-        // Zone fixe propre à la question courante. Elle est reconstruite à chaque
+        // Zone fixe propre Ã  la question courante. Elle est reconstruite Ã  chaque
         // changement de question, mais reste identique entre son temps 1 et son temps 2.
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -1964,7 +1964,7 @@ public class MainActivity extends Activity {
         screenRoot.addView(root, new LinearLayout.LayoutParams(-1, 0, 1));
 
         // La zone centrale occupe toute la hauteur encore disponible.
-        // Le détail jaune appartient uniquement à la question courante et reste
+        // Le dÃ©tail jaune appartient uniquement Ã  la question courante et reste
         // identique entre son temps 1 et son temps 2.
         if (!q.isImage && q.detail != null && !q.detail.trim().isEmpty()) {
             addStableTrioDetailBand(q.detail);
@@ -1975,10 +1975,10 @@ public class MainActivity extends Activity {
             root.addView(emptyMiddle, new LinearLayout.LayoutParams(-1, 0, 1));
         }
 
-        // Partie basse ancrée : réponse, Assimiler, navigation puis Retour/Fin.
-        // La zone basse existe toujours avec exactement les mêmes vues et dimensions.
+        // Partie basse ancrÃ©e : rÃ©ponse, Assimiler, navigation puis Retour/Fin.
+        // La zone basse existe toujours avec exactement les mÃªmes vues et dimensions.
         // Au temps 1, elles sont simplement invisibles. Le bandeau jaune ne peut donc
-        // plus changer de niveau entre les deux temps d'une même question.
+        // plus changer de niveau entre les deux temps d'une mÃªme question.
         addTrioTimeTwoStage(q, trioAnswerVisible);
 
         addTrioPager();
@@ -2086,7 +2086,7 @@ public class MainActivity extends Activity {
         showTrioQuestionPage();
 
         if (remainingInCurrentDomain > 0) remainingInCurrentDomain--;
-        new Thread(() -> updateStatusForRow("M", q.row)).start();
+        new Thread(() -> updateStatusForRow("A", q.row)).start();
     }
 
     private void addFixedTrioAnswerBand(String answer) {
@@ -2131,8 +2131,8 @@ public class MainActivity extends Activity {
                 }
             }
 
-            // Même enchaînement que la flèche droite au temps 2 :
-            // la question courante est retirée puis la question suivante apparaît au temps 1.
+            // MÃªme enchaÃ®nement que la flÃ¨che droite au temps 2 :
+            // la question courante est retirÃ©e puis la question suivante apparaÃ®t au temps 1.
             if (trioQuestions.isEmpty()) {
                 trioPageIndex = 0;
                 trioAnswerVisible = false;
@@ -2147,7 +2147,7 @@ public class MainActivity extends Activity {
             showTrioQuestionPage();
 
             if (remainingInCurrentDomain > 0) remainingInCurrentDomain--;
-            new Thread(() -> updateStatusForRow("M", q.row)).start();
+            new Thread(() -> updateStatusForRow("A", q.row)).start();
         });
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, cmToPx(1.0f));
@@ -2158,7 +2158,7 @@ public class MainActivity extends Activity {
     private void addStableTrioDetailBand(String detail) {
         // L'ancrage du bandeau jaune est prioritaire sur son centrage.
         // Le conteneur occupe toute la zone centrale, mais le bandeau jaune est
-        // accroché en bas de cette zone, donc toujours au même niveau aux temps 1 et 2.
+        // accrochÃ© en bas de cette zone, donc toujours au mÃªme niveau aux temps 1 et 2.
         FrameLayout anchorHost = new FrameLayout(this);
         anchorHost.setBackgroundColor(Color.BLACK);
 
@@ -2176,7 +2176,7 @@ public class MainActivity extends Activity {
         setRoundedBackgroundWithStroke(v, YELLOW, 14, Color.WHITE, 1);
 
         // Taille nominale identique aux autres bandeaux.
-        // Réduction seulement pour les textes exceptionnellement longs.
+        // RÃ©duction seulement pour les textes exceptionnellement longs.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             v.setAutoSizeTextTypeUniformWithConfiguration(
                     18, 24, 1, TypedValue.COMPLEX_UNIT_SP);
@@ -2201,7 +2201,7 @@ public class MainActivity extends Activity {
         int gap = cmToPx(0.2f);
         int height = cmToPx(1.20f);
 
-        Button previous = btn("←", 22);
+        Button previous = btn("â†", 22);
         setRoundedBackgroundWithStroke(previous, GREY, 14, Color.WHITE, 1);
         previous.setOnClickListener(v -> {
             if (trioPageIndex <= 0) return;
@@ -2222,7 +2222,7 @@ public class MainActivity extends Activity {
         positionLp.setMargins(gap / 2, 0, gap / 2, 0);
         pager.addView(position, positionLp);
 
-        Button next = btn("→", 22);
+        Button next = btn("â†’", 22);
         setRoundedBackgroundWithStroke(next, GREY, 14, Color.WHITE, 1);
         next.setOnClickListener(v -> {
             if (!trioAnswerVisible) {
@@ -2321,7 +2321,7 @@ public class MainActivity extends Activity {
 
     private void reviewWrongAndCorrectAnswers(String wrongAnswer, String correctAnswer) {
         String wrong = wrongAnswer == null || wrongAnswer.trim().length() == 0
-                ? "Aucune réponse donnée" : wrongAnswer.trim();
+                ? "Aucune rÃ©ponse donnÃ©e" : wrongAnswer.trim();
         String correct = correctAnswer == null ? "" : correctAnswer.trim();
 
         LinearLayout outer = new LinearLayout(this);
@@ -2430,7 +2430,7 @@ public class MainActivity extends Activity {
         List<Question> list = loadThemeQuestionQuestionsFast(theme, question);
         if (!list.isEmpty()) return list;
 
-        // Secours pour les rares lignes contenant des espaces insécables ou retours ligne atypiques.
+        // Secours pour les rares lignes contenant des espaces insÃ©cables ou retours ligne atypiques.
         return loadThemeQuestionQuestionsCompatibility(theme, question);
     }
 
@@ -2445,7 +2445,7 @@ public class MainActivity extends Activity {
                             "correct_index, image_file, is_image " +
                             "FROM " + TABLE +
                             " WHERE (status IS NULL OR TRIM(status)='' OR " +
-                            "UPPER(TRIM(status)) NOT IN ('M','P','T','X'))" +
+                            "UPPER(TRIM(status)) NOT IN ('A','P','T','X'))" +
                             " AND LOWER(TRIM(theme))=LOWER(TRIM(?))" +
                             " AND LOWER(TRIM(question))=LOWER(TRIM(?))" +
                             " ORDER BY row_number",
@@ -2470,7 +2470,7 @@ public class MainActivity extends Activity {
                             "correct_index, image_file, is_image " +
                             "FROM " + TABLE +
                             " WHERE (status IS NULL OR TRIM(status)='' OR " +
-                            "UPPER(TRIM(status)) NOT IN ('M','P','T','X')) ORDER BY row_number",
+                            "UPPER(TRIM(status)) NOT IN ('A','P','T','X')) ORDER BY row_number",
                     null
             );
             String targetTheme = comparisonKey(theme);
@@ -2515,12 +2515,12 @@ private void flagAndNext(String status, String msg) {
     if ("T".equals(status)) {
         int affected = updateAnalogousQuestionsToT();
         long totalT = countStatus("T");
-        // Toast supprimé
+        // Toast supprimÃ©
     } else {
         updateStatus(status);
         exportProblemsP(false);
         long totalP = countStatus("P");
-        // Toast supprimé
+        // Toast supprimÃ©
     }
     screenRoot.postDelayed(this::nextQuestion, 150);
 }
@@ -2535,8 +2535,8 @@ private void flagAndNext(String status, String msg) {
 
         try {
             db.beginTransaction();
-            // Une exclusion T concerne toutes les lignes ayant le même thème
-            // et la même question. Le détail n'entre plus dans la comparaison.
+            // Une exclusion T concerne toutes les lignes ayant le mÃªme thÃ¨me
+            // et la mÃªme question. Le dÃ©tail n'entre plus dans la comparaison.
             c = db.rawQuery(
                     "SELECT row_number, theme, question, status FROM " + TABLE,
                     null
@@ -2615,7 +2615,7 @@ private void flagAndNext(String status, String msg) {
     private void finish(String status) {
         answered++;
         final Question answeredQuestion = current;
-        if ("M".equals(status)) {
+        if ("A".equals(status)) {
             mentalOk++;
             goodStreak++;
             mentalStreak++;
@@ -2662,14 +2662,29 @@ private void flagAndNext(String status, String msg) {
         current = history.get(historyIndex);
         showQuestion();
     } else {
-        // Toast supprimé
+        // Toast supprimÃ©
     }
 }
 
-    private void migrateLegacyImageFlags() {
+    /**
+     * STATUTA001
+     * Normalise les anciens codes de statut au dÃ©marrage :
+     * - M (ancienne assimilation mentale) devient A (assimilation unique).
+     * - I (ancien signalement image) reste migrÃ© vers P comme auparavant.
+     *
+     * La migration est idempotente : aprÃ¨s le premier passage, elle ne modifie plus rien.
+     */
+    private void migrateLegacyStatuses() {
         SQLiteDatabase db = openDb();
         try {
-            db.execSQL("UPDATE " + TABLE + " SET status='P' WHERE UPPER(TRIM(status))='I'");
+            db.beginTransaction();
+            try {
+                db.execSQL("UPDATE " + TABLE + " SET status='A' WHERE UPPER(TRIM(status))='M'");
+                db.execSQL("UPDATE " + TABLE + " SET status='P' WHERE UPPER(TRIM(status))='I'");
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+            }
         } finally {
             db.close();
         }
@@ -2682,7 +2697,7 @@ private void flagAndNext(String status, String msg) {
         BufferedWriter writer = null;
         try {
             if (!appFolder.exists() && !appFolder.mkdirs()) {
-                throw new Exception("Impossible de créer le dossier " + appFolder.getAbsolutePath());
+                throw new Exception("Impossible de crÃ©er le dossier " + appFolder.getAbsolutePath());
             }
             c = db.rawQuery(
                     "SELECT row_number, original_id, megatheme, theme, question, detail, " +
@@ -2712,14 +2727,14 @@ private void flagAndNext(String status, String msg) {
             if (notifyUser) {
                 Toast.makeText(
                         this,
-                        exported + " signalement(s) exporté(s) dans " + problemsFile.getAbsolutePath(),
+                        exported + " signalement(s) exportÃ©(s) dans " + problemsFile.getAbsolutePath(),
                         Toast.LENGTH_LONG
                 ).show();
             }
             return exported;
         } catch (Exception e) {
             if (notifyUser) {
-                Toast.makeText(this, "Échec de l'export : " + e.getMessage(), Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "Ã‰chec de l'export : " + e.getMessage(), Toast.LENGTH_LONG).show();
             }
             return -1;
         } finally {
@@ -2739,18 +2754,18 @@ private void flagAndNext(String status, String msg) {
         if ("Animaux et Plantes".equals(d)) return Color.rgb(20, 85, 45);
         if ("Sport".equals(d)) return Color.rgb(190, 25, 25);
         if ("Histoire".equals(d)) return Color.rgb(115, 72, 42);
-        if ("Géographie".equals(d)) return Color.rgb(105, 190, 235);
+        if ("GÃ©ographie".equals(d)) return Color.rgb(105, 190, 235);
         if ("Culture Classique".equals(d)) return Color.rgb(30, 90, 190);
         if ("Culture Moderne".equals(d)) return Color.rgb(235, 130, 30);
-        if ("Culture Générale".equals(d)) return Color.rgb(135, 205, 105);
+        if ("Culture GÃ©nÃ©rale".equals(d)) return Color.rgb(135, 205, 105);
         if ("Sciences et Techniques".equals(d)) return Color.rgb(245, 205, 40);
         return BLUE;
     }
 
     private int domainBandTextColor(String domain) {
         String d = normalize(domain);
-        if ("Géographie".equals(d) || "Culture Moderne".equals(d) ||
-                "Culture Générale".equals(d) || "Sciences et Techniques".equals(d)) {
+        if ("GÃ©ographie".equals(d) || "Culture Moderne".equals(d) ||
+                "Culture GÃ©nÃ©rale".equals(d) || "Sciences et Techniques".equals(d)) {
             return Color.BLACK;
         }
         return Color.WHITE;
@@ -2767,13 +2782,13 @@ private void flagAndNext(String status, String msg) {
         String s = safe(raw).replace('\u00A0', ' ');
         while (s.contains("  ")) s = s.replace("  ", " ");
         if (s.equalsIgnoreCase("Culture classique")) return "Culture Classique";
-        if (s.equalsIgnoreCase("Culture générale")) return "Culture Générale";
+        if (s.equalsIgnoreCase("Culture gÃ©nÃ©rale")) return "Culture GÃ©nÃ©rale";
         if (s.equalsIgnoreCase("Culture moderne")) return "Culture Moderne";
         if (s.equalsIgnoreCase("Animaux et plantes")) return "Animaux et Plantes";
         if (s.equalsIgnoreCase("Sciences et techniques")) return "Sciences et Techniques";
-        if (s.equalsIgnoreCase("géographie")) return "Géographie";
+        if (s.equalsIgnoreCase("gÃ©ographie")) return "GÃ©ographie";
         if (s.equalsIgnoreCase("histoire")) return "Histoire";
         if (s.equalsIgnoreCase("sport")) return "Sport";
-        return s.length() == 0 ? "Culture Générale" : s;
+        return s.length() == 0 ? "Culture GÃ©nÃ©rale" : s;
     }
 }
