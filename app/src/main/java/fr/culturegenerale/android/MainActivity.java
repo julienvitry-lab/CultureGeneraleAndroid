@@ -1287,12 +1287,13 @@ public class MainActivity extends Activity {
      * un seul balayage de la table permet de retrouver les rowid concernés,
      * puis les UPDATE se font directement par rowid.
      */
-    private void applyBucketEfficiently(Map<String, String> statuses) {
-        if (statuses == null || statuses.isEmpty()) return;
-        if (!hasAccess() || !dbFile.exists()) return;
+    private int applyBucketEfficiently(Map<String, String> statuses) {
+        if (statuses == null || statuses.isEmpty()) return 0;
+        if (!hasAccess() || !dbFile.exists()) return 0;
 
         Set<String> wanted = new HashSet<>(statuses.keySet());
         Map<String, Long> rowIds = new HashMap<>();
+        int changed = 0;
 
         SQLiteDatabase db = openDb();
         Cursor c = null;
@@ -1313,7 +1314,7 @@ public class MainActivity extends Activity {
             c.close();
             c = null;
 
-            if (rowIds.isEmpty()) return;
+            if (rowIds.isEmpty()) return 0;
 
             db.beginTransaction();
             try {
@@ -1333,7 +1334,7 @@ public class MainActivity extends Activity {
                     update.bindString(1, status);
                     update.bindLong(2, rowId);
                     update.bindString(3, status);
-                    update.executeUpdateDelete();
+                    changed += update.executeUpdateDelete();
                 }
 
                 db.setTransactionSuccessful();
@@ -1345,6 +1346,8 @@ public class MainActivity extends Activity {
             if (update != null) update.close();
             db.close();
         }
+
+        return changed;
     }
 
     private void startLiveStatusSync() {
@@ -1409,7 +1412,7 @@ public class MainActivity extends Activity {
                         // ~1/64 de la progression au maximum, jamais 66 000 statuts.
                         cloudDbExecutor.execute(() -> {
                             try {
-                                applyBucketEfficiently(currentStatuses);
+                                int changed = applyBucketEfficiently(currentStatuses);
 
                                 getSharedPreferences(
                                         SYNC_PREFS, MODE_PRIVATE
@@ -1425,6 +1428,25 @@ public class MainActivity extends Activity {
                                             bucketId,
                                             new HashMap<>(currentStatuses)
                                     );
+                                }
+
+                                if (changed > 0) {
+                                    final int finalChanged = changed;
+                                    runOnUiThread(() -> {
+                                        // Ne jamais interrompre une partie en cours.
+                                        // Sur l'accueil, en revanche, on recalcule
+                                        // immédiatement les compteurs disponibles.
+                                        if ("home".equals(phase)) {
+                                            showHome();
+                                        }
+
+                                        Toast.makeText(
+                                                this,
+                                                finalChanged +
+                                                        " changement(s) synchronisé(s)",
+                                                Toast.LENGTH_SHORT
+                                        ).show();
+                                    });
                                 }
                             } catch (Exception ignored) {
                                 // Une erreur Cloud ne doit jamais fermer l'application.
