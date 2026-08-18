@@ -1370,15 +1370,7 @@ public class MainActivity extends Activity {
                         final String bucketId = document.getId();
                         final Map<String, String> currentStatuses =
                                 extractStatusesFromDocument(document);
-
-                        if (change.getType() == DocumentChange.Type.MODIFIED) {
-                            Toast.makeText(
-                                    this,
-                                    "Cloud reçu : " + bucketId,
-                                    Toast.LENGTH_SHORT
-                            ).show();
-                        }
-                        final String currentHash =
+final String currentHash =
                                 fingerprintStatuses(currentStatuses);
 
                         String savedHash = getSharedPreferences(
@@ -1439,29 +1431,15 @@ public class MainActivity extends Activity {
                                 }
 
                                 final int finalChanged = changed;
-                                runOnUiThread(() -> {
-                                    if (finalChanged > 0) {
-                                        // Ne jamais interrompre une partie en cours.
-                                        // Sur l'accueil, en revanche, on recalcule
-                                        // immédiatement les compteurs disponibles.
+                                if (finalChanged > 0) {
+                                    runOnUiThread(() -> {
+                                        // Rafraîchir silencieusement l'accueil
+                                        // sans interrompre une partie en cours.
                                         if ("home".equals(phase)) {
                                             showHome();
                                         }
-
-                                        Toast.makeText(
-                                                this,
-                                                finalChanged +
-                                                        " changement(s) synchronisé(s)",
-                                                Toast.LENGTH_SHORT
-                                        ).show();
-                                    } else {
-                                        Toast.makeText(
-                                                this,
-                                                "Cloud reçu mais 0 ligne modifiée",
-                                                Toast.LENGTH_SHORT
-                                        ).show();
-                                    }
-                                });
+                                    });
+                                }
                             } catch (Exception ignored) {
                                 // Une erreur Cloud ne doit jamais fermer l'application.
                             }
@@ -1560,19 +1538,10 @@ public class MainActivity extends Activity {
 
         // FieldPath permet d'utiliser original_id comme clé même s'il contient
         // des caractères spéciaux interprétés par la syntaxe des chemins.
-        final String debugOriginalId = originalId;
-        final String debugStatus = normalizedStatus;
-
         bucketRef.update(
                 FieldPath.of("statuses", originalId),
                 normalizedStatus
-        ).addOnSuccessListener(unused -> {
-            Toast.makeText(
-                    this,
-                    "Cloud envoyé : " + debugStatus,
-                    Toast.LENGTH_SHORT
-            ).show();
-        }).addOnFailureListener(error -> {
+        ).addOnSuccessListener(unused -> { }).addOnFailureListener(error -> {
             String message = error == null ? "erreur inconnue" : safe(error.getMessage());
             if (message.length() > 120) {
                 message = message.substring(0, 120);
@@ -1580,7 +1549,7 @@ public class MainActivity extends Activity {
 
             Toast.makeText(
                     this,
-                    "ÉCHEC Cloud : " + message,
+                    "Synchronisation Cloud impossible : " + message,
                     Toast.LENGTH_LONG
             ).show();
         });
