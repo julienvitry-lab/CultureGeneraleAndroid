@@ -1,77 +1,78 @@
-name: Build APK
+name: Construire DESPORTE Android signé
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "main" ]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Récupérer le projet
         uses: actions/checkout@v4
 
-      - name: Set up JDK
+      - name: Installer Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: "17"
 
-      - name: Make Gradle executable
-        run: chmod +x ./gradlew
+      - name: Préparer le projet
+        run: chmod +x gradlew scripts/ci/run_contract_tests.sh
 
-      - name: Restore permanent signing keystore
+      - name: Nettoyer les fichiers v190 déposés par erreur à la racine
+        shell: bash
+        run: rm -f ActivityDetailActivity.java FitDestinationStore.java HeartRateRecoveryService.java validate_current.py
+
+      - name: Valider EQUIP006 CSV et les contrats fonctionnels
+        shell: bash
+        run: scripts/ci/run_contract_tests.sh
+
+      - name: Reconstituer la clé de signature permanente
+        shell: bash
         env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          DESPORTE_KEYSTORE_BASE64: ${{ secrets.DESPORTE_KEYSTORE_BASE64 }}
+          DESPORTE_KEYSTORE_PASSWORD: ${{ secrets.DESPORTE_KEYSTORE_PASSWORD }}
+          DESPORTE_KEY_ALIAS: ${{ secrets.DESPORTE_KEY_ALIAS }}
         run: |
-          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "ANDROID_KEYSTORE_BASE64 is missing"
+          if [ -z "$DESPORTE_KEYSTORE_BASE64" ]; then
+            echo "Le secret DESPORTE_KEYSTORE_BASE64 est absent."
             exit 1
           fi
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/culture-generale-release.jks"
+          printf '%s' "$DESPORTE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/desporte-release.jks"
+          keytool -list \
+            -keystore "$RUNNER_TEMP/desporte-release.jks" \
+            -storepass "$DESPORTE_KEYSTORE_PASSWORD" \
+            -alias "$DESPORTE_KEY_ALIAS" >/dev/null
+          echo "Empreinte SHA-1 à déclarer dans le client OAuth Android Google :"
+          keytool -list -v \
+            -keystore "$RUNNER_TEMP/desporte-release.jks" \
+            -storepass "$DESPORTE_KEYSTORE_PASSWORD" \
+            -alias "$DESPORTE_KEY_ALIAS" | grep -E "SHA1:|SHA-1:" | head -1 || true
 
-      - name: Build permanently signed debug APK
+      - name: Compiler l'APK signé
         env:
-          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/culture-generale-release.jks
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          DESPORTE_KEYSTORE_PATH: ${{ runner.temp }}/desporte-release.jks
+          DESPORTE_KEYSTORE_PASSWORD: ${{ secrets.DESPORTE_KEYSTORE_PASSWORD }}
+          DESPORTE_KEY_ALIAS: ${{ secrets.DESPORTE_KEY_ALIAS }}
+          DESPORTE_KEY_PASSWORD: ${{ secrets.DESPORTE_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease --stacktrace --no-daemon
+
+      - name: Vérifier la signature de l'APK
+        shell: bash
         run: |
-          if [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
-            echo "One or more Android signing secrets are missing"
-            exit 1
-          fi
-          ./gradlew assembleDebug
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
 
-      - name: Verify permanent APK signature
-        run: |
-          APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' -print -quit)"
-          if [ -z "$APK" ]; then
-            echo "APK not found"
-            exit 1
-          fi
-
-          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
-          if [ -z "$APKSIGNER" ]; then
-            echo "apksigner not found"
-            exit 1
-          fi
-
-          CERT_INFO="$("$APKSIGNER" verify --verbose --print-certs "$APK")"
-          echo "$CERT_INFO"
-
-          EXPECTED_SHA256="8d8a4698af1d1c32448fd36339e67d2e3be816124ef1f171c132e4c81245a975"
-          echo "$CERT_INFO" | tr '[:upper:]' '[:lower:]' | grep -q "$EXPECTED_SHA256" || {
-            echo "ERROR: APK is not signed with the expected permanent certificate"
-            exit 1
-          }
-
-          echo "Permanent signature verified."
-
-      - name: Upload APK
+      - name: Publier l'APK EQUIP006 CSV matériel
         uses: actions/upload-artifact@v4
         with:
-          name: CultureGeneraleAndroid-SIGNED-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: DESPORTE-v194-ACTIVITY014-EQUIP005-EQUIP006-CSV
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 3
