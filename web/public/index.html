@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#061b3a">
+  <title>Culture Générale — Administration</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">CG</div>
+        <div>
+          <h1>Culture Générale</h1>
+          <p>Administration Cloud</p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <span id="cloudBadge" class="badge badge-warn">Cloud en attente</span>
+        <button id="logoutBtn" class="btn btn-ghost hidden" type="button">Déconnexion</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="loginView" class="panel login-panel">
+        <div class="panel-heading">
+          <span class="eyebrow">CGWEB001</span>
+          <h2>Connexion à CultureGeneraleSync</h2>
+          <p>Cette première version valide la connexion Web à Firebase Authentication et Cloud Firestore.</p>
+        </div>
+
+        <form id="loginForm" class="form-grid">
+          <label>
+            Adresse e-mail
+            <input id="emailInput" type="email" autocomplete="username" required>
+          </label>
+          <label>
+            Mot de passe
+            <input id="passwordInput" type="password" autocomplete="current-password" required>
+          </label>
+          <button id="loginBtn" class="btn btn-primary" type="submit">Se connecter</button>
+        </form>
+
+        <div id="loginMessage" class="message hidden" role="status"></div>
+      </section>
+
+      <section id="dashboardView" class="hidden">
+        <div class="hero panel">
+          <div>
+            <span class="eyebrow">Fondation Web</span>
+            <h2>Firebase est relié au site</h2>
+            <p>Le site n'édite encore aucune question : CGWEB001 sert uniquement à valider proprement l'infrastructure avant la migration des données.</p>
+          </div>
+          <div class="hero-state">
+            <span id="heroStateDot" class="state-dot"></span>
+            <span id="heroStateText">Vérification…</span>
+          </div>
+        </div>
+
+        <div class="cards-grid">
+          <article class="stat-card panel">
+            <span class="stat-label">Projet Firebase</span>
+            <strong>culturegeneralesync</strong>
+            <small>Projet central Android + Web</small>
+          </article>
+
+          <article class="stat-card panel">
+            <span class="stat-label">Utilisateur</span>
+            <strong id="userEmail">—</strong>
+            <small id="userUid">—</small>
+          </article>
+
+          <article class="stat-card panel">
+            <span class="stat-label">Firestore</span>
+            <strong id="firestoreState">Vérification…</strong>
+            <small>Lecture sécurisée sous users/&lt;uid&gt;</small>
+          </article>
+
+          <article class="stat-card panel">
+            <span class="stat-label">Buckets de statuts</span>
+            <strong id="bucketCount">—</strong>
+            <small>Structure SYNCLOUD001 existante</small>
+          </article>
+        </div>
+
+        <section class="panel roadmap">
+          <div class="panel-heading compact">
+            <span class="eyebrow">Suite prévue</span>
+            <h3>Vers le répertoire des 200 000 questions</h3>
+          </div>
+          <div class="roadmap-grid">
+            <div class="roadmap-item active"><b>CGWEB001</b><span>Connexion Firebase</span></div>
+            <div class="roadmap-item"><b>CGCLOUD002</b><span>100 questions test</span></div>
+            <div class="roadmap-item"><b>CGWEB003</b><span>Répertoire paginé</span></div>
+            <div class="roadmap-item"><b>CGWEB004</b><span>Filtres et tris</span></div>
+            <div class="roadmap-item"><b>CGWEB005</b><span>Édition interactive</span></div>
+            <div class="roadmap-item"><b>CGIMPORT001</b><span>Migration complète</span></div>
+          </div>
+        </section>
+
+        <section class="panel technical">
+          <h3>Diagnostic CGWEB001</h3>
+          <dl>
+            <div><dt>Hosting cible</dt><dd>culturegeneralesync.web.app</dd></div>
+            <div><dt>Authentication</dt><dd id="authDiag">—</dd></div>
+            <div><dt>Firestore</dt><dd id="firestoreDiag">—</dd></div>
+            <div><dt>Questions Cloud</dt><dd>Non migrées — volontairement</dd></div>
+          </dl>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

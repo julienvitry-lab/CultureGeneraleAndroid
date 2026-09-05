@@ -1,0 +1,120 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
+import {
+  collection,
+  getDocs,
+  getFirestore
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+
+// Configuration publique du projet Firebase CultureGeneraleSync.
+// Une clé API Firebase Web n'est pas un mot de passe : la sécurité réelle
+// repose sur Firebase Authentication et les règles Firestore.
+const firebaseConfig = {
+  apiKey: "AIzaSyBHAVR_Td-VozN7MzMyZqJ046h1T_ggRDc",
+  authDomain: "culturegeneralesync.firebaseapp.com",
+  projectId: "culturegeneralesync",
+  storageBucket: "culturegeneralesync.firebasestorage.app",
+  messagingSenderId: "678537092067"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const el = (id) => document.getElementById(id);
+const loginView = el("loginView");
+const dashboardView = el("dashboardView");
+const loginForm = el("loginForm");
+const loginBtn = el("loginBtn");
+const logoutBtn = el("logoutBtn");
+const loginMessage = el("loginMessage");
+const cloudBadge = el("cloudBadge");
+
+function setBadge(text, type = "warn") {
+  cloudBadge.textContent = text;
+  cloudBadge.className = `badge badge-${type}`;
+}
+
+function setLoginMessage(text = "") {
+  loginMessage.textContent = text;
+  loginMessage.classList.toggle("hidden", !text);
+}
+
+function friendlyAuthError(error) {
+  const code = error?.code || "";
+  if (code.includes("invalid-credential")) return "Adresse e-mail ou mot de passe incorrect.";
+  if (code.includes("too-many-requests")) return "Trop de tentatives. Réessayez un peu plus tard.";
+  if (code.includes("network-request-failed")) return "Connexion Internet indisponible.";
+  return error?.message || "Connexion impossible.";
+}
+
+async function testFirestore(user) {
+  el("firestoreState").textContent = "Lecture…";
+  el("firestoreDiag").textContent = "Lecture de users/<uid>/statusBuckets";
+  el("heroStateText").textContent = "Test Firestore…";
+
+  try {
+    const ref = collection(db, "users", user.uid, "statusBuckets");
+    const snapshot = await getDocs(ref);
+    el("bucketCount").textContent = String(snapshot.size);
+    el("firestoreState").textContent = "Connecté";
+    el("firestoreDiag").textContent = `OK — ${snapshot.size} document(s) statusBuckets lus`;
+    el("heroStateDot").className = "state-dot ok";
+    el("heroStateText").textContent = "Infrastructure Firebase opérationnelle";
+    setBadge("Firebase connecté", "ok");
+  } catch (error) {
+    console.error(error);
+    el("bucketCount").textContent = "—";
+    el("firestoreState").textContent = "Erreur";
+    el("firestoreDiag").textContent = error?.message || "Lecture refusée";
+    el("heroStateDot").className = "state-dot error";
+    el("heroStateText").textContent = "Firestore à vérifier";
+    setBadge("Erreur Firestore", "error");
+  }
+}
+
+loginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  setLoginMessage("");
+  loginBtn.disabled = true;
+  loginBtn.textContent = "Connexion…";
+  try {
+    await signInWithEmailAndPassword(
+      auth,
+      el("emailInput").value.trim(),
+      el("passwordInput").value
+    );
+  } catch (error) {
+    setLoginMessage(friendlyAuthError(error));
+  } finally {
+    loginBtn.disabled = false;
+    loginBtn.textContent = "Se connecter";
+  }
+});
+
+logoutBtn.addEventListener("click", () => signOut(auth));
+
+onAuthStateChanged(auth, async (user) => {
+  if (!user) {
+    dashboardView.classList.add("hidden");
+    loginView.classList.remove("hidden");
+    logoutBtn.classList.add("hidden");
+    el("passwordInput").value = "";
+    setBadge("Cloud en attente", "warn");
+    return;
+  }
+
+  loginView.classList.add("hidden");
+  dashboardView.classList.remove("hidden");
+  logoutBtn.classList.remove("hidden");
+  el("userEmail").textContent = user.email || "Compte Firebase";
+  el("userUid").textContent = user.uid;
+  el("authDiag").textContent = `OK — ${user.email || user.uid}`;
+  setBadge("Authentifié", "ok");
+  await testFirestore(user);
+});
