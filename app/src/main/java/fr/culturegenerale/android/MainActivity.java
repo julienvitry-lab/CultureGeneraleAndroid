@@ -1,5 +1,8 @@
 package fr.culturegenerale.android;
 
+
+import android.content.ContentValues;
+import com.google.firebase.firestore.DocumentSnapshot;
 import android.text.TextUtils;
 import android.text.InputType;
 import android.text.Layout;
@@ -105,6 +108,24 @@ public class MainActivity extends Activity {
     private Question current;
     private String currentDomain = null;
     private String phase = "home";
+
+    // CGSYNC002_QUESTIONS_SYNC_START
+    // Synchronisation du CONTENU des questions Firestore -> SQLite Android.
+    // Le statut reste géré exclusivement par SYNCLOUD001.
+    private ListenerRegistration cgSync002QuestionsRegistration;
+    private String cgSync002QuestionsUid = "";
+    private final ExecutorService cgSync002QuestionsExecutor =
+            Executors.newSingleThreadExecutor();
+
+    private final FirebaseAuth.AuthStateListener cgSync002AuthStateListener = firebaseAuth -> {
+        FirebaseUser user = firebaseAuth.getCurrentUser();
+        if (user == null) {
+            stopCgSync002QuestionSync();
+        } else {
+            startCgSync002QuestionSync(user);
+        }
+    };
+    // CGSYNC002_QUESTIONS_SYNC_END
     private FirebaseAuth firebaseAuth;
     private FirebaseFirestore firestore;
     private static final int CLOUD_BUCKET_COUNT = 64;
@@ -200,6 +221,7 @@ public class MainActivity extends Activity {
         } else {
             routeAfterAuthentication();
         }
+        FirebaseAuth.getInstance().addAuthStateListener(cgSync002AuthStateListener);
     }
 
     @Override public void onResume() {
@@ -229,6 +251,11 @@ public class MainActivity extends Activity {
         stopLiveStatusSync();
         cloudDbExecutor.shutdownNow();
         super.onDestroy();
+        try {
+            FirebaseAuth.getInstance().removeAuthStateListener(cgSync002AuthStateListener);
+        } catch (Exception ignored) { }
+        stopCgSync002QuestionSync();
+        cgSync002QuestionsExecutor.shutdownNow();
     }
 
     @Override public void onConfigurationChanged(Configuration newConfig) {
@@ -4152,6 +4179,166 @@ private void flagAndNext(String status, String msg) {
             db.close();
         }
     }
+
+    // CGSYNC002_CONTENT_METHODS_START
+
+    private synchronized void startCgSync002QuestionSync(FirebaseUser user) {
+        if (user == null) return;
+
+        String uid = safe(user.getUid());
+        if (uid.isEmpty()) return;
+
+        if (cgSync002QuestionsRegistration != null &&
+                uid.equals(cgSync002QuestionsUid)) {
+            return;
+        }
+
+        stopCgSync002QuestionSync();
+        cgSync002QuestionsUid = uid;
+
+        cgSync002QuestionsRegistration = FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(uid)
+                .collection("questions")
+                .addSnapshotListener((snapshot, error) -> {
+                    if (error != null || snapshot == null) return;
+                    if (!hasAccess() || dbFile == null || !dbFile.exists()) return;
+
+                    final List<DocumentSnapshot> changedDocs = new ArrayList<>();
+
+                    for (DocumentChange change : snapshot.getDocumentChanges()) {
+                        if (change.getType() == DocumentChange.Type.REMOVED) {
+                            continue;
+                        }
+                        changedDocs.add(change.getDocument());
+                    }
+
+                    if (changedDocs.isEmpty()) return;
+
+                    cgSync002QuestionsExecutor.execute(() -> {
+                        int matchedRows = 0;
+                        SQLiteDatabase db = null;
+
+                        try {
+                            db = openDb();
+                            db.beginTransaction();
+
+                            for (DocumentSnapshot document : changedDocs) {
+                                matchedRows += applyCgSync002QuestionToSqlite(db, document);
+                            }
+
+                            db.setTransactionSuccessful();
+                        } catch (Exception ignored) {
+                            // Le Cloud ne doit jamais empêcher de jouer.
+                        } finally {
+                            if (db != null) {
+                                try {
+                                    if (db.inTransaction()) db.endTransaction();
+                                } catch (Exception ignored) { }
+                                try {
+                                    db.close();
+                                } catch (Exception ignored) { }
+                            }
+                        }
+
+                        if (matchedRows > 0 && "home".equals(phase)) {
+                            runOnUiThread(() -> {
+                                if ("home".equals(phase)) showHome();
+                            });
+                        }
+                    });
+                });
+    }
+
+    private synchronized void stopCgSync002QuestionSync() {
+        if (cgSync002QuestionsRegistration != null) {
+            try {
+                cgSync002QuestionsRegistration.remove();
+            } catch (Exception ignored) { }
+            cgSync002QuestionsRegistration = null;
+        }
+        cgSync002QuestionsUid = "";
+    }
+
+    private int applyCgSync002QuestionToSqlite(
+            SQLiteDatabase db,
+            DocumentSnapshot document
+    ) {
+        if (db == null || document == null) return 0;
+
+        String documentId = safe(document.getId());
+        if (documentId.isEmpty()) return 0;
+
+        ContentValues values = new ContentValues();
+
+        cgSync002Put(values, document, "megatheme");
+        cgSync002Put(values, document, "theme");
+        cgSync002Put(values, document, "question");
+        cgSync002Put(values, document, "detail");
+        cgSync002Put(values, document, "proposition_a");
+        cgSync002Put(values, document, "proposition_b");
+        cgSync002Put(values, document, "proposition_c");
+        cgSync002Put(values, document, "proposition_d");
+        cgSync002Put(values, document, "correct_index");
+        cgSync002Put(values, document, "url_quizypedia");
+        cgSync002Put(values, document, "url_internet");
+        cgSync002Put(values, document, "image_file");
+        cgSync002Put(values, document, "non_trouve");
+        cgSync002Put(values, document, "is_image");
+
+        // IMPORTANT : ne pas toucher au statut.
+        if (values.size() == 0) return 0;
+
+        int changed = db.update(
+                TABLE,
+                values,
+                "CAST(original_id AS TEXT)=?",
+                new String[]{documentId}
+        );
+
+        if (changed == 0 && document.contains("row_number")) {
+            Object row = document.get("row_number");
+            if (row != null) {
+                changed = db.update(
+                        TABLE,
+                        values,
+                        "CAST(row_number AS TEXT)=?",
+                        new String[]{String.valueOf(row)}
+                );
+            }
+        }
+
+        return changed;
+    }
+
+    private void cgSync002Put(
+            ContentValues values,
+            DocumentSnapshot document,
+            String field
+    ) {
+        if (!document.contains(field)) return;
+
+        Object value = document.get(field);
+
+        if (value == null) {
+            values.putNull(field);
+        } else if (value instanceof Boolean) {
+            values.put(field, ((Boolean) value) ? 1 : 0);
+        } else if (value instanceof Integer) {
+            values.put(field, (Integer) value);
+        } else if (value instanceof Long) {
+            values.put(field, (Long) value);
+        } else if (value instanceof Double) {
+            values.put(field, (Double) value);
+        } else if (value instanceof Float) {
+            values.put(field, (Float) value);
+        } else {
+            values.put(field, String.valueOf(value));
+        }
+    }
+
+    // CGSYNC002_CONTENT_METHODS_END
+
 
     private int exportProblemsP(boolean notifyUser) {
         int exported = 0;

@@ -57,8 +57,8 @@ android {
         buildConfigField 'String', 'STABLE_RELEASE_NAME', '"SPORT 6.3"'
         buildConfigField 'String', 'BUILD_UTC', '"2026-08-09T10:00:00Z"'
         buildConfigField 'String', 'SOURCE_BASELINE_SHA256', '"e61ee344bd7d2885af37c69b172f8eb07aea2b8935d59ad21b3f80bab9f30aee"'
-        versionCode 194
-        versionName '6.3.194'
+        versionCode 195
+        versionName '9.5.2-cgsync002'
     }
 
     signingConfigs {
