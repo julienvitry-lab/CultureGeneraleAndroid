@@ -139,9 +139,10 @@ public final class CgBoot001 {
     }
 
     private static void initialiseSchema(SQLiteDatabase db) {
-        db.execSQL("PRAGMA journal_mode=DELETE");
-        db.execSQL("PRAGMA synchronous=NORMAL");
-
+        // CGBOOT001_FIX2_SCHEMA_START
+        // Ne pas executer PRAGMA journal_mode via execSQL() :
+        // sur Android cette commande renvoie une valeur et peut interrompre
+        // l initialisation AVANT la creation des tables.
         db.execSQL(
                 "CREATE TABLE IF NOT EXISTS questions (" +
                         "row_number INTEGER," +
