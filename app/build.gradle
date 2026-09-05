@@ -1,103 +1,53 @@
 plugins {
     id 'com.android.application'
+    id 'com.google.gms.google-services'
 }
 
+def ciKeystorePath = System.getenv('ANDROID_KEYSTORE_PATH')
+def ciKeystorePassword = System.getenv('ANDROID_KEYSTORE_PASSWORD')
+def ciKeyAlias = System.getenv('ANDROID_KEY_ALIAS')
+def ciKeyPassword = System.getenv('ANDROID_KEY_PASSWORD')
+
+def hasPermanentSigning =
+        ciKeystorePath != null && !ciKeystorePath.trim().isEmpty() &&
+        ciKeystorePassword != null && !ciKeystorePassword.trim().isEmpty() &&
+        ciKeyAlias != null && !ciKeyAlias.trim().isEmpty() &&
+        ciKeyPassword != null && !ciKeyPassword.trim().isEmpty()
+
 android {
-    namespace 'fr.sport.app'
+    namespace 'fr.culturegenerale.android'
     compileSdk 35
 
-    buildFeatures {
-        buildConfig true
-    }
-
     defaultConfig {
-        applicationId 'fr.sport.app'
+        applicationId 'fr.culturegenerale.android'
         minSdk 23
         targetSdk 35
-        buildConfigField 'String', 'CLEANUP_CHANNEL', '"CLEAN001"'
-        buildConfigField 'String', 'STABILITY_CHANNEL', '"STAB001"'
-        buildConfigField 'String', 'SYNC_CHANNEL', '"SYNC010"'
-        buildConfigField 'String', 'IMPORT_CHANNEL', '"IMPORT013"'
-        buildConfigField 'String', 'UX_CHANNEL', '"UX011"'
-        buildConfigField 'String', 'HOME_CHANNEL', '"HOME012"'
-        buildConfigField 'String', 'GOALS_CHANNEL', '"GOALS008"'
-        buildConfigField 'String', 'UI_CHANNEL', '"THEMES005"'
-        buildConfigField 'String', 'TRAINING_CHANNEL', '"TRAIN009"'
-        buildConfigField 'String', 'ULTRA_CHANNEL', '"ULTRA008"'
-        buildConfigField 'String', 'CARTO_CHANNEL', '"CARTO009"'
-        buildConfigField 'String', 'QUALITY_CHANNEL', '"QUALITY003"'
-        buildConfigField 'String', 'SEARCH_CHANNEL', '"SEARCH001"'
-        buildConfigField 'String', 'TAGS_CHANNEL', '"TAGS001"'
-        buildConfigField 'String', 'ACTIVITY_CHANNEL', '"ACTIVITY014"'
-        buildConfigField 'String', 'FAVORITES_CHANNEL', '"FAVORIS001"'
-        buildConfigField 'String', 'BACKUP_CHANNEL', '"BACKUP002"'
-        buildConfigField 'String', 'EQUIPMENT_CHANNEL', '"EQUIP006"'
-        buildConfigField 'String', 'FIT_FLOW_CHANNEL', '"FITFLOW006"'
-        buildConfigField 'String', 'GAP_CHANNEL', '"GAP002"'
-        buildConfigField 'String', 'CYCLE_CHANNEL', '"CYCLE001"'
-        buildConfigField 'String', 'LOAD_CHANNEL', '"LOAD004"'
-        buildConfigField 'String', 'CALIBRATION_CHANNEL', '"CALIB001"'
-        buildConfigField 'String', 'PERFORMANCE_CHANNEL', '"PERF005"'
-        buildConfigField 'String', 'ROUTE_CHANNEL', '"ROUTE008"'
-        buildConfigField 'String', 'JOURNAL_CHANNEL', '"WEIGHT001"'
-        buildConfigField 'String', 'REPORT_CHANNEL', '"REPORT001"'
-        buildConfigField 'String', 'SEGMENT_CHANNEL', '"SEGMENT002"'
-        buildConfigField 'double', 'TREADMILL_SLOPE_PERCENT', '12.0d'
-        buildConfigField 'boolean', 'BACKUP002_ROTATING_VERIFIED_BACKUPS', 'true'
-        buildConfigField 'boolean', 'EQUIP002_ROTATION_LIFECYCLE_INSIGHTS', 'true'
-        buildConfigField 'boolean', 'EQUIP003_STRAVA_TYPE_MAPPING', 'true'
-        buildConfigField 'boolean', 'EQUIP004_TEMP_BULK_ASSIGNMENT', 'true'
-        buildConfigField 'boolean', 'EQUIP005_INLINE_ACTIVITY_ASSIGNMENT', 'true'
-        buildConfigField 'boolean', 'EQUIP006_TEMP_CSV_ASSIGNMENT', 'true'
-        buildConfigField 'boolean', 'ULTRA008_RUGGED_RACE_MODE', 'true'
-        buildConfigField 'boolean', 'TRAIN004_NATURAL_CALENDAR', 'true'
-        buildConfigField 'boolean', 'QUALITY003_INCREMENTAL_DAILY_WATCH', 'true'
-        buildConfigField 'boolean', 'ACTIVITY004_LIVE_ACTIVITY_MAP', 'true'
-        buildConfigField 'boolean', 'ACTIVITY005_CENTRAL_ACTIVITY_HUB', 'true'
-        buildConfigField 'String', 'STABLE_RELEASE_NAME', '"SPORT 6.3"'
-        buildConfigField 'String', 'BUILD_UTC', '"2026-08-09T10:00:00Z"'
-        buildConfigField 'String', 'SOURCE_BASELINE_SHA256', '"e61ee344bd7d2885af37c69b172f8eb07aea2b8935d59ad21b3f80bab9f30aee"'
-        versionCode 195
-        versionName '9.5.2-cgsync002'
+        versionCode 196
+        versionName '9.5.2-cgsync002-clean'
     }
 
     signingConfigs {
-        release {
-            storeFile file(System.getenv('DESPORTE_KEYSTORE_PATH') ?: 'desporte-release.jks')
-            storePassword System.getenv('DESPORTE_KEYSTORE_PASSWORD')
-            keyAlias System.getenv('DESPORTE_KEY_ALIAS')
-            keyPassword System.getenv('DESPORTE_KEY_PASSWORD')
+        permanent {
+            if (hasPermanentSigning) {
+                storeFile file(ciKeystorePath)
+                storePassword ciKeystorePassword
+                keyAlias ciKeyAlias
+                keyPassword ciKeyPassword
+            }
         }
     }
 
     buildTypes {
         debug {
-            debuggable true
+            if (hasPermanentSigning) {
+                signingConfig signingConfigs.permanent
+            }
         }
-
-        release {
-            minifyEnabled false
-            signingConfig signingConfigs.release
-        }
-    }
-
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
     }
 }
 
-
 dependencies {
-    // SYNCLOUD001 : Google Identity Services pour l'autorisation Drive appDataFolder.
-    implementation 'com.google.android.gms:play-services-auth:21.6.0'
-
-    implementation 'org.maplibre.gl:android-sdk-opengl:13.3.1'
-
-    implementation 'com.github.mapsforge.mapsforge:mapsforge-core:0.29.0@jar'
-    implementation 'com.github.mapsforge.mapsforge:mapsforge-map:0.29.0@jar'
-    implementation 'com.github.mapsforge.mapsforge:mapsforge-map-reader:0.29.0@jar'
-    implementation 'com.github.mapsforge.mapsforge:mapsforge-themes:0.29.0@jar'
-    implementation 'com.github.mapsforge.mapsforge:mapsforge-map-android:0.29.0@jar'
-    implementation 'com.caverock:androidsvg:1.4'
+    implementation platform('com.google.firebase:firebase-bom:34.16.0')
+    implementation 'com.google.firebase:firebase-firestore'
+    implementation 'com.google.firebase:firebase-auth'
 }
