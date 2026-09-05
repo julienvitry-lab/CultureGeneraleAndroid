@@ -178,7 +178,7 @@ window.CGWEB001 = {
     clean.cloud_schema = 1;
 
     const ref = doc(db, "users", user.uid, "questions", String(questionId));
-    await updateDoc(ref, clean);
+    await updateDoc(ref, { ...(clean), cg_updated_at: serverTimestamp() /* CGSYNC003_WEB_STAMP */ });
     const fresh = await getDoc(ref);
     return fresh.exists() ? { id: fresh.id, ...fresh.data() } : null;
   },

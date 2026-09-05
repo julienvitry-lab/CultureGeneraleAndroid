@@ -4200,6 +4200,8 @@ private void flagAndNext(String status, String msg) {
                 .collection("users")
                 .document(uid)
                 .collection("questions")
+                // CGSYNC003_DELTA_ONLY
+                .whereGreaterThan("cg_updated_at", new com.google.firebase.Timestamp(0L, 0))
                 .addSnapshotListener((snapshot, error) -> {
                     if (error != null || snapshot == null) return;
                     if (!hasAccess() || dbFile == null || !dbFile.exists()) return;
