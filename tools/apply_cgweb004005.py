@@ -1,29 +1,38 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
-import {
-  getAuth,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  signOut
-} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
-import {
-  collection, getDocs, getFirestore, doc, writeBatch, getCountFromServer, serverTimestamp, query, orderBy, documentId, limit, startAfter, getDoc, where, updateDoc
-} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+from pathlib import Path
+import re
 
-// Configuration publique du projet Firebase CultureGeneraleSync.
-// Une clé API Firebase Web n'est pas un mot de passe : la sécurité réelle
-// repose sur Firebase Authentication et les règles Firestore.
-const firebaseConfig = {
-  apiKey: "AIzaSyBHAVR_Td-VozN7MzMyZqJ046h1T_ggRDc",
-  authDomain: "culturegeneralesync.firebaseapp.com",
-  projectId: "culturegeneralesync",
-  storageBucket: "culturegeneralesync.firebasestorage.app",
-  messagingSenderId: "678537092067"
-};
+app_path = Path('web/public/app.js')
+index_path = Path('web/public/index.html')
+if not app_path.exists():
+    raise SystemExit('ERREUR: web/public/app.js introuvable')
+if not index_path.exists():
+    raise SystemExit('ERREUR: web/public/index.html introuvable')
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+s = app_path.read_text(encoding='utf-8')
 
+# Étendre l'import Firestore existant.
+pat = re.compile(
+    r'import\s*\{(?P<names>[^}]*)\}\s*from\s*["\'](?P<url>https://www\.gstatic\.com/firebasejs/[^"\']+/firebase-firestore\.js)["\'];?',
+    re.S,
+)
+m = pat.search(s)
+if not m:
+    raise SystemExit('ERREUR: import firebase-firestore.js introuvable dans app.js')
+
+names = [x.strip() for x in m.group('names').replace('\n', ' ').split(',') if x.strip()]
+for need in [
+    'doc', 'writeBatch', 'getCountFromServer', 'serverTimestamp',
+    'query', 'where', 'orderBy', 'documentId', 'limit', 'startAfter',
+    'getDocs', 'getDoc', 'updateDoc'
+]:
+    if need not in names:
+        names.append(need)
+new_import = 'import {\n  ' + ', '.join(names) + f'\n}} from "{m.group("url")}";'
+s = s[:m.start()] + new_import + s[m.end():]
+
+start = '// CGCLOUD002_SHARED_CONTEXT_BRIDGE_START'
+end = '// CGCLOUD002_SHARED_CONTEXT_BRIDGE_END'
+bridge = r'''
 // CGCLOUD002_SHARED_CONTEXT_BRIDGE_START
 // Contexte Firebase unique partagé par CGWEB001 / CGCLOUD002 / CGWEB004 / CGWEB005.
 window.CGWEB001 = {
@@ -184,96 +193,44 @@ window.CGWEB001 = {
   },
 };
 // CGCLOUD002_SHARED_CONTEXT_BRIDGE_END
+'''.strip()
 
-const el = (id) => document.getElementById(id);
-const loginView = el("loginView");
-const dashboardView = el("dashboardView");
-const loginForm = el("loginForm");
-const loginBtn = el("loginBtn");
-const logoutBtn = el("logoutBtn");
-const loginMessage = el("loginMessage");
-const cloudBadge = el("cloudBadge");
+if start in s and end in s:
+    s = re.sub(re.escape(start) + r'.*?' + re.escape(end), lambda _m: bridge, s, flags=re.S)
+else:
+    needle = re.compile(r'(const\s+db\s*=\s*getFirestore\(app\)\s*;?)')
+    if not needle.search(s):
+        raise SystemExit('ERREUR: const db = getFirestore(app) introuvable dans app.js')
+    s = needle.sub(lambda m: m.group(1) + '\n\n' + bridge, s, count=1)
 
-function setBadge(text, type = "warn") {
-  cloudBadge.textContent = text;
-  cloudBadge.className = `badge badge-${type}`;
-}
+app_path.write_text(s, encoding='utf-8')
 
-function setLoginMessage(text = "") {
-  loginMessage.textContent = text;
-  loginMessage.classList.toggle("hidden", !text);
-}
+# Remplacer CGWEB003 par le module combiné CGWEB004 + CGWEB005.
+idx = index_path.read_text(encoding='utf-8')
+idx = re.sub(
+    r'\s*<script\s+type=["\']module["\']\s+src=["\']\./cgweb003\.js(?:\?[^"\']*)?["\']></script>',
+    '', idx
+)
+idx = re.sub(
+    r'\s*<script\s+type=["\']module["\']\s+src=["\']\./cgweb004005\.js(?:\?[^"\']*)?["\']></script>',
+    '', idx
+)
 
-function friendlyAuthError(error) {
-  const code = error?.code || "";
-  if (code.includes("invalid-credential")) return "Adresse e-mail ou mot de passe incorrect.";
-  if (code.includes("too-many-requests")) return "Trop de tentatives. Réessayez un peu plus tard.";
-  if (code.includes("network-request-failed")) return "Connexion Internet indisponible.";
-  return error?.message || "Connexion impossible.";
-}
+# Cache-busting des modules partagés.
+idx = re.sub(r'app\.js(?:\?[^"\']*)?', 'app.js?v=CGWEB005_1', idx)
+idx = re.sub(r'cloud002\.js(?:\?[^"\']*)?', 'cloud002.js?v=CGWEB005_1', idx)
 
-async function testFirestore(user) {
-  el("firestoreState").textContent = "Lecture…";
-  el("firestoreDiag").textContent = "Lecture de users/<uid>/statusBuckets";
-  el("heroStateText").textContent = "Test Firestore…";
+tag = '  <script type="module" src="./cgweb004005.js?v=CGWEB005_1"></script>\n'
+cloud_pat = re.compile(r'(<script\s+type=["\']module["\']\s+src=["\']\./cloud002\.js(?:\?[^"\']*)?["\']></script>)')
+m2 = cloud_pat.search(idx)
+if m2:
+    idx = idx[:m2.end()] + '\n' + tag.rstrip('\n') + idx[m2.end():]
+else:
+    idx = idx.replace('</body>', tag + '</body>')
 
-  try {
-    const ref = collection(db, "users", user.uid, "statusBuckets");
-    const snapshot = await getDocs(ref);
-    el("bucketCount").textContent = String(snapshot.size);
-    el("firestoreState").textContent = "Connecté";
-    el("firestoreDiag").textContent = `OK — ${snapshot.size} document(s) statusBuckets lus`;
-    el("heroStateDot").className = "state-dot ok";
-    el("heroStateText").textContent = "Infrastructure Firebase opérationnelle";
-    setBadge("Firebase connecté", "ok");
-  } catch (error) {
-    console.error(error);
-    el("bucketCount").textContent = "—";
-    el("firestoreState").textContent = "Erreur";
-    el("firestoreDiag").textContent = error?.message || "Lecture refusée";
-    el("heroStateDot").className = "state-dot error";
-    el("heroStateText").textContent = "Firestore à vérifier";
-    setBadge("Erreur Firestore", "error");
-  }
-}
+index_path.write_text(idx, encoding='utf-8')
 
-loginForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  setLoginMessage("");
-  loginBtn.disabled = true;
-  loginBtn.textContent = "Connexion…";
-  try {
-    await signInWithEmailAndPassword(
-      auth,
-      el("emailInput").value.trim(),
-      el("passwordInput").value
-    );
-  } catch (error) {
-    setLoginMessage(friendlyAuthError(error));
-  } finally {
-    loginBtn.disabled = false;
-    loginBtn.textContent = "Se connecter";
-  }
-});
-
-logoutBtn.addEventListener("click", () => signOut(auth));
-
-onAuthStateChanged(auth, async (user) => {
-  if (!user) {
-    dashboardView.classList.add("hidden");
-    loginView.classList.remove("hidden");
-    logoutBtn.classList.add("hidden");
-    el("passwordInput").value = "";
-    setBadge("Cloud en attente", "warn");
-    return;
-  }
-
-  loginView.classList.add("hidden");
-  dashboardView.classList.remove("hidden");
-  logoutBtn.classList.remove("hidden");
-  el("userEmail").textContent = user.email || "Compte Firebase";
-  el("userUid").textContent = user.uid;
-  el("authDiag").textContent = `OK — ${user.email || user.uid}`;
-  setBadge("Authentifié", "ok");
-  await testFirestore(user);
-});
+print('OK: bridge Firebase enrichi pour CGWEB004 + CGWEB005')
+print('OK: filtres/tri Firestore ajoutés')
+print('OK: édition Firestore ajoutée (statut volontairement non modifiable)')
+print('OK: index.html -> cgweb004005.js?v=CGWEB005_1')
