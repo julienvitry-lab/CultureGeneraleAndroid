@@ -37,36 +37,44 @@ Object.assign(panel.style, {
   padding: '16px', borderRadius: '16px', color: 'white',
   background: 'linear-gradient(145deg, rgba(11,39,69,.97), rgba(14,77,112,.97))',
   border: '1px solid rgba(108,214,255,.45)', boxShadow: '0 18px 60px rgba(0,0,0,.45)',
-  fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif'
+  fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
+  display: 'none'
 });
 document.body.appendChild(panel);
 
-// Sur téléphone, le panneau ne doit jamais masquer le formulaire CGWEB001.
-// On le remet dans le flux normal de la page.
+// CGCLOUD002 est un outil temporaire d'import. Tant que l'utilisateur n'est
+// pas authentifié, il reste totalement caché afin de ne jamais masquer CGWEB001.
 function adaptCgcloud002Layout() {
   const mobile = window.matchMedia('(max-width: 700px)').matches;
   if (mobile) {
     Object.assign(panel.style, {
-      position: 'relative',
-      right: 'auto',
-      bottom: 'auto',
-      width: 'calc(100% - 28px)',
-      margin: '18px 14px 28px',
-      zIndex: '1'
+      position: 'fixed',
+      left: '14px',
+      right: '14px',
+      bottom: '14px',
+      width: 'auto',
+      maxHeight: '72vh',
+      overflowY: 'auto',
+      margin: '0',
+      zIndex: '99999'
     });
   } else {
     Object.assign(panel.style, {
       position: 'fixed',
+      left: 'auto',
       right: '14px',
       bottom: '14px',
       width: 'min(390px, calc(100vw - 28px))',
+      maxHeight: '82vh',
+      overflowY: 'auto',
       margin: '0',
       zIndex: '99999'
     });
   }
 }
-adaptCgcloud002Layout();
-window.addEventListener('resize', adaptCgcloud002Layout);
+window.addEventListener('resize', () => {
+  if (currentUser) adaptCgcloud002Layout();
+});
 
 const $ = id => document.getElementById(id);
 const status = (msg, ok = true) => {
@@ -91,8 +99,18 @@ async function refreshCount() {
 
 onAuthStateChanged(auth, user => {
   currentUser = user;
-  $('cg2-auth').textContent = user ? `Firebase connecté : ${user.email || user.uid}` : 'Connecte-toi d’abord avec CGWEB001.';
-  $('cg2-import').disabled = !(user && loadedPayload);
+
+  if (!user) {
+    // Point important : sur l'écran de connexion CGWEB001, CGCLOUD002
+    // ne doit même pas être visible.
+    panel.style.display = 'none';
+    return;
+  }
+
+  panel.style.display = 'block';
+  adaptCgcloud002Layout();
+  $('cg2-auth').textContent = `Firebase connecté : ${user.email || user.uid}`;
+  $('cg2-import').disabled = !loadedPayload;
   refreshCount();
 });
 
