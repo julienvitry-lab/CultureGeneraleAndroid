@@ -1939,6 +1939,21 @@ final String currentHash =
             return;
         }
         if (!dbFile.exists()) {
+            // CGBOOT001_MISSING_DB_GATE_START
+            com.google.firebase.auth.FirebaseUser cgBoot001MissingDbUser =
+                    com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
+
+            if (cgBoot001MissingDbUser != null && hasAccess()) {
+                if (CgBoot001.maybeOffer(
+                        this,
+                        dbFile,
+                        cgBoot001MissingDbUser,
+                        () -> runOnUiThread(this::recreate))) {
+                    return;
+                }
+            }
+            // CGBOOT001_MISSING_DB_GATE_END
+
             band("Base SQLite introuvable : " + dbFile.getAbsolutePath(),
                     RED, Color.WHITE, 20, 60);
             return;
