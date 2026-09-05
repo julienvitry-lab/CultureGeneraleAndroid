@@ -32,49 +32,29 @@ panel.innerHTML = `
   <div id="cg2-status" style="margin-top:10px;min-height:20px;font-size:13px"></div>
 `;
 Object.assign(panel.style, {
-  position: 'fixed', right: '14px', bottom: '14px', zIndex: '99999',
-  width: 'min(390px, calc(100vw - 28px))', boxSizing: 'border-box',
-  padding: '16px', borderRadius: '16px', color: 'white',
+  position: 'static',
+  width: 'calc(100% - 32px)',
+  maxWidth: '1180px',
+  boxSizing: 'border-box',
+  margin: '24px auto 56px auto',
+  padding: '18px',
+  borderRadius: '18px',
+  color: 'white',
   background: 'linear-gradient(145deg, rgba(11,39,69,.97), rgba(14,77,112,.97))',
-  border: '1px solid rgba(108,214,255,.45)', boxShadow: '0 18px 60px rgba(0,0,0,.45)',
+  border: '1px solid rgba(108,214,255,.45)',
+  boxShadow: '0 12px 36px rgba(0,0,0,.28)',
   fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif',
-  display: 'none'
+  display: 'block'
 });
-document.body.appendChild(panel);
 
-// CGCLOUD002 est un outil temporaire d'import. Tant que l'utilisateur n'est
-// pas authentifié, il reste totalement caché afin de ne jamais masquer CGWEB001.
-function adaptCgcloud002Layout() {
-  const mobile = window.matchMedia('(max-width: 700px)').matches;
-  if (mobile) {
-    Object.assign(panel.style, {
-      position: 'fixed',
-      left: '14px',
-      right: '14px',
-      bottom: '14px',
-      width: 'auto',
-      maxHeight: '72vh',
-      overflowY: 'auto',
-      margin: '0',
-      zIndex: '99999'
-    });
-  } else {
-    Object.assign(panel.style, {
-      position: 'fixed',
-      left: 'auto',
-      right: '14px',
-      bottom: '14px',
-      width: 'min(390px, calc(100vw - 28px))',
-      maxHeight: '82vh',
-      overflowY: 'auto',
-      margin: '0',
-      zIndex: '99999'
-    });
-  }
+// CGWEB001 puis CGCLOUD002 : jamais de panneau flottant.
+// On place l'importeur APRÈS le contenu principal de CGWEB001.
+const mainContent = document.querySelector('main');
+if (mainContent) {
+  mainContent.insertAdjacentElement('afterend', panel);
+} else {
+  document.body.appendChild(panel);
 }
-window.addEventListener('resize', () => {
-  if (currentUser) adaptCgcloud002Layout();
-});
 
 const $ = id => document.getElementById(id);
 const status = (msg, ok = true) => {
@@ -101,14 +81,12 @@ onAuthStateChanged(auth, user => {
   currentUser = user;
 
   if (!user) {
-    // Point important : sur l'écran de connexion CGWEB001, CGCLOUD002
-    // ne doit même pas être visible.
-    panel.style.display = 'none';
+    $('cg2-auth').textContent = 'Connecte-toi d’abord dans CGWEB001 ci-dessus.';
+    $('cg2-count').textContent = 'Questions Cloud : non connecté';
+    $('cg2-import').disabled = true;
     return;
   }
 
-  panel.style.display = 'block';
-  adaptCgcloud002Layout();
   $('cg2-auth').textContent = `Firebase connecté : ${user.email || user.uid}`;
   $('cg2-import').disabled = !loadedPayload;
   refreshCount();
