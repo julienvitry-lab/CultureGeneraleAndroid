@@ -6,7 +6,7 @@ import {
   signOut
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
 import {
-  collection, getDocs, getFirestore, doc, writeBatch, getCountFromServer, serverTimestamp
+  collection, getDocs, getFirestore, doc, writeBatch, getCountFromServer, serverTimestamp, query, orderBy, documentId, limit, startAfter, getDoc
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
 // Configuration publique du projet Firebase CultureGeneraleSync.
@@ -25,8 +25,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // CGCLOUD002_SHARED_CONTEXT_BRIDGE_START
-// CGCLOUD002 utilise volontairement l'instance Firebase déjà authentifiée
-// de CGWEB001. Une seule instance Auth/Firestore pour toute la page.
+// Contexte Firebase unique partagé par CGWEB001 / CGCLOUD002 / CGWEB003.
 window.CGWEB001 = {
   getUser: () => auth.currentUser,
 
@@ -47,9 +46,7 @@ window.CGWEB001 = {
 
     const batch = writeBatch(db);
     for (const q of questions) {
-      const id = String(
-        q.document_id || q.original_id || `row_${q.row_number}`
-      ).replaceAll("/", "_");
+      const id = String(q.document_id || q.original_id || `row_${q.row_number}`).replaceAll("/", "_");
       const ref = doc(db, "users", user.uid, "questions", id);
       const data = { ...q };
       delete data.document_id;
@@ -59,7 +56,31 @@ window.CGWEB001 = {
       batch.set(ref, data, { merge: true });
     }
     await batch.commit();
-  }
+  },
+
+  listQuestionsPage: async ({ afterId = null, pageSize = 20 } = {}) => {
+    const user = auth.currentUser;
+    if (!user) throw new Error("Utilisateur Firebase non connecté.");
+    const size = Math.max(1, Math.min(Number(pageSize) || 20, 100));
+    const ref = collection(db, "users", user.uid, "questions");
+    const q = afterId
+      ? query(ref, orderBy(documentId()), startAfter(String(afterId)), limit(size))
+      : query(ref, orderBy(documentId()), limit(size));
+    const snap = await getDocs(q);
+    const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    return {
+      items,
+      lastId: snap.docs.length ? snap.docs[snap.docs.length - 1].id : null,
+      size: snap.size,
+    };
+  },
+
+  getQuestion: async (questionId) => {
+    const user = auth.currentUser;
+    if (!user) throw new Error("Utilisateur Firebase non connecté.");
+    const snap = await getDoc(doc(db, "users", user.uid, "questions", String(questionId)));
+    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  },
 };
 // CGCLOUD002_SHARED_CONTEXT_BRIDGE_END
 
