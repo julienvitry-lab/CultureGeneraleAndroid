@@ -6,9 +6,7 @@ import {
   signOut
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
 import {
-  collection,
-  getDocs,
-  getFirestore
+  collection, getDocs, getFirestore, doc, writeBatch, getCountFromServer, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
 // Configuration publique du projet Firebase CultureGeneraleSync.
@@ -25,6 +23,45 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+
+// CGCLOUD002_SHARED_CONTEXT_BRIDGE_START
+// CGCLOUD002 utilise volontairement l'instance Firebase déjà authentifiée
+// de CGWEB001. Une seule instance Auth/Firestore pour toute la page.
+window.CGWEB001 = {
+  getUser: () => auth.currentUser,
+
+  countQuestions: async () => {
+    const user = auth.currentUser;
+    if (!user) throw new Error("Utilisateur Firebase non connecté.");
+    const ref = collection(db, "users", user.uid, "questions");
+    const snap = await getCountFromServer(ref);
+    return snap.data().count;
+  },
+
+  importQuestions: async (questions) => {
+    const user = auth.currentUser;
+    if (!user) throw new Error("Utilisateur Firebase non connecté.");
+    if (!Array.isArray(questions) || questions.length !== 100) {
+      throw new Error("L'import CGCLOUD002 doit contenir exactement 100 questions.");
+    }
+
+    const batch = writeBatch(db);
+    for (const q of questions) {
+      const id = String(
+        q.document_id || q.original_id || `row_${q.row_number}`
+      ).replaceAll("/", "_");
+      const ref = doc(db, "users", user.uid, "questions", id);
+      const data = { ...q };
+      delete data.document_id;
+      data.cloud_schema = 1;
+      data.test_import = true;
+      data.updated_at = serverTimestamp();
+      batch.set(ref, data, { merge: true });
+    }
+    await batch.commit();
+  }
+};
+// CGCLOUD002_SHARED_CONTEXT_BRIDGE_END
 
 const el = (id) => document.getElementById(id);
 const loginView = el("loginView");

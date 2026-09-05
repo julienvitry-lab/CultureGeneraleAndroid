@@ -1,18 +1,6 @@
-import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
-import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
-import {
-  getFirestore, collection, doc, writeBatch, getCountFromServer, serverTimestamp
-} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
-
-const cfg = await fetch('/__/firebase/init.json', { cache: 'no-store' }).then(r => {
-  if (!r.ok) throw new Error(`Configuration Firebase indisponible (${r.status})`);
-  return r.json();
-});
-// Réutiliser l'application Firebase principale de CGWEB001 afin de partager
-// exactement la même session Authentication et le même Firestore.
-const cgApp = getApps().length ? getApp() : initializeApp(cfg);
-const auth = getAuth(cgApp);
-const db = getFirestore(cgApp);
+// CGCLOUD002_SHARED_CONTEXT_FIX
+// Aucune seconde instance Firebase ici : toutes les opérations Cloud passent
+// par l'instance CGWEB001 exposée dans window.CGWEB001.
 
 let currentUser = null;
 let loadedPayload = null;
@@ -31,6 +19,7 @@ panel.innerHTML = `
   <button id="cg2-refresh" style="width:100%;margin-top:8px;padding:9px 14px;border:1px solid rgba(255,255,255,.25);border-radius:10px;font-weight:700;cursor:pointer;background:transparent;color:white">Vérifier le compteur Cloud</button>
   <div id="cg2-status" style="margin-top:10px;min-height:20px;font-size:13px"></div>
 `;
+
 Object.assign(panel.style, {
   position: 'static',
   width: 'calc(100% - 32px)',
@@ -47,14 +36,9 @@ Object.assign(panel.style, {
   display: 'block'
 });
 
-// CGWEB001 puis CGCLOUD002 : jamais de panneau flottant.
-// On place l'importeur APRÈS le contenu principal de CGWEB001.
 const mainContent = document.querySelector('main');
-if (mainContent) {
-  mainContent.insertAdjacentElement('afterend', panel);
-} else {
-  document.body.appendChild(panel);
-}
+if (mainContent) mainContent.insertAdjacentElement('afterend', panel);
+else document.body.appendChild(panel);
 
 const $ = id => document.getElementById(id);
 const status = (msg, ok = true) => {
@@ -62,35 +46,53 @@ const status = (msg, ok = true) => {
   $('cg2-status').style.color = ok ? '#8ff0b5' : '#ffb0b0';
 };
 
-async function refreshCount() {
-  if (!currentUser) {
-    $('cg2-count').textContent = 'Questions Cloud : non connecté';
+function bridge() {
+  return window.CGWEB001 || null;
+}
+
+function syncAuthUi() {
+  const api = bridge();
+  currentUser = api?.getUser?.() || null;
+
+  if (!api) {
+    $('cg2-auth').textContent = 'CGWEB001 est encore en cours de chargement…';
+    $('cg2-count').textContent = 'Questions Cloud : —';
+    $('cg2-import').disabled = true;
     return;
   }
+
+  if (!currentUser) {
+    $('cg2-auth').textContent = 'Connecte-toi d’abord avec CGWEB001 ci-dessus.';
+    $('cg2-count').textContent = 'Questions Cloud : non connecté';
+    $('cg2-import').disabled = true;
+    return;
+  }
+
+  $('cg2-auth').textContent = `Firebase connecté : ${currentUser.email || currentUser.uid}`;
+  $('cg2-import').disabled = !loadedPayload;
+}
+
+async function refreshCount() {
+  syncAuthUi();
+  if (!currentUser) return;
   try {
-    const ref = collection(db, 'users', currentUser.uid, 'questions');
-    const snap = await getCountFromServer(ref);
-    $('cg2-count').textContent = `Questions Cloud : ${snap.data().count}`;
+    const count = await bridge().countQuestions();
+    $('cg2-count').textContent = `Questions Cloud : ${count}`;
   } catch (e) {
     $('cg2-count').textContent = 'Questions Cloud : erreur';
     status(`Lecture Firestore impossible : ${e.message}`, false);
   }
 }
 
-onAuthStateChanged(auth, user => {
-  currentUser = user;
-
-  if (!user) {
-    $('cg2-auth').textContent = 'Connecte-toi d’abord dans CGWEB001 ci-dessus.';
-    $('cg2-count').textContent = 'Questions Cloud : non connecté';
-    $('cg2-import').disabled = true;
-    return;
-  }
-
-  $('cg2-auth').textContent = `Firebase connecté : ${user.email || user.uid}`;
-  $('cg2-import').disabled = !loadedPayload;
-  refreshCount();
-});
+// La connexion de CGWEB001 peut être restaurée après le chargement du module.
+// On observe donc directement SON auth, sans créer une deuxième instance Firebase.
+const authTimer = setInterval(() => {
+  const before = currentUser?.uid || null;
+  syncAuthUi();
+  const after = currentUser?.uid || null;
+  if (after && after !== before) refreshCount();
+}, 300);
+window.addEventListener('beforeunload', () => clearInterval(authTimer));
 
 $('cg2-file').addEventListener('change', async event => {
   loadedPayload = null;
@@ -111,7 +113,7 @@ $('cg2-file').addEventListener('change', async event => {
     loadedPayload = payload;
     const domains = [...new Set(payload.questions.map(q => q.megatheme).filter(Boolean))];
     $('cg2-file-info').textContent = `100 questions prêtes · ${domains.length} mégathème(s)`;
-    $('cg2-import').disabled = !currentUser;
+    syncAuthUi();
     status('Fichier prêt. Aucun document n’a encore été écrit.');
   } catch (e) {
     $('cg2-file-info').textContent = 'Fichier invalide';
@@ -120,7 +122,15 @@ $('cg2-file').addEventListener('change', async event => {
 });
 
 $('cg2-import').addEventListener('click', async () => {
-  if (!currentUser || !loadedPayload) return;
+  syncAuthUi();
+  if (!currentUser) {
+    status('Connexion Firebase absente dans CGWEB001.', false);
+    return;
+  }
+  if (!loadedPayload) {
+    status('Sélectionne d’abord le fichier JSON des 100 questions.', false);
+    return;
+  }
   if (!confirm('Importer ces 100 questions test dans Firestore ?\n\nLe chemin sera users/<uid>/questions/<original_id>.')) return;
 
   const button = $('cg2-import');
@@ -129,27 +139,18 @@ $('cg2-import').addEventListener('click', async () => {
   status('Écriture des 100 documents…');
 
   try {
-    const batch = writeBatch(db);
-    for (const q of loadedPayload.questions) {
-      const id = String(q.document_id || q.original_id || `row_${q.row_number}`).replaceAll('/', '_');
-      const ref = doc(db, 'users', currentUser.uid, 'questions', id);
-      const data = { ...q };
-      delete data.document_id;
-      data.cloud_schema = 1;
-      data.test_import = true;
-      data.updated_at = serverTimestamp();
-      batch.set(ref, data, { merge: true });
-    }
-    await batch.commit();
+    await bridge().importQuestions(loadedPayload.questions);
     status('✅ 100 questions test importées dans Firestore.');
     await refreshCount();
   } catch (e) {
     console.error(e);
     status(`❌ Import impossible : ${e.message}`, false);
   } finally {
-    button.disabled = !(currentUser && loadedPayload);
+    syncAuthUi();
     button.textContent = '2. Importer les 100 questions dans Firestore';
   }
 });
 
 $('cg2-refresh').addEventListener('click', refreshCount);
+
+syncAuthUi();
