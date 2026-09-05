@@ -41,6 +41,33 @@ Object.assign(panel.style, {
 });
 document.body.appendChild(panel);
 
+// Sur téléphone, le panneau ne doit jamais masquer le formulaire CGWEB001.
+// On le remet dans le flux normal de la page.
+function adaptCgcloud002Layout() {
+  const mobile = window.matchMedia('(max-width: 700px)').matches;
+  if (mobile) {
+    Object.assign(panel.style, {
+      position: 'relative',
+      right: 'auto',
+      bottom: 'auto',
+      width: 'calc(100% - 28px)',
+      margin: '18px 14px 28px',
+      zIndex: '1'
+    });
+  } else {
+    Object.assign(panel.style, {
+      position: 'fixed',
+      right: '14px',
+      bottom: '14px',
+      width: 'min(390px, calc(100vw - 28px))',
+      margin: '0',
+      zIndex: '99999'
+    });
+  }
+}
+adaptCgcloud002Layout();
+window.addEventListener('resize', adaptCgcloud002Layout);
+
 const $ = id => document.getElementById(id);
 const status = (msg, ok = true) => {
   $('cg2-status').textContent = msg;
