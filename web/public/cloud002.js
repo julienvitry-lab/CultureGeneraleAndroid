@@ -1,4 +1,4 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
+import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import {
   getFirestore, collection, doc, writeBatch, getCountFromServer, serverTimestamp
@@ -8,7 +8,9 @@ const cfg = await fetch('/__/firebase/init.json', { cache: 'no-store' }).then(r 
   if (!r.ok) throw new Error(`Configuration Firebase indisponible (${r.status})`);
   return r.json();
 });
-const cgApp = initializeApp(cfg, 'cgcloud002');
+// Réutiliser l'application Firebase principale de CGWEB001 afin de partager
+// exactement la même session Authentication et le même Firestore.
+const cgApp = getApps().length ? getApp() : initializeApp(cfg);
 const auth = getAuth(cgApp);
 const db = getFirestore(cgApp);
 
