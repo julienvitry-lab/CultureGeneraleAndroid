@@ -225,6 +225,20 @@ public class MainActivity extends Activity {
     }
 
     @Override public void onResume() {
+        // CGBOOT001_RESUME_HOOK_START
+        if (hasAccess() && dbFile != null && !dbFile.exists()) {
+            FirebaseUser cgBoot001User =
+                    com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
+            if (cgBoot001User != null) {
+                CgBoot001.maybeOffer(
+                        this,
+                        dbFile,
+                        cgBoot001User,
+                        () -> runOnUiThread(this::recreate));
+            }
+        }
+        // CGBOOT001_RESUME_HOOK_END
+
         super.onResume();
         if (firebaseAuth != null &&
                 firebaseAuth.getCurrentUser() != null &&
@@ -4183,6 +4197,18 @@ private void flagAndNext(String status, String msg) {
     // CGSYNC002_CONTENT_METHODS_START
 
     private synchronized void startCgSync002QuestionSync(FirebaseUser user) {
+        // CGBOOT001_SYNC_HOOK_START
+        if (user != null && hasAccess() && dbFile != null && !dbFile.exists()) {
+            if (CgBoot001.maybeOffer(
+                    this,
+                    dbFile,
+                    user,
+                    () -> runOnUiThread(this::recreate))) {
+                return;
+            }
+        }
+        // CGBOOT001_SYNC_HOOK_END
+
         if (user == null) return;
 
         String uid = safe(user.getUid());
