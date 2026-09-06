@@ -1,0 +1,180 @@
+// CGDEDUP001_API_START
+const CGDEDUP001_FIELDS = new Set([
+  "megatheme", "theme", "question", "detail",
+  "proposition_a", "proposition_b", "proposition_c", "proposition_d",
+  "correct_index", "url_quizypedia", "url_internet",
+  "image_file", "non_trouve", "status", "is_image"
+]);
+
+function cgdedup001CleanPatch(patch) {
+  const clean = {};
+  for (const [key, value] of Object.entries(patch || {})) {
+    if (CGDEDUP001_FIELDS.has(key) && value !== undefined) {
+      clean[key] = value;
+    }
+  }
+  return clean;
+}
+
+async function cgdedup001ResolvePair(options = {}) {
+  const u = auth.currentUser;
+  if (!u) throw new Error("Utilisateur Firebase non connecté.");
+
+  const keepId = String(options.keepId || "").trim();
+  const deleteId = String(options.deleteId || "").trim();
+
+  if (!keepId || !deleteId) throw new Error("Deux ID sont requis.");
+  if (keepId === deleteId) throw new Error("Les deux ID doivent être différents.");
+
+  const keepRef = doc(db, "users", u.uid, "questions", keepId);
+  const deleteRef = doc(db, "users", u.uid, "questions", deleteId);
+  const tombstoneRef = doc(db, "users", u.uid, "question_tombstones", deleteId);
+  const auditRef = doc(collection(db, "users", u.uid, "question_dedup_audit"));
+  const conflictRef = doc(collection(db, "users", u.uid, "question_conflicts"));
+
+  const expectedKeepRevision = Number(options.expectedKeepRevision ?? 0);
+  const expectedDeleteRevision = Number(options.expectedDeleteRevision ?? 0);
+  const patch = cgdedup001CleanPatch(options.patch || {});
+  const mode = String(options.mode || "keep").trim() || "keep";
+  const writer = cgsync007WriterMeta("CGDEDUP001");
+
+  const result = await runTransaction(db, async transaction => {
+    // Toutes les lectures doivent précéder les écritures Firestore.
+    const keepSnap = await transaction.get(keepRef);
+    const deleteSnap = await transaction.get(deleteRef);
+
+    if (!keepSnap.exists()) {
+      throw new Error(`Question conservée ${keepId} introuvable.`);
+    }
+    if (!deleteSnap.exists()) {
+      throw new Error(`Question supprimée ${deleteId} introuvable.`);
+    }
+
+    const keepData = keepSnap.data() || {};
+    const deleteData = deleteSnap.data() || {};
+    const keepRevision = cgsync007Revision(keepData);
+    const deleteRevision = cgsync007Revision(deleteData);
+
+    const conflict =
+      keepRevision !== expectedKeepRevision ||
+      deleteRevision !== expectedDeleteRevision;
+
+    if (conflict) {
+      transaction.set(conflictRef, {
+        operation: "dedup",
+        status: "open",
+        keep_id: keepId,
+        delete_id: deleteId,
+        question_id: keepId,
+        expected_keep_revision: expectedKeepRevision,
+        cloud_keep_revision: keepRevision,
+        expected_delete_revision: expectedDeleteRevision,
+        cloud_delete_revision: deleteRevision,
+        attempted_patch: patch,
+        keep_snapshot: keepData,
+        delete_snapshot: deleteData,
+        source: "CGDEDUP001",
+        writer_id: writer.cg_writer_id,
+        writer_label: writer.cg_writer_label,
+        writer_type: "web",
+        created_at: serverTimestamp()
+      });
+
+      return {
+        ok: false,
+        conflict: true,
+        conflictId: conflictRef.id,
+        keepId,
+        deleteId,
+        keepRevision,
+        deleteRevision
+      };
+    }
+
+    let nextKeepRevision = keepRevision;
+
+    if (Object.keys(patch).length) {
+      nextKeepRevision = keepRevision + 1;
+      transaction.update(keepRef, {
+        ...patch,
+        ...writer,
+        cg_revision: nextKeepRevision,
+        cg_base_revision: keepRevision,
+        cg_updated_at: serverTimestamp()
+      });
+    }
+
+    transaction.set(tombstoneRef, {
+      question_id: deleteId,
+      deleted_at: serverTimestamp(),
+      source: "CGDEDUP001",
+      dedup_keep_id: keepId,
+      dedup_mode: mode,
+      deleted_revision: deleteRevision,
+      ...writer
+    });
+
+    transaction.delete(deleteRef);
+
+    transaction.set(auditRef, {
+      operation: "dedup",
+      mode,
+      status: "completed",
+      keep_id: keepId,
+      delete_id: deleteId,
+      keep_revision_before: keepRevision,
+      keep_revision_after: nextKeepRevision,
+      delete_revision: deleteRevision,
+      merge_patch: patch,
+      keep_snapshot_before: keepData,
+      deleted_snapshot: deleteData,
+      source: "CGDEDUP001",
+      writer_id: writer.cg_writer_id,
+      writer_label: writer.cg_writer_label,
+      created_at: serverTimestamp()
+    });
+
+    return {
+      ok: true,
+      conflict: false,
+      keepId,
+      deleteId,
+      keepRevision: nextKeepRevision,
+      deletedRevision: deleteRevision,
+      auditId: auditRef.id
+    };
+  });
+
+  if (result?.ok) {
+    const indexJobs = [
+      cgindex001MarkDeleted(deleteId)
+    ];
+    if (Object.keys(patch).length) {
+      indexJobs.push(cgindex001SyncQuestion(keepId));
+    }
+
+    const settled = await Promise.allSettled(indexJobs);
+    for (const item of settled) {
+      if (item.status === "rejected") {
+        console.warn("CGDEDUP001 index", item.reason);
+      }
+    }
+
+    globalThis.dispatchEvent(
+      new CustomEvent("cgdedup001-resolved", {
+        detail: result
+      })
+    );
+
+    globalThis.dispatchEvent(
+      new CustomEvent("cgsync007-conflicts-changed")
+    );
+  }
+
+  return result;
+}
+
+window.CGDEDUP001_API = {
+  resolvePair: cgdedup001ResolvePair
+};
+// CGDEDUP001_API_END
