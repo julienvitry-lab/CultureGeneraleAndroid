@@ -1,0 +1,1051 @@
+
+    // CGSYNC006_METHODS_START
+
+    private android.content.SharedPreferences cgSync006Prefs() {
+        return getSharedPreferences(
+                CGSYNC006_PREFS,
+                android.content.Context.MODE_PRIVATE);
+    }
+
+    private String cgSync006SafeError(Throwable error) {
+        if (error == null) return "Erreur inconnue";
+        String message = error.getMessage();
+        if (message == null || message.trim().isEmpty()) {
+            message = error.getClass().getSimpleName();
+        }
+        return message == null ? "Erreur inconnue" : message.trim();
+    }
+
+    private String cgSync006NowText() {
+        return new java.text.SimpleDateFormat(
+                "dd/MM HH:mm:ss",
+                java.util.Locale.FRANCE)
+                .format(new java.util.Date());
+    }
+
+    private void cgSync006Log(String channel, String message) {
+        String line = cgSync006NowText()
+                + " · " + safe(channel)
+                + " · " + safe(message);
+
+        android.content.SharedPreferences prefs = cgSync006Prefs();
+        String old = prefs.getString("journal", "");
+        java.util.ArrayList<String> lines = new java.util.ArrayList<>();
+
+        if (old != null && !old.trim().isEmpty()) {
+            String[] split = old.split("\\n");
+            for (String item : split) {
+                if (item != null && !item.trim().isEmpty()) {
+                    lines.add(item.trim());
+                }
+            }
+        }
+
+        lines.add(line);
+
+        while (lines.size() > CGSYNC006_JOURNAL_MAX_LINES) {
+            lines.remove(0);
+        }
+
+        StringBuilder joined = new StringBuilder();
+        for (String item : lines) {
+            if (joined.length() > 0) joined.append('\n');
+            joined.append(item);
+        }
+
+        prefs.edit()
+                .putString("journal", joined.toString())
+                .putLong("last_event_ms", System.currentTimeMillis())
+                .apply();
+
+        android.util.Log.i("CGSYNC006", line);
+    }
+
+    private void cgSync006SetPhase(String channel, String phaseValue) {
+        cgSync006Prefs().edit()
+                .putString(channel + "_phase", safe(phaseValue))
+                .putLong(channel + "_phase_ms", System.currentTimeMillis())
+                .apply();
+    }
+
+    private com.google.firebase.Timestamp cgSync006CheckpointTimestamp(
+            String channel) {
+
+        android.content.SharedPreferences prefs = cgSync006Prefs();
+        long seconds = prefs.getLong(channel + "_cp_sec", 0L);
+        int nanos = prefs.getInt(channel + "_cp_nano", 0);
+
+        try {
+            return new com.google.firebase.Timestamp(seconds, nanos);
+        } catch (Exception ignored) {
+            return new com.google.firebase.Timestamp(0L, 0);
+        }
+    }
+
+    private String cgSync006CheckpointId(String channel) {
+        return safe(cgSync006Prefs().getString(channel + "_cp_id", ""));
+    }
+
+    private void cgSync006SaveCheckpoint(
+            String channel,
+            com.google.firebase.Timestamp timestamp,
+            String documentId) {
+
+        if (timestamp == null) return;
+
+        cgSync006Prefs().edit()
+                .putLong(channel + "_cp_sec", timestamp.getSeconds())
+                .putInt(channel + "_cp_nano", timestamp.getNanoseconds())
+                .putString(channel + "_cp_id", safe(documentId))
+                .putLong(channel + "_checkpoint_ms", System.currentTimeMillis())
+                .apply();
+    }
+
+    private int cgSync006ComparePosition(
+            com.google.firebase.Timestamp leftTs,
+            String leftId,
+            com.google.firebase.Timestamp rightTs,
+            String rightId) {
+
+        if (leftTs == null && rightTs == null) {
+            return safe(leftId).compareTo(safe(rightId));
+        }
+        if (leftTs == null) return -1;
+        if (rightTs == null) return 1;
+
+        int c = leftTs.compareTo(rightTs);
+        if (c != 0) return c;
+
+        return safe(leftId).compareTo(safe(rightId));
+    }
+
+    private boolean cgSync006IsAfterCheckpoint(
+            String channel,
+            com.google.firebase.firestore.DocumentSnapshot document,
+            String timestampField) {
+
+        if (document == null) return false;
+
+        com.google.firebase.Timestamp ts = document.getTimestamp(timestampField);
+        if (ts == null) return false;
+
+        com.google.firebase.Timestamp cp = cgSync006CheckpointTimestamp(channel);
+        String cpId = cgSync006CheckpointId(channel);
+
+        return cgSync006ComparePosition(
+                ts,
+                document.getId(),
+                cp,
+                cpId) > 0;
+    }
+
+    private void cgSync006ResetRunCounters() {
+        cgSync006Prefs().edit()
+                .putInt("content_seen", 0)
+                .putInt("content_applied", 0)
+                .putInt("content_pages", 0)
+                .putInt("tomb_seen", 0)
+                .putInt("tomb_deleted", 0)
+                .putInt("tomb_pages", 0)
+                .apply();
+    }
+
+    private synchronized void startCgSync006ReliableSync(FirebaseUser user) {
+        if (user == null) return;
+        if (!hasAccess() || dbFile == null || !dbFile.exists()) return;
+
+        String uid = safe(user.getUid());
+        if (uid.isEmpty()) return;
+
+        android.content.SharedPreferences prefs = cgSync006Prefs();
+        String previousUid = safe(prefs.getString("uid", ""));
+
+        if (!previousUid.isEmpty() && !uid.equals(previousUid)) {
+            prefs.edit().clear().putString("uid", uid).apply();
+            cgSync006Log("SYSTEME", "Nouveau compte : checkpoints réinitialisés");
+        } else if (previousUid.isEmpty()) {
+            prefs.edit().putString("uid", uid).apply();
+        }
+
+        if (!uid.equals(cgSync002QuestionsUid)) {
+            stopCgSync002QuestionSync();
+            cgSync002QuestionsUid = uid;
+            cgSync006ResetRunCounters();
+            cgSync006Log("SYSTEME", "Session de synchronisation démarrée");
+        }
+
+        startCgSync006ContentCatchup(user);
+        startCgSync006TombstoneCatchup(user);
+    }
+
+    private com.google.firebase.firestore.Query cgSync006BuildPagedQuery(
+            com.google.firebase.firestore.CollectionReference ref,
+            String timestampField,
+            String channel) {
+
+        com.google.firebase.firestore.Query q =
+                ref.whereGreaterThan(
+                                timestampField,
+                                new com.google.firebase.Timestamp(0L, 0))
+                        .orderBy(timestampField)
+                        .orderBy(com.google.firebase.firestore.FieldPath.documentId())
+                        .limit(CGSYNC006_PAGE_SIZE);
+
+        com.google.firebase.Timestamp checkpoint =
+                cgSync006CheckpointTimestamp(channel);
+        String checkpointId = cgSync006CheckpointId(channel);
+
+        if (checkpoint.getSeconds() > 0L
+                || checkpoint.getNanoseconds() > 0
+                || !checkpointId.isEmpty()) {
+            q = q.startAfter(checkpoint, checkpointId);
+        }
+
+        return q;
+    }
+
+    private com.google.firebase.firestore.Query cgSync006BuildLiveQuery(
+            com.google.firebase.firestore.CollectionReference ref,
+            String timestampField,
+            String channel) {
+
+        com.google.firebase.firestore.Query q =
+                ref.whereGreaterThan(
+                                timestampField,
+                                new com.google.firebase.Timestamp(0L, 0))
+                        .orderBy(timestampField)
+                        .orderBy(com.google.firebase.firestore.FieldPath.documentId());
+
+        com.google.firebase.Timestamp checkpoint =
+                cgSync006CheckpointTimestamp(channel);
+        String checkpointId = cgSync006CheckpointId(channel);
+
+        if (checkpoint.getSeconds() > 0L
+                || checkpoint.getNanoseconds() > 0
+                || !checkpointId.isEmpty()) {
+            q = q.startAt(checkpoint, checkpointId);
+        }
+
+        return q;
+    }
+
+    private void startCgSync006ContentCatchup(FirebaseUser user) {
+        if (user == null || cgSync006ContentCatchupRunning) return;
+        if (!hasAccess() || dbFile == null || !dbFile.exists()) return;
+
+        if (cgSync002QuestionsRegistration != null) {
+            try {
+                cgSync002QuestionsRegistration.remove();
+            } catch (Exception ignored) { }
+            cgSync002QuestionsRegistration = null;
+        }
+
+        cgSync006ContentCatchupRunning = true;
+        cgSync006SetPhase("content", "RATTRAPAGE");
+        cgSync006Prefs().edit()
+                .putLong("content_last_attempt_ms", System.currentTimeMillis())
+                .remove("content_last_error")
+                .apply();
+
+        cgSync006Log(
+                "CONTENU",
+                "Rattrapage depuis checkpoint "
+                        + cgSync006PositionText("content"));
+
+        com.google.firebase.firestore.CollectionReference ref =
+                com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                        .collection("users")
+                        .document(user.getUid())
+                        .collection("questions");
+
+        fetchCgSync006ContentPage(user, ref);
+    }
+
+    private void fetchCgSync006ContentPage(
+            FirebaseUser user,
+            com.google.firebase.firestore.CollectionReference ref) {
+
+        if (user == null || !cgSync006ContentCatchupRunning) return;
+
+        com.google.firebase.firestore.Query q =
+                cgSync006BuildPagedQuery(ref, "cg_updated_at", "content");
+
+        q.get()
+                .addOnSuccessListener(snapshot -> {
+                    if (snapshot == null || snapshot.isEmpty()) {
+                        cgSync006ContentCatchupRunning = false;
+                        cgSync006SetPhase("content", "LIVE");
+                        cgSync006Prefs().edit()
+                                .putLong(
+                                        "content_last_success_ms",
+                                        System.currentTimeMillis())
+                                .remove("content_last_error")
+                                .apply();
+                        cgSync006Log("CONTENU", "Rattrapage terminé · passage LIVE");
+                        startCgSync006ContentListener(user, ref);
+                        return;
+                    }
+
+                    final java.util.List<com.google.firebase.firestore.DocumentSnapshot> docs =
+                            new java.util.ArrayList<>(snapshot.getDocuments());
+
+                    cgSync002QuestionsExecutor.execute(() -> {
+                        int applied = 0;
+                        SQLiteDatabase db = null;
+
+                        try {
+                            db = openDb();
+                            db.beginTransaction();
+
+                            for (com.google.firebase.firestore.DocumentSnapshot document : docs) {
+                                applied += applyCgSync002QuestionToSqlite(db, document);
+                            }
+
+                            db.setTransactionSuccessful();
+
+                            com.google.firebase.firestore.DocumentSnapshot last =
+                                    docs.get(docs.size() - 1);
+                            com.google.firebase.Timestamp lastTs =
+                                    last.getTimestamp("cg_updated_at");
+
+                            if (lastTs == null) {
+                                throw new IllegalStateException(
+                                        "cg_updated_at absent sur " + last.getId());
+                            }
+
+                            cgSync006SaveCheckpoint("content", lastTs, last.getId());
+
+                            android.content.SharedPreferences prefs = cgSync006Prefs();
+                            prefs.edit()
+                                    .putInt("content_seen",
+                                            prefs.getInt("content_seen", 0) + docs.size())
+                                    .putInt("content_applied",
+                                            prefs.getInt("content_applied", 0) + applied)
+                                    .putInt("content_pages",
+                                            prefs.getInt("content_pages", 0) + 1)
+                                    .putLong("content_last_success_ms",
+                                            System.currentTimeMillis())
+                                    .remove("content_last_error")
+                                    .apply();
+
+                            final int finalApplied = applied;
+
+                            runOnUiThread(() -> {
+                                cgSync006Log(
+                                        "CONTENU",
+                                        docs.size() + " reçu(s) · "
+                                                + finalApplied + " appliqué(s) · checkpoint "
+                                                + cgSync006PositionText("content"));
+                                fetchCgSync006ContentPage(user, ref);
+                            });
+
+                        } catch (Exception error) {
+                            final String message = cgSync006SafeError(error);
+                            runOnUiThread(() -> cgSync006ContentFailure(user, message));
+                        } finally {
+                            if (db != null) {
+                                try {
+                                    if (db.inTransaction()) db.endTransaction();
+                                } catch (Exception ignored) { }
+                                try {
+                                    db.close();
+                                } catch (Exception ignored) { }
+                            }
+                        }
+                    });
+                })
+                .addOnFailureListener(error ->
+                        cgSync006ContentFailure(user, cgSync006SafeError(error)));
+    }
+
+    private void startCgSync006ContentListener(
+            FirebaseUser user,
+            com.google.firebase.firestore.CollectionReference ref) {
+
+        if (user == null) return;
+
+        if (cgSync002QuestionsRegistration != null) {
+            try {
+                cgSync002QuestionsRegistration.remove();
+            } catch (Exception ignored) { }
+        }
+
+        com.google.firebase.firestore.Query liveQuery =
+                cgSync006BuildLiveQuery(ref, "cg_updated_at", "content");
+
+        cgSync002QuestionsRegistration =
+                liveQuery.addSnapshotListener((snapshot, error) -> {
+                    if (error != null) {
+                        try {
+                            if (cgSync002QuestionsRegistration != null) {
+                                cgSync002QuestionsRegistration.remove();
+                            }
+                        } catch (Exception ignored) { }
+                        cgSync002QuestionsRegistration = null;
+                        cgSync006ContentFailure(user, cgSync006SafeError(error));
+                        return;
+                    }
+
+                    if (snapshot == null || !hasAccess()
+                            || dbFile == null || !dbFile.exists()) return;
+
+                    final java.util.ArrayList<com.google.firebase.firestore.DocumentSnapshot>
+                            changedDocs = new java.util.ArrayList<>();
+
+                    for (com.google.firebase.firestore.DocumentChange change
+                            : snapshot.getDocumentChanges()) {
+
+                        if (change.getType()
+                                == com.google.firebase.firestore.DocumentChange.Type.REMOVED) {
+                            continue;
+                        }
+
+                        com.google.firebase.firestore.DocumentSnapshot document =
+                                change.getDocument();
+
+                        if (cgSync006IsAfterCheckpoint(
+                                "content", document, "cg_updated_at")) {
+                            changedDocs.add(document);
+                        }
+                    }
+
+                    if (changedDocs.isEmpty()) return;
+
+                    cgSync002QuestionsExecutor.execute(() -> {
+                        int applied = 0;
+                        SQLiteDatabase db = null;
+
+                        try {
+                            db = openDb();
+                            db.beginTransaction();
+
+                            com.google.firebase.firestore.DocumentSnapshot maxDoc = null;
+
+                            for (com.google.firebase.firestore.DocumentSnapshot document
+                                    : changedDocs) {
+                                applied += applyCgSync002QuestionToSqlite(db, document);
+
+                                if (maxDoc == null
+                                        || cgSync006ComparePosition(
+                                                document.getTimestamp("cg_updated_at"),
+                                                document.getId(),
+                                                maxDoc.getTimestamp("cg_updated_at"),
+                                                maxDoc.getId()) > 0) {
+                                    maxDoc = document;
+                                }
+                            }
+
+                            db.setTransactionSuccessful();
+
+                            if (maxDoc != null) {
+                                cgSync006SaveCheckpoint(
+                                        "content",
+                                        maxDoc.getTimestamp("cg_updated_at"),
+                                        maxDoc.getId());
+                            }
+
+                            android.content.SharedPreferences prefs = cgSync006Prefs();
+                            prefs.edit()
+                                    .putInt("content_seen",
+                                            prefs.getInt("content_seen", 0)
+                                                    + changedDocs.size())
+                                    .putInt("content_applied",
+                                            prefs.getInt("content_applied", 0) + applied)
+                                    .putLong("content_last_success_ms",
+                                            System.currentTimeMillis())
+                                    .remove("content_last_error")
+                                    .apply();
+
+                            final int finalApplied = applied;
+                            runOnUiThread(() -> cgSync006Log(
+                                    "CONTENU LIVE",
+                                    changedDocs.size() + " changement(s) · "
+                                            + finalApplied + " appliqué(s)"));
+
+                        } catch (Exception errorDb) {
+                            final String message = cgSync006SafeError(errorDb);
+                            runOnUiThread(() -> cgSync006ContentFailure(user, message));
+                        } finally {
+                            if (db != null) {
+                                try {
+                                    if (db.inTransaction()) db.endTransaction();
+                                } catch (Exception ignored) { }
+                                try {
+                                    db.close();
+                                } catch (Exception ignored) { }
+                            }
+                        }
+                    });
+                });
+    }
+
+    private void cgSync006ContentFailure(FirebaseUser user, String message) {
+        cgSync006ContentCatchupRunning = false;
+        cgSync006SetPhase("content", "ERREUR");
+
+        cgSync006Prefs().edit()
+                .putLong("content_last_attempt_ms", System.currentTimeMillis())
+                .putString("content_last_error", safe(message))
+                .apply();
+
+        cgSync006Log(
+                "CONTENU",
+                "Erreur : " + safe(message)
+                        + " · reprise automatique dans 15 s");
+
+        if (cgSync006ContentRetryRunnable != null) return;
+
+        cgSync006ContentRetryRunnable = () -> {
+            cgSync006ContentRetryRunnable = null;
+
+            FirebaseUser currentUser =
+                    com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
+
+            if (currentUser != null && user != null
+                    && safe(currentUser.getUid()).equals(safe(user.getUid()))
+                    && hasAccess() && dbFile != null && dbFile.exists()) {
+                cgSync006Log("CONTENU", "Reprise automatique");
+                startCgSync006ContentCatchup(currentUser);
+            }
+        };
+
+        cgSync006Handler.postDelayed(
+                cgSync006ContentRetryRunnable,
+                CGSYNC006_RETRY_DELAY_MS);
+    }
+
+    private void startCgSync006TombstoneCatchup(FirebaseUser user) {
+        if (user == null || cgSync006TombstoneCatchupRunning) return;
+        if (!hasAccess() || dbFile == null || !dbFile.exists()) return;
+
+        if (cgSync006TombstoneRegistration != null) {
+            try {
+                cgSync006TombstoneRegistration.remove();
+            } catch (Exception ignored) { }
+            cgSync006TombstoneRegistration = null;
+        }
+
+        cgSync006TombstoneCatchupRunning = true;
+        cgSync006SetPhase("tomb", "RATTRAPAGE");
+
+        cgSync006Prefs().edit()
+                .putLong("tomb_last_attempt_ms", System.currentTimeMillis())
+                .remove("tomb_last_error")
+                .apply();
+
+        cgSync006Log(
+                "SUPPRESSIONS",
+                "Rattrapage depuis checkpoint "
+                        + cgSync006PositionText("tomb"));
+
+        com.google.firebase.firestore.CollectionReference ref =
+                com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                        .collection("users")
+                        .document(user.getUid())
+                        .collection("question_tombstones");
+
+        fetchCgSync006TombstonePage(user, ref);
+    }
+
+    private void fetchCgSync006TombstonePage(
+            FirebaseUser user,
+            com.google.firebase.firestore.CollectionReference ref) {
+
+        if (user == null || !cgSync006TombstoneCatchupRunning) return;
+
+        com.google.firebase.firestore.Query q =
+                cgSync006BuildPagedQuery(ref, "deleted_at", "tomb");
+
+        q.get()
+                .addOnSuccessListener(snapshot -> {
+                    if (snapshot == null || snapshot.isEmpty()) {
+                        cgSync006TombstoneCatchupRunning = false;
+                        cgSync006SetPhase("tomb", "LIVE");
+                        cgSync006Prefs().edit()
+                                .putLong("tomb_last_success_ms",
+                                        System.currentTimeMillis())
+                                .remove("tomb_last_error")
+                                .apply();
+
+                        cgSync006Log(
+                                "SUPPRESSIONS",
+                                "Rattrapage terminé · passage LIVE");
+
+                        startCgSync006TombstoneListener(user, ref);
+                        return;
+                    }
+
+                    final java.util.List<com.google.firebase.firestore.DocumentSnapshot> docs =
+                            new java.util.ArrayList<>(snapshot.getDocuments());
+
+                    cgSync002QuestionsExecutor.execute(() -> {
+                        SQLiteDatabase db = null;
+                        int deletedRows = 0;
+
+                        try {
+                            db = openDb();
+                            db.beginTransaction();
+
+                            for (com.google.firebase.firestore.DocumentSnapshot tombstone
+                                    : docs) {
+                                String questionId = tombstone.getString("question_id");
+                                if (questionId == null || questionId.trim().isEmpty()) {
+                                    questionId = tombstone.getId();
+                                }
+
+                                questionId = safe(questionId);
+                                if (questionId.isEmpty()) continue;
+
+                                deletedRows += db.delete(
+                                        TABLE,
+                                        "CAST(original_id AS TEXT)=?",
+                                        new String[]{questionId});
+                            }
+
+                            db.setTransactionSuccessful();
+
+                            com.google.firebase.firestore.DocumentSnapshot last =
+                                    docs.get(docs.size() - 1);
+                            com.google.firebase.Timestamp lastTs =
+                                    last.getTimestamp("deleted_at");
+
+                            if (lastTs == null) {
+                                throw new IllegalStateException(
+                                        "deleted_at absent sur " + last.getId());
+                            }
+
+                            cgSync006SaveCheckpoint("tomb", lastTs, last.getId());
+
+                            android.content.SharedPreferences prefs = cgSync006Prefs();
+                            prefs.edit()
+                                    .putInt("tomb_seen",
+                                            prefs.getInt("tomb_seen", 0) + docs.size())
+                                    .putInt("tomb_deleted",
+                                            prefs.getInt("tomb_deleted", 0)
+                                                    + deletedRows)
+                                    .putInt("tomb_pages",
+                                            prefs.getInt("tomb_pages", 0) + 1)
+                                    .putLong("tomb_last_success_ms",
+                                            System.currentTimeMillis())
+                                    .remove("tomb_last_error")
+                                    .apply();
+
+                            final int finalDeletedRows = deletedRows;
+
+                            runOnUiThread(() -> {
+                                cgSync006Log(
+                                        "SUPPRESSIONS",
+                                        docs.size() + " tombstone(s) · "
+                                                + finalDeletedRows
+                                                + " ligne(s) supprimée(s)");
+                                fetchCgSync006TombstonePage(user, ref);
+                            });
+
+                        } catch (Exception error) {
+                            final String message = cgSync006SafeError(error);
+                            runOnUiThread(() ->
+                                    cgSync006TombstoneFailure(user, message));
+                        } finally {
+                            if (db != null) {
+                                try {
+                                    if (db.inTransaction()) db.endTransaction();
+                                } catch (Exception ignored) { }
+                                try {
+                                    db.close();
+                                } catch (Exception ignored) { }
+                            }
+                        }
+                    });
+                })
+                .addOnFailureListener(error ->
+                        cgSync006TombstoneFailure(user, cgSync006SafeError(error)));
+    }
+
+    private void startCgSync006TombstoneListener(
+            FirebaseUser user,
+            com.google.firebase.firestore.CollectionReference ref) {
+
+        if (user == null) return;
+
+        if (cgSync006TombstoneRegistration != null) {
+            try {
+                cgSync006TombstoneRegistration.remove();
+            } catch (Exception ignored) { }
+        }
+
+        com.google.firebase.firestore.Query liveQuery =
+                cgSync006BuildLiveQuery(ref, "deleted_at", "tomb");
+
+        cgSync006TombstoneRegistration =
+                liveQuery.addSnapshotListener((snapshot, error) -> {
+                    if (error != null) {
+                        try {
+                            if (cgSync006TombstoneRegistration != null) {
+                                cgSync006TombstoneRegistration.remove();
+                            }
+                        } catch (Exception ignored) { }
+                        cgSync006TombstoneRegistration = null;
+
+                        cgSync006TombstoneFailure(
+                                user, cgSync006SafeError(error));
+                        return;
+                    }
+
+                    if (snapshot == null || !hasAccess()
+                            || dbFile == null || !dbFile.exists()) return;
+
+                    final java.util.ArrayList<com.google.firebase.firestore.DocumentSnapshot>
+                            changedDocs = new java.util.ArrayList<>();
+
+                    for (com.google.firebase.firestore.DocumentChange change
+                            : snapshot.getDocumentChanges()) {
+
+                        if (change.getType()
+                                == com.google.firebase.firestore.DocumentChange.Type.REMOVED) {
+                            continue;
+                        }
+
+                        com.google.firebase.firestore.DocumentSnapshot document =
+                                change.getDocument();
+
+                        if (cgSync006IsAfterCheckpoint(
+                                "tomb", document, "deleted_at")) {
+                            changedDocs.add(document);
+                        }
+                    }
+
+                    if (changedDocs.isEmpty()) return;
+
+                    cgSync002QuestionsExecutor.execute(() -> {
+                        SQLiteDatabase db = null;
+                        int deletedRows = 0;
+
+                        try {
+                            db = openDb();
+                            db.beginTransaction();
+
+                            com.google.firebase.firestore.DocumentSnapshot maxDoc = null;
+
+                            for (com.google.firebase.firestore.DocumentSnapshot tombstone
+                                    : changedDocs) {
+                                String questionId = tombstone.getString("question_id");
+                                if (questionId == null || questionId.trim().isEmpty()) {
+                                    questionId = tombstone.getId();
+                                }
+
+                                questionId = safe(questionId);
+                                if (!questionId.isEmpty()) {
+                                    deletedRows += db.delete(
+                                            TABLE,
+                                            "CAST(original_id AS TEXT)=?",
+                                            new String[]{questionId});
+                                }
+
+                                if (maxDoc == null
+                                        || cgSync006ComparePosition(
+                                                tombstone.getTimestamp("deleted_at"),
+                                                tombstone.getId(),
+                                                maxDoc.getTimestamp("deleted_at"),
+                                                maxDoc.getId()) > 0) {
+                                    maxDoc = tombstone;
+                                }
+                            }
+
+                            db.setTransactionSuccessful();
+
+                            if (maxDoc != null) {
+                                cgSync006SaveCheckpoint(
+                                        "tomb",
+                                        maxDoc.getTimestamp("deleted_at"),
+                                        maxDoc.getId());
+                            }
+
+                            android.content.SharedPreferences prefs = cgSync006Prefs();
+                            prefs.edit()
+                                    .putInt("tomb_seen",
+                                            prefs.getInt("tomb_seen", 0)
+                                                    + changedDocs.size())
+                                    .putInt("tomb_deleted",
+                                            prefs.getInt("tomb_deleted", 0)
+                                                    + deletedRows)
+                                    .putLong("tomb_last_success_ms",
+                                            System.currentTimeMillis())
+                                    .remove("tomb_last_error")
+                                    .apply();
+
+                            final int finalDeletedRows = deletedRows;
+
+                            runOnUiThread(() -> cgSync006Log(
+                                    "SUPPRESSIONS LIVE",
+                                    changedDocs.size() + " tombstone(s) · "
+                                            + finalDeletedRows
+                                            + " ligne(s) supprimée(s)"));
+
+                        } catch (Exception dbError) {
+                            final String message = cgSync006SafeError(dbError);
+                            runOnUiThread(() ->
+                                    cgSync006TombstoneFailure(user, message));
+                        } finally {
+                            if (db != null) {
+                                try {
+                                    if (db.inTransaction()) db.endTransaction();
+                                } catch (Exception ignored) { }
+                                try {
+                                    db.close();
+                                } catch (Exception ignored) { }
+                            }
+                        }
+                    });
+                });
+    }
+
+    private void cgSync006TombstoneFailure(
+            FirebaseUser user,
+            String message) {
+
+        cgSync006TombstoneCatchupRunning = false;
+        cgSync006SetPhase("tomb", "ERREUR");
+
+        cgSync006Prefs().edit()
+                .putLong("tomb_last_attempt_ms", System.currentTimeMillis())
+                .putString("tomb_last_error", safe(message))
+                .apply();
+
+        cgSync006Log(
+                "SUPPRESSIONS",
+                "Erreur : " + safe(message)
+                        + " · reprise automatique dans 15 s");
+
+        if (cgSync006TombstoneRetryRunnable != null) return;
+
+        cgSync006TombstoneRetryRunnable = () -> {
+            cgSync006TombstoneRetryRunnable = null;
+
+            FirebaseUser currentUser =
+                    com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
+
+            if (currentUser != null && user != null
+                    && safe(currentUser.getUid()).equals(safe(user.getUid()))
+                    && hasAccess() && dbFile != null && dbFile.exists()) {
+                cgSync006Log("SUPPRESSIONS", "Reprise automatique");
+                startCgSync006TombstoneCatchup(currentUser);
+            }
+        };
+
+        cgSync006Handler.postDelayed(
+                cgSync006TombstoneRetryRunnable,
+                CGSYNC006_RETRY_DELAY_MS);
+    }
+
+    private String cgSync006TimeText(long millis) {
+        if (millis <= 0L) return "jamais";
+
+        return new java.text.SimpleDateFormat(
+                "dd/MM/yyyy HH:mm:ss",
+                java.util.Locale.FRANCE)
+                .format(new java.util.Date(millis));
+    }
+
+    private String cgSync006PositionText(String channel) {
+        android.content.SharedPreferences prefs = cgSync006Prefs();
+
+        long seconds = prefs.getLong(channel + "_cp_sec", 0L);
+        int nanos = prefs.getInt(channel + "_cp_nano", 0);
+        String id = safe(prefs.getString(channel + "_cp_id", ""));
+
+        if (seconds <= 0L && nanos <= 0 && id.isEmpty()) {
+            return "début";
+        }
+
+        long millis = seconds * 1000L + (nanos / 1000000L);
+        String when = cgSync006TimeText(millis);
+
+        return when + (id.isEmpty() ? "" : " · #" + id);
+    }
+
+    private String cgSync006HomeLabel() {
+        android.content.SharedPreferences prefs = cgSync006Prefs();
+
+        String content = safe(prefs.getString("content_phase", ""));
+        String tomb = safe(prefs.getString("tomb_phase", ""));
+
+        if ("ERREUR".equals(content) || "ERREUR".equals(tomb)) {
+            return "Cloud · erreur de synchronisation";
+        }
+
+        if ("RATTRAPAGE".equals(content) || "RATTRAPAGE".equals(tomb)) {
+            return "Cloud · synchronisation en cours…";
+        }
+
+        if ("LIVE".equals(content) && "LIVE".equals(tomb)) {
+            return "Cloud · synchronisation LIVE ✓";
+        }
+
+        return "Cloud · état de synchronisation";
+    }
+
+    private String cgSync006ChannelSummary(String channel) {
+        android.content.SharedPreferences prefs = cgSync006Prefs();
+
+        String phaseValue =
+                safe(prefs.getString(channel + "_phase", "INACTIF"));
+
+        StringBuilder text = new StringBuilder();
+        text.append("État : ").append(
+                phaseValue.isEmpty() ? "INACTIF" : phaseValue);
+
+        if ("content".equals(channel)) {
+            text.append("\nReçus ce run : ")
+                    .append(prefs.getInt("content_seen", 0));
+            text.append("\nAppliqués SQLite : ")
+                    .append(prefs.getInt("content_applied", 0));
+            text.append("\nPages validées : ")
+                    .append(prefs.getInt("content_pages", 0));
+        } else {
+            text.append("\nTombstones ce run : ")
+                    .append(prefs.getInt("tomb_seen", 0));
+            text.append("\nLignes supprimées : ")
+                    .append(prefs.getInt("tomb_deleted", 0));
+            text.append("\nPages validées : ")
+                    .append(prefs.getInt("tomb_pages", 0));
+        }
+
+        text.append("\nCheckpoint : ")
+                .append(cgSync006PositionText(channel));
+
+        text.append("\nDernier succès : ")
+                .append(cgSync006TimeText(
+                        prefs.getLong(channel + "_last_success_ms", 0L)));
+
+        String error = safe(
+                prefs.getString(channel + "_last_error", ""));
+
+        if (!error.isEmpty()) {
+            text.append("\nDernière erreur : ").append(error);
+        }
+
+        return text.toString();
+    }
+
+    private void showCgSync006Dashboard() {
+        phase = "cgsync006";
+        current = null;
+        gameMode = "cloud";
+        baseScrollable();
+
+        add(tv(
+                "Culture Générale",
+                30,
+                Color.WHITE,
+                Gravity.CENTER,
+                true));
+
+        band(
+                "CGSYNC006 · Synchronisation fiable",
+                BLUE,
+                Color.WHITE,
+                20,
+                54);
+
+        add(tv(
+                "CONTENU DES QUESTIONS\n"
+                        + cgSync006ChannelSummary("content"),
+                15,
+                Color.WHITE,
+                Gravity.LEFT,
+                false));
+
+        addOneMillimeterGap();
+
+        add(tv(
+                "SUPPRESSIONS\n"
+                        + cgSync006ChannelSummary("tomb"),
+                15,
+                Color.WHITE,
+                Gravity.LEFT,
+                false));
+
+        addOneMillimeterGap();
+
+        String journal = safe(cgSync006Prefs().getString("journal", ""));
+        java.util.ArrayList<String> lines = new java.util.ArrayList<>();
+
+        if (!journal.isEmpty()) {
+            String[] all = journal.split("\\n");
+            int start = Math.max(0, all.length - 14);
+
+            for (int i = start; i < all.length; i++) {
+                if (all[i] != null && !all[i].trim().isEmpty()) {
+                    lines.add(all[i].trim());
+                }
+            }
+        }
+
+        StringBuilder recent = new StringBuilder();
+        for (String line : lines) {
+            if (recent.length() > 0) recent.append('\n');
+            recent.append(line);
+        }
+
+        if (recent.length() == 0) {
+            recent.append("Aucun événement enregistré.");
+        }
+
+        band(
+                "Journal récent",
+                DARK,
+                Color.WHITE,
+                17,
+                44);
+
+        add(tv(
+                recent.toString(),
+                12,
+                Color.WHITE,
+                Gravity.LEFT,
+                false));
+
+        addOneMillimeterGap();
+
+        Button refresh = btn("Actualiser", 17);
+        refresh.setOnClickListener(v -> showCgSync006Dashboard());
+        add(refresh);
+
+        Button restart = btn("Relancer depuis les checkpoints", 17);
+        setRoundedBackground(restart, GREEN, 14);
+        restart.setOnClickListener(v -> {
+            FirebaseUser user =
+                    com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
+
+            if (user == null) {
+                Toast.makeText(
+                        this,
+                        "Utilisateur Cloud non connecté",
+                        Toast.LENGTH_LONG)
+                        .show();
+                return;
+            }
+
+            stopCgSync002QuestionSync();
+            cgSync002QuestionsUid = safe(user.getUid());
+            cgSync006ResetRunCounters();
+            cgSync006Log("SYSTEME", "Relance manuelle depuis checkpoints");
+            startCgSync006ContentCatchup(user);
+            startCgSync006TombstoneCatchup(user);
+            showCgSync006Dashboard();
+        });
+        add(restart);
+
+        Button clear = btn("Effacer uniquement le journal", 15);
+        clear.setOnClickListener(v -> {
+            cgSync006Prefs().edit().remove("journal").apply();
+            showCgSync006Dashboard();
+        });
+        add(clear);
+
+        Button back = btn("Retour", 18);
+        back.setOnClickListener(v -> showHome());
+        add(back);
+    }
+
+    // CGSYNC006_METHODS_END

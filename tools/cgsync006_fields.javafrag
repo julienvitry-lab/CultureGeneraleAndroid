@@ -1,0 +1,19 @@
+
+    // CGSYNC006_FIELDS_START
+    private static final String CGSYNC006_PREFS = "CGSYNC006";
+    private static final int CGSYNC006_PAGE_SIZE = 250;
+    private static final long CGSYNC006_RETRY_DELAY_MS = 15000L;
+    private static final int CGSYNC006_JOURNAL_MAX_LINES = 80;
+
+    private com.google.firebase.firestore.ListenerRegistration
+            cgSync006TombstoneRegistration;
+
+    private boolean cgSync006ContentCatchupRunning = false;
+    private boolean cgSync006TombstoneCatchupRunning = false;
+
+    private final android.os.Handler cgSync006Handler =
+            new android.os.Handler(android.os.Looper.getMainLooper());
+
+    private Runnable cgSync006ContentRetryRunnable;
+    private Runnable cgSync006TombstoneRetryRunnable;
+    // CGSYNC006_FIELDS_END

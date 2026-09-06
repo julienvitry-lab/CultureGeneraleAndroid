@@ -1,0 +1,11 @@
+        // CGSYNC006_HOME_BUTTON_START
+        Button syncState = btn(cgSync006HomeLabel(), 15);
+        syncState.setSingleLine(true);
+        syncState.setOnClickListener(v -> showCgSync006Dashboard());
+        setRoundedBackgroundWithStroke(syncState, DARK, 12, Color.WHITE, 1);
+        LinearLayout.LayoutParams syncStateLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(0.9f));
+        syncStateLp.setMargins(0, cmToPx(0.12f), 0, cmToPx(0.12f));
+        root.addView(syncState, syncStateLp);
+        // CGSYNC006_HOME_BUTTON_END
+

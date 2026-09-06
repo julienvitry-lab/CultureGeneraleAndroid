@@ -1,0 +1,29 @@
+    private synchronized void stopCgSync002QuestionSync() {
+        if (cgSync002QuestionsRegistration != null) {
+            try {
+                cgSync002QuestionsRegistration.remove();
+            } catch (Exception ignored) { }
+            cgSync002QuestionsRegistration = null;
+        }
+
+        if (cgSync006TombstoneRegistration != null) {
+            try {
+                cgSync006TombstoneRegistration.remove();
+            } catch (Exception ignored) { }
+            cgSync006TombstoneRegistration = null;
+        }
+
+        if (cgSync006ContentRetryRunnable != null) {
+            cgSync006Handler.removeCallbacks(cgSync006ContentRetryRunnable);
+            cgSync006ContentRetryRunnable = null;
+        }
+
+        if (cgSync006TombstoneRetryRunnable != null) {
+            cgSync006Handler.removeCallbacks(cgSync006TombstoneRetryRunnable);
+            cgSync006TombstoneRetryRunnable = null;
+        }
+
+        cgSync006ContentCatchupRunning = false;
+        cgSync006TombstoneCatchupRunning = false;
+        cgSync002QuestionsUid = "";
+    }

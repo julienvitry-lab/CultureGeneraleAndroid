@@ -1,0 +1,14 @@
+    private synchronized void startCgSync002QuestionSync(FirebaseUser user) {
+        // CGSYNC006_START_HOOK
+        if (user != null && hasAccess() && dbFile != null && !dbFile.exists()) {
+            if (CgBoot001.maybeOffer(
+                    this,
+                    dbFile,
+                    user,
+                    () -> runOnUiThread(this::recreate))) {
+                return;
+            }
+        }
+
+        startCgSync006ReliableSync(user);
+    }

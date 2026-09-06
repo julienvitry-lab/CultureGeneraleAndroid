@@ -1,0 +1,34 @@
+        // CGSYNC006_INSERT_NEW_QUESTION
+        if (changed == 0) {
+            ContentValues insertValues = new ContentValues(values);
+            insertValues.put("original_id", documentId);
+
+            if (document.contains("row_number") && document.get("row_number") != null) {
+                Object rowValue = document.get("row_number");
+                if (rowValue instanceof Number) {
+                    insertValues.put("row_number", ((Number) rowValue).longValue());
+                } else {
+                    insertValues.put("row_number", String.valueOf(rowValue));
+                }
+            } else {
+                try {
+                    insertValues.put("row_number", Long.parseLong(documentId));
+                } catch (Exception ignored) { }
+            }
+
+            if (!insertValues.containsKey("status")) {
+                insertValues.put("status", "");
+            }
+
+            long inserted = db.insertWithOnConflict(
+                    TABLE,
+                    null,
+                    insertValues,
+                    SQLiteDatabase.CONFLICT_IGNORE
+            );
+
+            if (inserted != -1L) {
+                changed = 1;
+            }
+        }
+
