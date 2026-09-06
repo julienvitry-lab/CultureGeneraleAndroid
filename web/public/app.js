@@ -6,7 +6,8 @@ import {
   signOut
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
 import {
-  collection, getDocs, getFirestore, doc, writeBatch, getCountFromServer, serverTimestamp, query, orderBy, documentId, limit, startAfter, getDoc, where, updateDoc
+  collection, getDocs, getFirestore, doc, writeBatch, getCountFromServer, serverTimestamp, query, orderBy, documentId, limit, startAfter, getDoc, where, updateDoc,
+  startAt, endAt
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
 // Configuration publique du projet Firebase CultureGeneraleSync.
@@ -277,3 +278,44 @@ onAuthStateChanged(auth, async (user) => {
   setBadge("Authentifié", "ok");
   await testFirestore(user);
 });
+
+
+// CGWEB006_BRIDGE_START
+window.CGWEB006_API = {
+  currentUser: () => {
+    const u = auth.currentUser;
+    return u ? { uid:u.uid, email:u.email || "" } : null;
+  },
+  count: async ({megatheme="",theme=""}={}) => {
+    const u=auth.currentUser;if(!u)throw new Error("Utilisateur Firebase non connecté.");
+    const ref=collection(db,"users",u.uid,"questions"), c=[];
+    if(theme)c.push(where("theme","==",theme)); else if(megatheme)c.push(where("megatheme","==",megatheme));
+    const snap=await getCountFromServer(c.length?query(ref,...c):ref); return snap.data().count||0;
+  },
+  page: async ({megatheme="",theme="",pageSize=50,afterId=null}={}) => {
+    const u=auth.currentUser;if(!u)throw new Error("Utilisateur Firebase non connecté.");
+    const ref=collection(db,"users",u.uid,"questions"), c=[];
+    if(theme)c.push(where("theme","==",theme)); else if(megatheme)c.push(where("megatheme","==",megatheme));
+    c.push(orderBy(documentId())); if(afterId)c.push(startAfter(afterId)); c.push(limit(Math.min(Math.max(Number(pageSize)||50,1),100)));
+    const snap=await getDocs(query(ref,...c)); return {rows:snap.docs.map(d=>({id:d.id,...d.data()})),lastId:snap.docs.length?snap.docs[snap.docs.length-1].id:null};
+  },
+  byId: async value => {
+    const u=auth.currentUser;if(!u)throw new Error("Utilisateur Firebase non connecté.");
+    const id=String(value||"").trim(); if(!id)return null;
+    const snap=await getDoc(doc(db,"users",u.uid,"questions",id)); return snap.exists()?{id:snap.id,...snap.data()}:null;
+  },
+  questionPrefix: async (prefix,maxResults=100) => {
+    const u=auth.currentUser;if(!u)throw new Error("Utilisateur Firebase non connecté.");
+    const text=String(prefix||"").trim(); if(!text)return [];
+    const ref=collection(db,"users",u.uid,"questions");
+    const snap=await getDocs(query(ref,orderBy("question"),startAt(text),endAt(text+"\uf8ff"),limit(Math.min(Math.max(Number(maxResults)||100,1),100))));
+    return snap.docs.map(d=>({id:d.id,...d.data()}));
+  },
+  update: async (questionId,patch) => {
+    const u=auth.currentUser;if(!u)throw new Error("Utilisateur Firebase non connecté.");
+    const id=String(questionId||"").trim();if(!id)throw new Error("ID manquant.");
+    await updateDoc(doc(db,"users",u.uid,"questions",id),{...(patch||{}),cg_updated_at:serverTimestamp()});return true;
+  }
+};
+// CGWEB006_BRIDGE_END
+

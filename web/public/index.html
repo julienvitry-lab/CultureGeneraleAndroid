@@ -6,6 +6,8 @@
   <meta name="theme-color" content="#061b3a">
   <title>Culture Générale — Administration</title>
   <link rel="stylesheet" href="styles.css">
+
+<link rel="stylesheet" href="./cgweb006.css?v=CGWEB006_1">
 </head>
 <body>
   <div class="app-shell">
@@ -113,8 +115,89 @@
     </main>
   </div>
 
-  <script type="module" src="./app.js?v=CGSYNC003_1"></script>
+  <script type="module" src="./app.js?v=CGWEB006_1"></script>
   <script type="module" src="./cloud002.js?v=CGWEB005_1"></script>
   <script type="module" src="./cgweb004005.js?v=CGWEB005_1"></script>
+
+<section id="cgweb006Panel">
+  <div class="cg6-kicker">CGWEB006</div>
+  <h2 class="cg6-title">Répertoire complet des questions</h2>
+  <p class="cg6-sub">Firestore · pagination native · filtres · recherche · modification</p>
+
+  <div class="cg6-toolbar">
+    <div class="cg6-field">
+      <label for="cg6Mega">Mégathème</label>
+      <select id="cg6Mega">
+        <option value="">Tous les mégathèmes</option>
+        <option>Animaux et Plantes</option><option>Culture Classique</option>
+        <option>Culture Générale</option><option>Culture Moderne</option>
+        <option>Géographie</option><option>Histoire</option>
+        <option>Sciences et Techniques</option><option>Sport</option>
+      </select>
+    </div>
+    <div class="cg6-field">
+      <label for="cg6Theme">Thème exact</label>
+      <input id="cg6Theme" type="text" placeholder="Ex. Footballeurs chiliens">
+    </div>
+    <div class="cg6-field">
+      <label>Questions Cloud</label>
+      <div class="cg6-count"><strong id="cg6CloudCount">—</strong></div>
+    </div>
+    <div class="cg6-field">
+      <label>&nbsp;</label>
+      <button id="cg6Refresh" class="cg6-btn">Actualiser</button>
+    </div>
+  </div>
+
+  <div class="cg6-searchbar">
+    <select id="cg6SearchMode">
+      <option value="id">ID exact</option>
+      <option value="question">Début de question</option>
+    </select>
+    <input id="cg6Search" type="search" placeholder="Rechercher…">
+    <button id="cg6SearchBtn" class="cg6-btn cg6-primary">Rechercher</button>
+  </div>
+
+  <div class="cg6-summary">
+    <div id="cg6Status" class="cg6-status">Initialisation…</div>
+    <div id="cg6Page">Page —</div>
+  </div>
+
+  <div id="cg6Rows" class="cg6-rows"></div>
+
+  <div class="cg6-pagination">
+    <button id="cg6Prev" class="cg6-btn">← Précédent</button>
+    <button id="cg6Next" class="cg6-btn cg6-primary">Suivant →</button>
+  </div>
+
+  <div class="cg6-note">Recherche texte = début de question. La recherche « contient » nécessitera un index dédié.</div>
+</section>
+
+<div id="cg6Modal" class="cg6-modal cg6-hidden">
+  <div class="cg6-modal-card">
+    <div class="cg6-modal-head">
+      <div><div class="cg6-kicker">MODIFICATION</div><h3>Question <span id="cg6EditOriginal"></span></h3></div>
+      <button id="cg6Close" class="cg6-close">×</button>
+    </div>
+    <input id="cg6EditId" type="hidden">
+    <div class="cg6-editor">
+      <label>Mégathème<input id="cg6EditMega"></label>
+      <label>Thème<input id="cg6EditTheme"></label>
+      <label class="cg6-wide">Question<textarea id="cg6EditQuestion"></textarea></label>
+      <label class="cg6-wide">Détail<textarea id="cg6EditDetail"></textarea></label>
+      <label>Proposition A<input id="cg6EditA"></label><label>Proposition B<input id="cg6EditB"></label>
+      <label>Proposition C<input id="cg6EditC"></label><label>Proposition D<input id="cg6EditD"></label>
+      <label>Correct index<input id="cg6EditCorrect"></label><label>Statut<input id="cg6EditStatus"></label>
+    </div>
+    <div class="cg6-actions">
+      <span id="cg6SaveState" class="cg6-save-state"></span>
+      <button id="cg6Cancel" class="cg6-btn">Annuler</button>
+      <button id="cg6Save" class="cg6-btn cg6-primary">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+
+<script type="module" src="./cgweb006.js?v=CGWEB006_1"></script>
 </body>
 </html>
