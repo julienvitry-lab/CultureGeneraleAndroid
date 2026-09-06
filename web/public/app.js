@@ -281,6 +281,133 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 
+
+
+// CGINDEX001_HELPERS_START
+function cgindex001Normalize(text) {
+  return String(text || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+const CGINDEX001_STOP = new Set([
+  "de","du","des","la","le","les","un","une","et","ou","a","au","aux","en",
+  "dans","sur","sous","par","pour","avec","sans","ce","cet","cette","ces",
+  "qui","que","quoi","quel","quelle","quels","quelles","est","sont","etre",
+  "son","sa","ses","leur","leurs","il","elle","ils","elles","on","se","ne",
+  "pas","plus","the","of","and","to","in","is","are","an"
+]);
+
+function cgindex001Tokens(data) {
+  const text = [
+    data?.megatheme,
+    data?.theme,
+    data?.question,
+    data?.detail,
+    data?.proposition_a,
+    data?.proposition_b,
+    data?.proposition_c,
+    data?.proposition_d
+  ].filter(Boolean).join(" ");
+
+  return [...new Set(
+    cgindex001Normalize(text)
+      .split(/\s+/)
+      .filter(token => token.length >= 2 && !CGINDEX001_STOP.has(token))
+  )];
+}
+
+async function cgindex001SyncQuestion(questionId) {
+  const u = auth.currentUser;
+  if (!u) return;
+
+  const id = String(questionId || "").trim();
+  if (!id) return;
+
+  const questionRef = doc(db, "users", u.uid, "questions", id);
+  const questionSnap = await getDoc(questionRef);
+
+  if (!questionSnap.exists()) {
+    await setDoc(
+      doc(db, "users", u.uid, "question_search_delta", id),
+      {
+        question_id: id,
+        deleted: true,
+        tokens: [],
+        cgindex_updated_at: serverTimestamp()
+      },
+      { merge: true }
+    );
+    return;
+  }
+
+  const data = questionSnap.data() || {};
+
+  await setDoc(
+    doc(db, "users", u.uid, "question_search_delta", id),
+    {
+      question_id: id,
+      deleted: false,
+      tokens: cgindex001Tokens(data),
+      cgindex_updated_at: serverTimestamp()
+    },
+    { merge: true }
+  );
+}
+
+async function cgindex001MarkDeleted(questionId) {
+  const u = auth.currentUser;
+  if (!u) return;
+
+  const id = String(questionId || "").trim();
+  if (!id) return;
+
+  await setDoc(
+    doc(db, "users", u.uid, "question_search_delta", id),
+    {
+      question_id: id,
+      deleted: true,
+      tokens: [],
+      cgindex_updated_at: serverTimestamp()
+    },
+    { merge: true }
+  );
+}
+
+window.CGINDEX001_API = {
+  searchDelta: async tokens => {
+    const u = auth.currentUser;
+    if (!u) throw new Error("Utilisateur Firebase non connecté.");
+
+    const clean = [...new Set((tokens || []).map(String).filter(Boolean))];
+    if (!clean.length) return [];
+
+    const probe = clean.slice(0, 10);
+    const ref = collection(db, "users", u.uid, "question_search_delta");
+
+    const snap = await getDocs(
+      query(
+        ref,
+        where("tokens", "array-contains-any", probe),
+        limit(1000)
+      )
+    );
+
+    return snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(row =>
+        !row.deleted
+        && clean.every(token => Array.isArray(row.tokens) && row.tokens.includes(token)))
+      .map(row => String(row.question_id || row.id));
+  },
+
+  syncQuestion: cgindex001SyncQuestion
+};
+// CGINDEX001_HELPERS_END
+
 // CGWEB006_BRIDGE_START
 window.CGWEB006_API = {
   currentUser: () => {
@@ -315,7 +442,13 @@ window.CGWEB006_API = {
   update: async (questionId,patch) => {
     const u=auth.currentUser;if(!u)throw new Error("Utilisateur Firebase non connecté.");
     const id=String(questionId||"").trim();if(!id)throw new Error("ID manquant.");
-    await updateDoc(doc(db,"users",u.uid,"questions",id),{...(patch||{}),cg_updated_at:serverTimestamp()});return true;
+    await updateDoc(doc(db,"users",u.uid,"questions",id),{...(patch||{}),cg_updated_at:serverTimestamp()});
+    // CGINDEX001_AFTER_UPDATE
+    try {
+      await cgindex001SyncQuestion(id);
+    } catch (cgindexError) {
+      console.warn("CGINDEX001 update", cgindexError);
+    }return true;
   }
 };
 // CGWEB006_BRIDGE_END
@@ -350,6 +483,12 @@ window.CGWEB010_API = {
     const clean = {...(payload||{})};
     delete clean.requested_id;
     await setDoc(ref,{...clean,original_id:id,row_number:Number.isFinite(Number(id))?Number(id):id,cg_created_at:serverTimestamp(),cg_updated_at:serverTimestamp()});
+    // CGINDEX001_AFTER_CREATE
+    try {
+      await cgindex001SyncQuestion(id);
+    } catch (cgindexError) {
+      console.warn("CGINDEX001 create", cgindexError);
+    }
     return id;
   },
   remove: async questionId => {
@@ -359,6 +498,12 @@ window.CGWEB010_API = {
     if (!id) throw new Error("ID manquant.");
     await setDoc(doc(db,"users",u.uid,"question_tombstones",id),{question_id:id,deleted_at:serverTimestamp(),source:"CGWEB010"});
     await deleteDoc(doc(db,"users",u.uid,"questions",id));
+    // CGINDEX001_AFTER_DELETE
+    try {
+      await cgindex001MarkDeleted(id);
+    } catch (cgindexError) {
+      console.warn("CGINDEX001 delete", cgindexError);
+    }
     return true;
   }
 };

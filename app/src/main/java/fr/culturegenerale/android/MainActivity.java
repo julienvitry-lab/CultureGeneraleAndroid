@@ -4212,6 +4212,10 @@ private void flagAndNext(String status, String msg) {
     // CGSYNC002_CONTENT_METHODS_START
 
     private synchronized void startCgSync002QuestionSync(FirebaseUser user) {
+        // CGSYNC004_TOMBSTONE_SYNC_START
+        startCgSync004TombstoneSync(user);
+        // CGSYNC004_TOMBSTONE_SYNC_END
+
         // CGBOOT001_SYNC_HOOK_START
         if (user != null && hasAccess() && dbFile != null && !dbFile.exists()) {
             if (CgBoot001.maybeOffer(
@@ -4484,4 +4488,150 @@ private void flagAndNext(String status, String msg) {
         if (s.equalsIgnoreCase("sport")) return "Sport";
         return s.length() == 0 ? "Culture Générale" : s;
     }
+
+
+    // CGSYNC004_METHODS_START
+    private boolean cgSync004Running = false;
+
+    private synchronized void startCgSync004TombstoneSync(FirebaseUser user) {
+        if (cgSync004Running) return;
+        if (user == null || dbFile == null || !dbFile.exists() || !hasAccess()) return;
+
+        cgSync004Running = true;
+
+        final java.util.ArrayList<com.google.firebase.firestore.DocumentSnapshot> tombstones =
+                new java.util.ArrayList<>();
+
+        final com.google.firebase.firestore.CollectionReference ref =
+                com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                        .collection("users")
+                        .document(user.getUid())
+                        .collection("question_tombstones");
+
+        fetchCgSync004TombstonePage(ref, null, tombstones);
+    }
+
+    private void fetchCgSync004TombstonePage(
+            com.google.firebase.firestore.CollectionReference ref,
+            String afterId,
+            java.util.ArrayList<com.google.firebase.firestore.DocumentSnapshot> accumulator) {
+
+        com.google.firebase.firestore.Query q =
+                ref.orderBy(com.google.firebase.firestore.FieldPath.documentId())
+                        .limit(500);
+
+        if (afterId != null && !afterId.isEmpty()) {
+            q = q.startAfter(afterId);
+        }
+
+        q.get()
+                .addOnSuccessListener(snapshot -> {
+                    accumulator.addAll(snapshot.getDocuments());
+
+                    if (snapshot.size() == 500) {
+                        String lastId = snapshot.getDocuments()
+                                .get(snapshot.size() - 1)
+                                .getId();
+                        fetchCgSync004TombstonePage(ref, lastId, accumulator);
+                        return;
+                    }
+
+                    applyCgSync004TombstonesToSqlite(accumulator);
+                })
+                .addOnFailureListener(error -> {
+                    cgSync004Running = false;
+
+                    getSharedPreferences(
+                            "CGSYNC004",
+                            android.content.Context.MODE_PRIVATE)
+                            .edit()
+                            .putLong("last_attempt_ms", System.currentTimeMillis())
+                            .putString(
+                                    "last_error",
+                                    error == null ? "Erreur Firestore inconnue"
+                                                  : String.valueOf(error.getMessage()))
+                            .apply();
+
+                    android.util.Log.e(
+                            "CGSYNC004",
+                            "Lecture des tombstones impossible",
+                            error);
+                });
+    }
+
+    private void applyCgSync004TombstonesToSqlite(
+            java.util.List<com.google.firebase.firestore.DocumentSnapshot> tombstones) {
+
+        int deletedRows = 0;
+        android.database.sqlite.SQLiteDatabase db = null;
+
+        try {
+            db = android.database.sqlite.SQLiteDatabase.openDatabase(
+                    dbFile.getAbsolutePath(),
+                    null,
+                    android.database.sqlite.SQLiteDatabase.OPEN_READWRITE);
+
+            db.beginTransaction();
+
+            for (com.google.firebase.firestore.DocumentSnapshot tombstone : tombstones) {
+                String questionId = tombstone.getString("question_id");
+                if (questionId == null || questionId.trim().isEmpty()) {
+                    questionId = tombstone.getId();
+                }
+
+                questionId = questionId == null ? "" : questionId.trim();
+                if (questionId.isEmpty()) continue;
+
+                deletedRows += db.delete(
+                        "questions",
+                        "CAST(original_id AS TEXT)=?",
+                        new String[]{questionId});
+            }
+
+            db.setTransactionSuccessful();
+
+            getSharedPreferences(
+                    "CGSYNC004",
+                    android.content.Context.MODE_PRIVATE)
+                    .edit()
+                    .putLong("last_success_ms", System.currentTimeMillis())
+                    .putInt("last_tombstones_seen", tombstones.size())
+                    .putInt("last_deleted_rows", deletedRows)
+                    .remove("last_error")
+                    .apply();
+
+            android.util.Log.i(
+                    "CGSYNC004",
+                    "Tombstones=" + tombstones.size()
+                            + " ; lignes SQLite supprimées=" + deletedRows);
+
+        } catch (Exception error) {
+            getSharedPreferences(
+                    "CGSYNC004",
+                    android.content.Context.MODE_PRIVATE)
+                    .edit()
+                    .putLong("last_attempt_ms", System.currentTimeMillis())
+                    .putString("last_error", String.valueOf(error.getMessage()))
+                    .apply();
+
+            android.util.Log.e(
+                    "CGSYNC004",
+                    "Application des tombstones impossible",
+                    error);
+
+        } finally {
+            if (db != null) {
+                try {
+                    if (db.inTransaction()) db.endTransaction();
+                } catch (Exception ignored) {}
+
+                try {
+                    db.close();
+                } catch (Exception ignored) {}
+            }
+            cgSync004Running = false;
+        }
+    }
+    // CGSYNC004_METHODS_END
+
 }
