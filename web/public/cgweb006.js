@@ -16,3 +16,9 @@ function closeEditor(){$("cg6Modal").classList.add("cg6-hidden")}
 async function save(){const raw=$("cg6EditCorrect").value.trim(),n=raw===""?null:Number(raw);const patch={megatheme:$("cg6EditMega").value.trim(),theme:$("cg6EditTheme").value.trim(),question:$("cg6EditQuestion").value.trim(),detail:$("cg6EditDetail").value,proposition_a:$("cg6EditA").value,proposition_b:$("cg6EditB").value,proposition_c:$("cg6EditC").value,proposition_d:$("cg6EditD").value,correct_index:Number.isFinite(n)?n:raw,status:$("cg6EditStatus").value.trim()};try{$("cg6SaveState").textContent="Enregistrement…";await (await waitApi()).update($("cg6EditId").value,patch);$("cg6SaveState").textContent="✅ Enregistré";setTimeout(async()=>{closeEditor();state.mode==="directory"?await load(false):await search()},350)}catch(e){$("cg6SaveState").textContent="❌ "+(e?.message||String(e))}}
 $("cg6Refresh").onclick=()=>load(true);$("cg6SearchBtn").onclick=search;$("cg6Search").onkeydown=e=>{if(e.key==="Enter")search()};$("cg6Mega").onchange=()=>load(true);$("cg6Theme").onkeydown=e=>{if(e.key==="Enter")load(true)};$("cg6Prev").onclick=async()=>{if(state.page>0){state.page--;await load(false)}};$("cg6Next").onclick=async()=>{if(state.last){state.stack[state.page+1]=state.last;state.page++;await load(false)}};$("cg6Close").onclick=closeEditor;$("cg6Cancel").onclick=closeEditor;$("cg6Save").onclick=save;$("cg6Modal").onclick=e=>{if(e.target===$("cg6Modal"))closeEditor()};
 (async()=>{try{const a=await waitApi();for(let i=0;i<30&&!a.currentUser();i++){setStatus("Connexion Firebase en attente…");await new Promise(r=>setTimeout(r,500))}await load(true)}catch(e){setStatus(e?.message||String(e),"error")}})();
+
+// CGWEB008_RELOAD_BRIDGE_START
+window.CGWEB006_reload = async (reset = true) => {
+  await load(Boolean(reset));
+};
+// CGWEB008_RELOAD_BRIDGE_END

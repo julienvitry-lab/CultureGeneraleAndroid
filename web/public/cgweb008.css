@@ -1,0 +1,5 @@
+#cg6Theme:disabled{opacity:.55;cursor:not-allowed}
+.cg8-theme-count{margin-top:3px;color:#8fb6ca;font-size:.78rem}
+.cg8-reset{margin-top:8px;background:#173f5c}
+.cg8-catalog-note{margin-top:7px;color:#77d9f5}
+@media(max-width:760px){.cg8-reset{width:100%}}
