@@ -1,1 +1,4 @@
 backups/CGBACKUP001/
+tools/.cgindex002_state.json
+tools/.cgindex002_stage_*/
+tools/.cgindex002_old_*/
