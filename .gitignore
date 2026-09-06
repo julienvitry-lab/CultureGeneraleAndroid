@@ -6,3 +6,5 @@ tools/.cgbackup002_*
 backups/CGBACKUP002/
 CGTEST001_REPORT_*.txt
 tools/__pycache__/
+CGIMPORT001_checkpoint.json
+web/.firebase/
