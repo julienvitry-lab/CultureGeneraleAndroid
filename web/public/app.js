@@ -7,7 +7,8 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
 import {
   collection, getDocs, getFirestore, doc, writeBatch, getCountFromServer, serverTimestamp, query, orderBy, documentId, limit, startAfter, getDoc, where, updateDoc,
-  startAt, endAt
+  startAt, endAt,
+  setDoc, deleteDoc
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
 // Configuration publique du projet Firebase CultureGeneraleSync.
@@ -319,3 +320,46 @@ window.CGWEB006_API = {
 };
 // CGWEB006_BRIDGE_END
 
+
+
+// CGWEB009_010_BRIDGE_START
+window.CGWEB009_API = {
+  prefixField: async (field, prefix, maxResults = 100) => {
+    const u = auth.currentUser;
+    if (!u) throw new Error("Utilisateur Firebase non connecté.");
+    const allowed = new Set(["question","detail","proposition_a","proposition_b","proposition_c","proposition_d"]);
+    if (!allowed.has(field)) throw new Error("Champ de recherche non autorisé.");
+    const text = String(prefix || "").trim();
+    if (!text) return [];
+    const ref = collection(db,"users",u.uid,"questions");
+    const q = query(ref,orderBy(field),startAt(text),endAt(text+"\uf8ff"),limit(Math.min(Math.max(Number(maxResults)||100,1),100)));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({id:d.id,...d.data()}));
+  }
+};
+
+window.CGWEB010_API = {
+  create: async payload => {
+    const u = auth.currentUser;
+    if (!u) throw new Error("Utilisateur Firebase non connecté.");
+    let id = String(payload?.requested_id || "").trim();
+    if (!id) id = String(Date.now());
+    const ref = doc(db,"users",u.uid,"questions",id);
+    const existing = await getDoc(ref);
+    if (existing.exists()) throw new Error("Cet ID existe déjà.");
+    const clean = {...(payload||{})};
+    delete clean.requested_id;
+    await setDoc(ref,{...clean,original_id:id,row_number:Number.isFinite(Number(id))?Number(id):id,cg_created_at:serverTimestamp(),cg_updated_at:serverTimestamp()});
+    return id;
+  },
+  remove: async questionId => {
+    const u = auth.currentUser;
+    if (!u) throw new Error("Utilisateur Firebase non connecté.");
+    const id = String(questionId||"").trim();
+    if (!id) throw new Error("ID manquant.");
+    await setDoc(doc(db,"users",u.uid,"question_tombstones",id),{question_id:id,deleted_at:serverTimestamp(),source:"CGWEB010"});
+    await deleteDoc(doc(db,"users",u.uid,"questions",id));
+    return true;
+  }
+};
+// CGWEB009_010_BRIDGE_END

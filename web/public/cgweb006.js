@@ -7,9 +7,9 @@ const filters=()=>({megatheme:$("cg6Mega").value.trim(),theme:$("cg6Theme").valu
 function setStatus(t,type=""){const e=$("cg6Status");e.textContent=t;e.className="cg6-status "+(type?`cg6-${type}`:"")}
 async function waitApi(){for(let i=0;i<80;i++){if(api())return api();await new Promise(r=>setTimeout(r,250))}throw new Error("Pont Firebase CGWEB006 indisponible.")}
 function rowHtml(r){const p=[r.proposition_a,r.proposition_b,r.proposition_c,r.proposition_d].filter(v=>v!==null&&v!==undefined&&String(v)!=="").map((v,i)=>`<span><b>${String.fromCharCode(65+i)}.</b> ${esc(v)}</span>`).join("");return `<article class="cg6-row"><div class="cg6-row-head"><div><div class="cg6-id">#${esc(r.original_id??r.id)}</div><div class="cg6-path">${esc(r.megatheme)}${r.theme?" › "+esc(r.theme):""}</div></div><button class="cg6-edit" data-edit="${esc(r.id)}">Modifier</button></div><div class="cg6-question">${esc(r.question)}</div>${r.detail?`<div class="cg6-detail">${esc(r.detail)}</div>`:""}${p?`<div class="cg6-props">${p}</div>`:""}<div class="cg6-meta"><span>Réponse : ${esc(r.correct_index??"—")}</span><span>Statut : ${esc(r.status??"—")}</span><span>row : ${esc(r.row_number??"—")}</span></div></article>`}
-function render(rows){state.rows=rows;$("cg6Rows").innerHTML=rows.length?rows.map(rowHtml).join(""):'<div class="cg6-empty">Aucune question trouvée.</div>';document.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>openEditor(b.dataset.edit))}
+function render(rows){if(typeof window.CGWEB011_sortRows==="function")rows=window.CGWEB011_sortRows(rows);state.rows=rows;$("cg6Rows").innerHTML=rows.length?rows.map(rowHtml).join(""):'<div class="cg6-empty">Aucune question trouvée.</div>';document.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>openEditor(b.dataset.edit))}
 async function count(){const a=await waitApi();$("cg6CloudCount").textContent=a.currentUser()?fmt(await a.count(filters())):"—"}
-async function load(reset=false){if(reset){state.stack=[null];state.page=0}state.mode="directory";setStatus("Lecture Firestore…");try{const a=await waitApi();if(!a.currentUser())throw new Error("Connecte-toi d’abord avec CGWEB001.");const res=await a.page({...filters(),pageSize:50,afterId:state.stack[state.page]||null});state.last=res.lastId||null;render(res.rows||[]);$("cg6Page").textContent=`Page ${state.page+1}`;$("cg6Prev").disabled=state.page<=0;$("cg6Next").disabled=!state.last||(res.rows||[]).length<50;setStatus(`${fmt((res.rows||[]).length)} question(s) affichée(s)`,"ok");await count()}catch(e){render([]);setStatus(e?.message||String(e),"error")}}
+async function load(reset=false){if(reset){state.stack=[null];state.page=0}state.mode="directory";setStatus("Lecture Firestore…");try{const a=await waitApi();if(!a.currentUser())throw new Error("Connecte-toi d’abord avec CGWEB001.");const res=await a.page({...filters(),pageSize:(window.CGWEB011_pageSize||50),afterId:state.stack[state.page]||null});state.last=res.lastId||null;render(res.rows||[]);$("cg6Page").textContent=`Page ${state.page+1}`;$("cg6Prev").disabled=state.page<=0;$("cg6Next").disabled=!state.last||(res.rows||[]).length<(window.CGWEB011_pageSize||50);setStatus(`${fmt((res.rows||[]).length)} question(s) affichée(s)`,"ok");await count()}catch(e){render([]);setStatus(e?.message||String(e),"error")}}
 async function search(){const term=$("cg6Search").value.trim(),mode=$("cg6SearchMode").value;if(!term)return load(true);state.mode=mode;setStatus("Recherche…");try{const a=await waitApi();let rows=[];if(mode==="id"){const r=await a.byId(term);rows=r?[r]:[]}else rows=await a.questionPrefix(term,100);render(rows);$("cg6Page").textContent=mode==="id"?"Recherche ID":"100 résultats max.";$("cg6Prev").disabled=true;$("cg6Next").disabled=true;setStatus(`${fmt(rows.length)} résultat(s)`,"ok")}catch(e){render([]);setStatus(e?.message||String(e),"error")}}
 function openEditor(id){const r=state.rows.find(x=>String(x.id)===String(id));if(!r)return;$("cg6EditId").value=r.id;$("cg6EditOriginal").textContent=r.original_id??r.id;for(const [k,v] of [["Mega","megatheme"],["Theme","theme"],["Question","question"],["Detail","detail"],["A","proposition_a"],["B","proposition_b"],["C","proposition_c"],["D","proposition_d"],["Correct","correct_index"],["Status","status"]])$(`cg6Edit${k}`).value=r[v]??"";$("cg6Modal").classList.remove("cg6-hidden")}
 function closeEditor(){$("cg6Modal").classList.add("cg6-hidden")}
@@ -22,3 +22,13 @@ window.CGWEB006_reload = async (reset = true) => {
   await load(Boolean(reset));
 };
 // CGWEB008_RELOAD_BRIDGE_END
+
+
+// CGWEB009_012_EXPOSE_START
+window.CGWEB006_render = render;
+window.CGWEB006_state = state;
+window.CGWEB011_rerender = () => render(state.rows || []);
+if (typeof window.CGWEB006_reload !== "function") {
+  window.CGWEB006_reload = async (reset = true) => { await load(Boolean(reset)); };
+}
+// CGWEB009_012_EXPOSE_END

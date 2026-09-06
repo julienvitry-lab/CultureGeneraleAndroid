@@ -1,0 +1,10 @@
+/* CGWEB009-012 */
+#cg6SearchMode{min-width:230px}
+.cg10-new{margin:8px 0 16px}.cg10-delete{background:#9b2335}.cg10-hint{margin-top:12px;color:#9eb7c7;font-size:.82rem}
+.cg11-controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0}
+.cg11-controls label{display:flex;flex-direction:column;gap:6px;color:#9edfff;font-size:.82rem;font-weight:700}
+.cg11-controls select{width:100%;box-sizing:border-box;border:1px solid rgba(255,255,255,.18);border-radius:12px;background:#06243d;color:white;padding:10px 12px;font:inherit}
+body.cg11-compact .cg6-detail,body.cg11-compact .cg6-props,body.cg11-compact .cg6-meta{display:none}
+body.cg11-compact .cg6-row{padding:11px 14px}body.cg11-compact .cg6-question{margin-top:7px}
+.cg12-info{margin-top:7px;color:#8ee5b0}
+@media(max-width:760px){#cg6SearchMode{min-width:0}.cg11-controls{grid-template-columns:1fr}}
