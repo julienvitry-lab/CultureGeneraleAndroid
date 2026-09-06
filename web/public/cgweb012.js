@@ -302,7 +302,30 @@ async function cgxDeleteCurrent() {
   try {
     const api = window.CGWEB010_API;
     if (!api) throw new Error('Pont CGWEB010 indisponible.');
-    await api.remove(id);
+    // CGSYNC007_DELETE_UI
+    const removal = await api.remove(id, {
+      expectedRevision: Number(window.CGSYNC007_EDITOR_BASE_REVISION ?? 0),
+      source: "CGWEB010_EDITOR"
+    });
+
+    if (removal?.conflict) {
+      alert(
+        `Conflit détecté : la question ${original} a été modifiée depuis l'ouverture.\n\n` +
+        `La suppression est annulée. La version Cloud va être rechargée.`
+      );
+      try {
+        await window.CGSYNC007_API?.resolveConflict(
+          removal.conflictId,
+          "delete_blocked_cloud_reloaded"
+        );
+      } catch (_) { }
+      if (typeof window.CGSYNC007_reloadEditorCloud === "function") {
+        await window.CGSYNC007_reloadEditorCloud();
+      }
+      window.dispatchEvent(new CustomEvent("cgsync007-conflicts-changed"));
+      return;
+    }
+
     alert(`Question ${original} supprimée du Cloud. Tombstone enregistré.`);
     cgx$('cg6Modal')?.classList.add('cg6-hidden');
     if (typeof window.CGWEB006_reload === 'function') await window.CGWEB006_reload(true);

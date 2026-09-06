@@ -8,7 +8,7 @@ import {
 import {
   collection, getDocs, getFirestore, doc, writeBatch, getCountFromServer, serverTimestamp, query, orderBy, documentId, limit, startAfter, getDoc, where, updateDoc,
   startAt, endAt,
-  setDoc, deleteDoc
+  setDoc, deleteDoc, runTransaction
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
 // Configuration publique du projet Firebase CultureGeneraleSync.
@@ -180,7 +180,10 @@ window.CGWEB001 = {
     clean.cloud_schema = 1;
 
     const ref = doc(db, "users", user.uid, "questions", String(questionId));
-    await updateDoc(ref, { ...(clean), cg_updated_at: serverTimestamp() /* CGSYNC003_WEB_STAMP */ });
+    // CGSYNC007_LEGACY_UPDATE
+    await cgsync007WriteQuestion(questionId, clean, {
+      source: "CGWEB005"
+    });
     const fresh = await getDoc(ref);
     return fresh.exists() ? { id: fresh.id, ...fresh.data() } : null;
   },
@@ -452,6 +455,281 @@ window.CGINDEX001_API = {
 };
 // CGINDEX001_HELPERS_END
 
+// CGSYNC007_CONFLICT_ENGINE_START
+const CGSYNC007_EDITABLE_FIELDS = new Set([
+  "megatheme", "theme", "question", "detail",
+  "proposition_a", "proposition_b", "proposition_c", "proposition_d",
+  "correct_index", "url_quizypedia", "url_internet", "image_file",
+  "non_trouve", "is_image", "status",
+  "updated_at", "updated_from", "cloud_schema"
+]);
+
+function cgsync007Revision(data) {
+  const n = Number(data?.cg_revision ?? 0);
+  return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : 0;
+}
+
+function cgsync007WriterId() {
+  const key = "CGSYNC007_WRITER_ID";
+  try {
+    let value = localStorage.getItem(key);
+    if (!value) {
+      value = (globalThis.crypto?.randomUUID?.()
+        || `web-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+      localStorage.setItem(key, value);
+    }
+    return value;
+  } catch (_) {
+    return `web-${Date.now()}`;
+  }
+}
+
+function cgsync007WriterMeta(source = "WEB") {
+  const id = cgsync007WriterId();
+  return {
+    cg_updated_by: "web",
+    cg_writer_id: id,
+    cg_writer_label: `Web · ${id.slice(0, 8)}`,
+    cg_update_source: String(source || "WEB")
+  };
+}
+
+function cgsync007CleanPatch(patch) {
+  const clean = {};
+  for (const [key, value] of Object.entries(patch || {})) {
+    if (CGSYNC007_EDITABLE_FIELDS.has(key) && value !== undefined) {
+      clean[key] = value;
+    }
+  }
+  return clean;
+}
+
+function cgsync007ExpectedRevision(options, cloudRevision) {
+  const raw = options?.expectedRevision;
+  if (raw === null || raw === undefined || raw === "") return cloudRevision;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : cloudRevision;
+}
+
+async function cgsync007WriteQuestion(questionId, patch, options = {}) {
+  const u = auth.currentUser;
+  if (!u) throw new Error("Utilisateur Firebase non connecté.");
+
+  const id = String(questionId || "").trim();
+  if (!id) throw new Error("ID manquant.");
+
+  const clean = cgsync007CleanPatch(patch);
+  if (!Object.keys(clean).length) throw new Error("Modification vide.");
+
+  const questionRef = doc(db, "users", u.uid, "questions", id);
+  const conflictRef = doc(collection(db, "users", u.uid, "question_conflicts"));
+  const writer = cgsync007WriterMeta(options.source || "CGSYNC007");
+
+  const result = await runTransaction(db, async transaction => {
+    const snap = await transaction.get(questionRef);
+    if (!snap.exists()) throw new Error(`Question ${id} introuvable.`);
+
+    const cloud = snap.data() || {};
+    const cloudRevision = cgsync007Revision(cloud);
+    const expectedRevision = cgsync007ExpectedRevision(options, cloudRevision);
+
+    if (!options.force && expectedRevision !== cloudRevision) {
+      const conflict = {
+        question_id: id,
+        operation: "update",
+        status: "open",
+        expected_revision: expectedRevision,
+        cloud_revision: cloudRevision,
+        attempted_patch: clean,
+        cloud_snapshot: cloud,
+        cloud_updated_at: cloud.cg_updated_at || null,
+        writer_id: writer.cg_writer_id,
+        writer_label: writer.cg_writer_label,
+        writer_type: "web",
+        source: writer.cg_update_source,
+        created_at: serverTimestamp()
+      };
+
+      transaction.set(conflictRef, conflict);
+
+      return {
+        ok: false,
+        conflict: true,
+        conflictId: conflictRef.id,
+        questionId: id,
+        expectedRevision,
+        cloudRevision,
+        cloud
+      };
+    }
+
+    const nextRevision = cloudRevision + 1;
+    transaction.update(questionRef, {
+      ...clean,
+      ...writer,
+      cg_revision: nextRevision,
+      cg_base_revision: cloudRevision,
+      cg_updated_at: serverTimestamp()
+    });
+
+    if (options.conflictId) {
+      const resolvedRef = doc(
+        db,
+        "users",
+        u.uid,
+        "question_conflicts",
+        String(options.conflictId)
+      );
+      transaction.update(resolvedRef, {
+        status: "resolved",
+        resolution: options.resolution || "local_applied",
+        resolved_revision: nextRevision,
+        resolved_at: serverTimestamp(),
+        resolved_by: writer.cg_writer_id
+      });
+    }
+
+    return {
+      ok: true,
+      conflict: false,
+      questionId: id,
+      revision: nextRevision,
+      previousRevision: cloudRevision
+    };
+  });
+
+  if (result?.ok) {
+    try {
+      await cgindex001SyncQuestion(id);
+    } catch (cgindexError) {
+      console.warn("CGINDEX001 update", cgindexError);
+    }
+  }
+
+  return result;
+}
+
+async function cgsync007DeleteQuestion(questionId, options = {}) {
+  const u = auth.currentUser;
+  if (!u) throw new Error("Utilisateur Firebase non connecté.");
+
+  const id = String(questionId || "").trim();
+  if (!id) throw new Error("ID manquant.");
+
+  const questionRef = doc(db, "users", u.uid, "questions", id);
+  const tombstoneRef = doc(db, "users", u.uid, "question_tombstones", id);
+  const conflictRef = doc(collection(db, "users", u.uid, "question_conflicts"));
+  const writer = cgsync007WriterMeta(options.source || "CGSYNC007_DELETE");
+
+  const result = await runTransaction(db, async transaction => {
+    const snap = await transaction.get(questionRef);
+    if (!snap.exists()) {
+      return { ok: true, alreadyDeleted: true, questionId: id };
+    }
+
+    const cloud = snap.data() || {};
+    const cloudRevision = cgsync007Revision(cloud);
+    const expectedRevision = cgsync007ExpectedRevision(options, cloudRevision);
+
+    if (!options.force && expectedRevision !== cloudRevision) {
+      transaction.set(conflictRef, {
+        question_id: id,
+        operation: "delete",
+        status: "open",
+        expected_revision: expectedRevision,
+        cloud_revision: cloudRevision,
+        cloud_snapshot: cloud,
+        cloud_updated_at: cloud.cg_updated_at || null,
+        writer_id: writer.cg_writer_id,
+        writer_label: writer.cg_writer_label,
+        writer_type: "web",
+        source: writer.cg_update_source,
+        created_at: serverTimestamp()
+      });
+
+      return {
+        ok: false,
+        conflict: true,
+        conflictId: conflictRef.id,
+        questionId: id,
+        expectedRevision,
+        cloudRevision,
+        cloud,
+        operation: "delete"
+      };
+    }
+
+    transaction.set(tombstoneRef, {
+      question_id: id,
+      deleted_at: serverTimestamp(),
+      source: "CGSYNC007",
+      deleted_revision: cloudRevision,
+      ...writer
+    });
+    transaction.delete(questionRef);
+
+    return {
+      ok: true,
+      conflict: false,
+      questionId: id,
+      deletedRevision: cloudRevision
+    };
+  });
+
+  if (result?.ok) {
+    try {
+      await cgindex001MarkDeleted(id);
+    } catch (cgindexError) {
+      console.warn("CGINDEX001 delete", cgindexError);
+    }
+  }
+
+  return result;
+}
+
+async function cgsync007ResolveConflict(conflictId, resolution = "acknowledged") {
+  const u = auth.currentUser;
+  if (!u) throw new Error("Utilisateur Firebase non connecté.");
+  const id = String(conflictId || "").trim();
+  if (!id) return false;
+
+  await updateDoc(
+    doc(db, "users", u.uid, "question_conflicts", id),
+    {
+      status: "resolved",
+      resolution: String(resolution || "acknowledged"),
+      resolved_at: serverTimestamp(),
+      resolved_by: cgsync007WriterId()
+    }
+  );
+  return true;
+}
+
+async function cgsync007ListOpenConflicts(maxResults = 50) {
+  const u = auth.currentUser;
+  if (!u) return [];
+
+  const ref = collection(db, "users", u.uid, "question_conflicts");
+  const snap = await getDocs(
+    query(
+      ref,
+      where("status", "==", "open"),
+      limit(Math.min(Math.max(Number(maxResults) || 50, 1), 100))
+    )
+  );
+
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+window.CGSYNC007_API = {
+  writerId: cgsync007WriterId,
+  update: cgsync007WriteQuestion,
+  remove: cgsync007DeleteQuestion,
+  resolveConflict: cgsync007ResolveConflict,
+  listOpen: cgsync007ListOpenConflicts
+};
+// CGSYNC007_CONFLICT_ENGINE_END
+
 // CGWEB006_BRIDGE_START
 window.CGWEB006_API = {
   currentUser: () => {
@@ -483,16 +761,12 @@ window.CGWEB006_API = {
     const snap=await getDocs(query(ref,orderBy("question"),startAt(text),endAt(text+"\uf8ff"),limit(Math.min(Math.max(Number(maxResults)||100,1),100))));
     return snap.docs.map(d=>({id:d.id,...d.data()}));
   },
-  update: async (questionId,patch) => {
-    const u=auth.currentUser;if(!u)throw new Error("Utilisateur Firebase non connecté.");
-    const id=String(questionId||"").trim();if(!id)throw new Error("ID manquant.");
-    await updateDoc(doc(db,"users",u.uid,"questions",id),{...(patch||{}),cg_updated_at:serverTimestamp()});
-    // CGINDEX001_AFTER_UPDATE
-    try {
-      await cgindex001SyncQuestion(id);
-    } catch (cgindexError) {
-      console.warn("CGINDEX001 update", cgindexError);
-    }return true;
+  update: async (questionId, patch, options = {}) => {
+    // CGSYNC007_CGWEB006_UPDATE
+    return cgsync007WriteQuestion(questionId, patch, {
+      ...(options || {}),
+      source: options?.source || "CGWEB006"
+    });
   }
 };
 // CGWEB006_BRIDGE_END
@@ -526,7 +800,18 @@ window.CGWEB010_API = {
     if (existing.exists()) throw new Error("Cet ID existe déjà.");
     const clean = {...(payload||{})};
     delete clean.requested_id;
-    await setDoc(ref,{...clean,original_id:id,row_number:Number.isFinite(Number(id))?Number(id):id,cg_created_at:serverTimestamp(),cg_updated_at:serverTimestamp()});
+    // CGSYNC007_CREATE_REVISION
+    const writer = cgsync007WriterMeta("CGWEB010_CREATE");
+    await setDoc(ref,{
+      ...clean,
+      original_id:id,
+      row_number:Number.isFinite(Number(id))?Number(id):id,
+      cg_created_at:serverTimestamp(),
+      cg_updated_at:serverTimestamp(),
+      cg_revision:1,
+      cg_base_revision:0,
+      ...writer
+    });
     // CGINDEX001_AFTER_CREATE
     try {
       await cgindex001SyncQuestion(id);
@@ -535,20 +820,12 @@ window.CGWEB010_API = {
     }
     return id;
   },
-  remove: async questionId => {
-    const u = auth.currentUser;
-    if (!u) throw new Error("Utilisateur Firebase non connecté.");
-    const id = String(questionId||"").trim();
-    if (!id) throw new Error("ID manquant.");
-    await setDoc(doc(db,"users",u.uid,"question_tombstones",id),{question_id:id,deleted_at:serverTimestamp(),source:"CGWEB010"});
-    await deleteDoc(doc(db,"users",u.uid,"questions",id));
-    // CGINDEX001_AFTER_DELETE
-    try {
-      await cgindex001MarkDeleted(id);
-    } catch (cgindexError) {
-      console.warn("CGINDEX001 delete", cgindexError);
-    }
-    return true;
+  remove: async (questionId, options = {}) => {
+    // CGSYNC007_DELETE_GUARD
+    return cgsync007DeleteQuestion(questionId, {
+      ...(options || {}),
+      source: options?.source || "CGWEB010"
+    });
   }
 };
 // CGWEB009_010_BRIDGE_END

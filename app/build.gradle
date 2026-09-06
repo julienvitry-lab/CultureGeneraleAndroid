@@ -22,8 +22,8 @@ android {
         applicationId 'fr.culturegenerale.android'
         minSdk 23
         targetSdk 35
-        versionCode 958
-        versionName '9.5.8-cgsync006'
+        versionCode 959
+        versionName '9.5.9-cgsync007'
     }
 
     signingConfigs {

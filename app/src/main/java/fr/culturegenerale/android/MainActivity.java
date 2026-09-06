@@ -5472,6 +5472,11 @@ private void flagAndNext(String status, String msg) {
 
         addOneMillimeterGap();
 
+        // CGSYNC007_ANDROID_CONFLICT_SUMMARY
+        cgSync007AddConflictSummary();
+
+        addOneMillimeterGap();
+
         String journal = safe(cgSync006Prefs().getString("journal", ""));
         java.util.ArrayList<String> lines = new java.util.ArrayList<>();
 
@@ -5552,6 +5557,51 @@ private void flagAndNext(String status, String msg) {
         back.setOnClickListener(v -> showHome());
         add(back);
     }
+
+    // CGSYNC007_ANDROID_METHODS_START
+    private void cgSync007AddConflictSummary() {
+        final TextView conflictView = tv(
+                "CONFLITS D'ÉDITION\nChargement…",
+                15,
+                Color.WHITE,
+                Gravity.LEFT,
+                false);
+        add(conflictView);
+
+        FirebaseUser user =
+                com.google.firebase.auth.FirebaseAuth.getInstance().getCurrentUser();
+
+        if (user == null) {
+            conflictView.setText(
+                    "CONFLITS D'ÉDITION\nCloud non connecté");
+            return;
+        }
+
+        com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(user.getUid())
+                .collection("question_conflicts")
+                .whereEqualTo("status", "open")
+                .limit(100)
+                .get()
+                .addOnSuccessListener(snapshot -> {
+                    int count = snapshot == null ? 0 : snapshot.size();
+                    String suffix = count >= 100 ? "+" : "";
+                    conflictView.setText(
+                            "CONFLITS D'ÉDITION\n"
+                                    + count + suffix
+                                    + " conflit(s) ouvert(s)"
+                                    + (count == 0
+                                    ? " · aucune action requise"
+                                    : " · résolution sur le site Web"));
+                })
+                .addOnFailureListener(error ->
+                        conflictView.setText(
+                                "CONFLITS D'ÉDITION\n"
+                                        + "État indisponible : "
+                                        + cgSync006SafeError(error)));
+    }
+    // CGSYNC007_ANDROID_METHODS_END
 
     // CGSYNC006_METHODS_END
 

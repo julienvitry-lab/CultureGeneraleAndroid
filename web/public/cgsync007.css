@@ -1,0 +1,43 @@
+/* CGSYNC007 — conflits multi-session */
+.cg7-conflict{
+  margin:14px 0;
+  padding:14px;
+  border:1px solid #ffcf66;
+  border-radius:14px;
+  background:#392b08;
+  color:#fff;
+}
+.cg7-conflict-title{font-size:1.05rem;font-weight:700;margin-bottom:6px}
+.cg7-conflict-meta,.cg7-conflict-fields{margin-top:6px;font-size:.88rem;color:#f2dfb5}
+.cg7-conflict-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.cg7-registry-btn{
+  margin-left:auto;
+  border:1px solid rgba(255,255,255,.25);
+  border-radius:999px;
+  padding:8px 12px;
+  background:#082d49;
+  color:#fff;
+  font:inherit;
+  cursor:pointer;
+}
+.cg7-registry-btn.cg7-has-conflicts{background:#6b3b00;border-color:#ffcf66}
+.cg7-overlay{
+  position:fixed;inset:0;z-index:9999;
+  background:rgba(0,0,0,.75);
+  display:flex;align-items:center;justify-content:center;padding:18px;
+}
+.cg7-dialog{
+  width:min(760px,96vw);max-height:88vh;overflow:auto;
+  background:#082d49;color:#fff;border:1px solid rgba(255,255,255,.2);
+  border-radius:18px;padding:16px;
+}
+.cg7-dialog-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.cg7-dialog-head h3{margin:0}
+.cg7-close{border:0;background:transparent;color:#fff;font-size:1.6rem;cursor:pointer}
+.cg7-list{display:grid;gap:10px;margin-top:14px}
+.cg7-item{padding:12px;border-radius:12px;background:#06233a;border:1px solid rgba(255,255,255,.12)}
+.cg7-item-title{font-weight:700}
+.cg7-item-meta{font-size:.82rem;color:#a9bdc8;margin-top:4px}
+.cg7-item-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.cg7-empty{padding:18px;text-align:center;color:#a9bdc8}
+@media(max-width:650px){.cg7-registry-btn{margin-left:0}.cg7-conflict-actions button{width:100%}}
