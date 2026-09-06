@@ -1,0 +1,18 @@
+/* CGSYNC005 */
+.cgs5-panel{margin:18px 0;padding:18px;border-radius:18px;background:#082d49;border:1px solid rgba(255,255,255,.14)}
+.cgs5-top{display:flex;gap:16px;align-items:flex-start;justify-content:space-between}
+.cgs5-kicker{font-size:.78rem;font-weight:700;color:#6cd6ff;letter-spacing:.08em}
+.cgs5-panel h2{margin:4px 0 6px}
+.cgs5-headline{font-weight:700}
+.cgs5-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:16px}
+.cgs5-card{min-height:92px;padding:13px;border-radius:14px;background:#06233a;border:1px solid rgba(255,255,255,.10)}
+.cgs5-label{font-size:.78rem;color:#98cbe3}
+.cgs5-value{margin-top:5px;font-size:1.35rem;font-weight:700}
+.cgs5-detail{margin-top:5px;color:#a8bac5;font-size:.76rem;line-height:1.35}
+.cgs5-summary,.cgs5-status{margin-top:12px;font-size:.86rem}
+.cgs5-refresh{border:0;border-radius:12px;padding:10px 14px;background:#62d1f5;color:#06233a;font:inherit;font-weight:700;cursor:pointer}
+.cgs5-refresh:disabled{opacity:.55;cursor:wait}
+.cgs5-ok{color:#6de7a0}.cgs5-warn{color:#ffd56a}.cgs5-error{color:#ff8b9a}
+.cgs5-note-fixed{color:#8ee5b0!important}
+@media(max-width:900px){.cgs5-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.cgs5-panel{padding:14px}.cgs5-top{flex-direction:column}.cgs5-refresh{width:100%}.cgs5-grid{grid-template-columns:1fr}}

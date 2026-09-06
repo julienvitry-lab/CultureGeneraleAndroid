@@ -283,6 +283,50 @@ onAuthStateChanged(auth, async (user) => {
 
 
 
+
+
+// CGSYNC005_API_START
+window.CGSYNC005_API = {
+  health: async () => {
+    const u = auth.currentUser;
+    if (!u) return { authenticated: false };
+
+    const questionsRef = collection(db, "users", u.uid, "questions");
+    const tombstonesRef = collection(db, "users", u.uid, "question_tombstones");
+    const deltaRef = collection(db, "users", u.uid, "question_search_delta");
+
+    const [
+      questionsCount,
+      tombstonesCount,
+      deltaCount,
+      latestQuestion,
+      latestTombstone,
+      latestDelta
+    ] = await Promise.all([
+      getCountFromServer(questionsRef),
+      getCountFromServer(tombstonesRef),
+      getCountFromServer(deltaRef),
+      getDocs(query(questionsRef, orderBy("cg_updated_at", "desc"), limit(1))).catch(() => ({ docs: [] })),
+      getDocs(query(tombstonesRef, orderBy("deleted_at", "desc"), limit(1))).catch(() => ({ docs: [] })),
+      getDocs(query(deltaRef, orderBy("cgindex_updated_at", "desc"), limit(1))).catch(() => ({ docs: [] }))
+    ]);
+
+    const first = snap => snap?.docs?.[0]?.data?.() || {};
+
+    return {
+      authenticated: true,
+      uid: u.uid,
+      questions_count: questionsCount.data().count,
+      tombstones_count: tombstonesCount.data().count,
+      delta_count: deltaCount.data().count,
+      latest_question_update: first(latestQuestion).cg_updated_at || null,
+      latest_tombstone: first(latestTombstone).deleted_at || null,
+      latest_delta_update: first(latestDelta).cgindex_updated_at || null
+    };
+  }
+};
+// CGSYNC005_API_END
+
 // CGINDEX001_HELPERS_START
 function cgindex001Normalize(text) {
   return String(text || "")
