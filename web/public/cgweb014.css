@@ -1,0 +1,114 @@
+/* CGWEB014 */
+.cg14-panel{
+  margin:18px 0;
+  padding:18px;
+  border-radius:18px;
+  background:#082d49;
+  border:1px solid rgba(255,255,255,.14);
+}
+.cg14-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:16px;
+}
+.cg14-kicker{
+  color:#6cd6ff;
+  font-size:.78rem;
+  font-weight:700;
+  letter-spacing:.08em;
+}
+.cg14-panel h2{
+  margin:4px 0 4px;
+}
+.cg14-sub,.cg14-note,.cg14-status{
+  color:#a9bdc8;
+  font-size:.8rem;
+  line-height:1.4;
+}
+.cg14-selected{
+  padding:8px 11px;
+  border-radius:999px;
+  background:#06233a;
+  font-weight:700;
+  white-space:nowrap;
+}
+.cg14-tools,.cg14-action-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:9px;
+  margin-top:14px;
+}
+.cg14-action-row select,
+.cg14-action-row input{
+  min-width:190px;
+  flex:1 1 210px;
+  box-sizing:border-box;
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:11px;
+  padding:10px 12px;
+  background:#06233a;
+  color:white;
+  font:inherit;
+}
+.cg14-btn{
+  border:0;
+  border-radius:11px;
+  padding:10px 13px;
+  background:#174e70;
+  color:white;
+  font:inherit;
+  font-weight:700;
+  cursor:pointer;
+}
+.cg14-primary{
+  background:#62d1f5;
+  color:#06233a;
+}
+.cg14-btn:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+.cg14-note,.cg14-status{
+  margin-top:12px;
+}
+.cg14-ok{color:#6de7a0}
+.cg14-warn{color:#ffd56a}
+.cg14-error{color:#ff8b9a}
+
+/* Case injectée sur chaque carte de question */
+.cg6-row{
+  position:relative;
+}
+.cg14-check{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  margin:0 10px 8px 0;
+  padding:5px 8px;
+  border-radius:999px;
+  background:rgba(98,209,245,.12);
+  color:#8de2ff;
+  font-size:.72rem;
+  font-weight:700;
+  cursor:pointer;
+}
+.cg14-check input{
+  width:16px;
+  height:16px;
+  accent-color:#62d1f5;
+}
+
+@media(max-width:650px){
+  .cg14-panel{padding:14px}
+  .cg14-head{flex-direction:column}
+  .cg14-selected{align-self:flex-start}
+  .cg14-action-row{
+    flex-direction:column;
+  }
+  .cg14-action-row select,
+  .cg14-action-row input,
+  .cg14-action-row .cg14-btn{
+    width:100%;
+  }
+}
