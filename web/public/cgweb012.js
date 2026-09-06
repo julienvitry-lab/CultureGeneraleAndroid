@@ -78,6 +78,9 @@ function cgxApplyFilters(rows) {
     return true;
   });
 }
+// CGWEB015_FILTER_EXPORT
+window.CGWEB015_FILTER = cgxApplyFilters;
+
 
 function cgxDedup(rows) {
   const map = new Map();
@@ -465,15 +468,29 @@ async function cgxFulltextSearch(term) {
 
   const api = window.CGWEB006_API;
   if (!api) throw new Error('Pont CGWEB006 indisponible.');
-  const rows = (await Promise.all(ids.slice(0,100).map(id => api.byId(String(id))))).filter(Boolean);
-  let filtered = cgxApplyFilters(rows);
+  // CGWEB015_PAGED_SEARCH_START
+    if (window.CGWEB015_API?.setSearch) {
+      window.CGWEB015_API.setSearch({
+        ids,
+        tokens,
+        page: 0
+      });
+      await window.CGWEB015_API.renderPage();
+      return;
+    }
 
-    // CGINDEX001_CURRENT_CONTENT_FILTER
+    // Fallback si CGWEB015 n'est pas chargé.
+    const rows = (await Promise.all(
+      ids.slice(0,100).map(id => api.byId(String(id)))
+    )).filter(Boolean);
+
+    let filtered = cgxApplyFilters(rows);
+
+    // Revalidation CGINDEX001 conservée.
     filtered = filtered.filter(row =>
       cgindex001RowMatches(row, tokens));
-
-  if (window.CGWEB006_state) window.CGWEB006_state.mode = 'fulltext';
-  window.CGWEB006_render?.(filtered);
+    window.CGWEB006_render?.(filtered);
+    // CGWEB015_PAGED_SEARCH_END
 
   if (cgx$('cg6Page')) cgx$('cg6Page').textContent = `${ids.length} correspondance(s) index · ${filtered.length} affichée(s)`;
   if (cgx$('cg6Prev')) cgx$('cg6Prev').disabled = true;

@@ -1,0 +1,59 @@
+/* CGWEB015 FIX1 */
+.cg15-panel{
+  margin:18px 0;
+  padding:16px;
+  border-radius:18px;
+  background:#082d49;
+  border:1px solid rgba(255,255,255,.14);
+}
+.cg15-head{
+  display:flex;
+  justify-content:space-between;
+  gap:16px;
+  align-items:flex-start;
+}
+.cg15-kicker{
+  color:#6cd6ff;
+  font-size:.78rem;
+  font-weight:700;
+  letter-spacing:.08em;
+}
+.cg15-panel h2{margin:4px 0}
+.cg15-sub{color:#a9bdc8;font-size:.8rem}
+.cg15-count{
+  padding:8px 11px;
+  border-radius:999px;
+  background:#06233a;
+  font-weight:700;
+  white-space:nowrap;
+}
+.cg15-controls{
+  margin-top:14px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+}
+.cg15-btn{
+  border:0;
+  border-radius:11px;
+  padding:9px 13px;
+  background:#62d1f5;
+  color:#06233a;
+  font:inherit;
+  font-weight:700;
+  cursor:pointer;
+}
+.cg15-btn:disabled{opacity:.4;cursor:not-allowed}
+.cg15-page{min-width:120px;text-align:center;font-weight:700}
+.cg15-mark{
+  background:#ffe66d;
+  color:#102231;
+  border-radius:4px;
+  padding:0 2px;
+}
+@media(max-width:650px){
+  .cg15-panel{padding:14px}
+  .cg15-head{flex-direction:column}
+  .cg15-count{align-self:flex-start}
+}
