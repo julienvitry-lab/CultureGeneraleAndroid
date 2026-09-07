@@ -2105,9 +2105,24 @@ final String currentHash =
             showRevisionDomains();
         });
         LinearLayout.LayoutParams normalLp =
-                new LinearLayout.LayoutParams(-1, cmToPx(3.0f));
-        normalLp.setMargins(0, cmToPx(0.2f), 0, cmToPx(0.25f));
+                new LinearLayout.LayoutParams(-1, cmToPx(2.35f));
+        normalLp.setMargins(0, cmToPx(0.12f), 0, cmToPx(0.12f));
         root.addView(normal, normalLp);
+
+        // CGREV001_SMART_REVISION_START
+        Button intelligent = btn("INTELLIGENTE\nÀ revoir en priorité", 25);
+        intelligent.setSingleLine(false);
+        intelligent.setMaxLines(3);
+        setRoundedBackgroundWithStroke(intelligent, BLUE, 18, Color.WHITE, 1);
+        intelligent.setOnClickListener(v -> {
+            revisionMode = "intelligent";
+            showRevisionDomains();
+        });
+        LinearLayout.LayoutParams intelligentLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(2.35f));
+        intelligentLp.setMargins(0, cmToPx(0.12f), 0, cmToPx(0.12f));
+        root.addView(intelligent, intelligentLp);
+        // CGREV001_SMART_REVISION_END
 
         Button ultimate = btn("ULTIMATE\nQuestions encore disponibles", 25);
         ultimate.setSingleLine(false);
@@ -2118,8 +2133,8 @@ final String currentHash =
             showRevisionDomains();
         });
         LinearLayout.LayoutParams ultimateLp =
-                new LinearLayout.LayoutParams(-1, cmToPx(3.0f));
-        ultimateLp.setMargins(0, cmToPx(0.25f), 0, cmToPx(0.2f));
+                new LinearLayout.LayoutParams(-1, cmToPx(2.35f));
+        ultimateLp.setMargins(0, cmToPx(0.12f), 0, cmToPx(0.12f));
         root.addView(ultimate, ultimateLp);
 
         Space bottom = new Space(this);
@@ -2133,8 +2148,10 @@ final String currentHash =
     private void showRevisionDomains() {
         phase = "revision_domains";
         baseScrollable();
-        add(tv("Révision " +
-                ("ultimate".equals(revisionMode) ? "Ultimate" : "Normale"),
+        String revisionTitle = "ultimate".equals(revisionMode)
+                ? "Ultimate"
+                : ("intelligent".equals(revisionMode) ? "Intelligente" : "Normale");
+        add(tv("Révision " + revisionTitle,
                 30, Color.WHITE, Gravity.CENTER, true));
 
         for (String domain : DOMAINS) {
@@ -2234,11 +2251,20 @@ final String currentHash =
     }
 
     private String revisionWhereClause() {
-        if ("ultimate".equals(revisionMode)) {
+        if ("ultimate".equals(revisionMode) || "intelligent".equals(revisionMode)) {
             return "(status IS NULL OR TRIM(status)='' OR " +
                     "UPPER(TRIM(status)) NOT IN ('A','P','T','X'))";
         }
         return "1=1";
+    }
+
+    // CGREV001: les questions R (À revoir) passent avant les questions jamais vues.
+    private String revisionOrderClause() {
+        if ("intelligent".equals(revisionMode)) {
+            return "CASE WHEN UPPER(TRIM(COALESCE(status,'')))='R' THEN 0 " +
+                    "WHEN TRIM(COALESCE(status,''))='' THEN 1 ELSE 2 END, row_number";
+        }
+        return "row_number";
     }
 
     private List<String> loadOrderedRevisionThemes(String domain, String mode) {
@@ -2251,7 +2277,7 @@ final String currentHash =
                     "SELECT theme FROM " + TABLE +
                             " WHERE LOWER(TRIM(megatheme))=LOWER(TRIM(?))" +
                             " AND " + revisionWhereClause() +
-                            " ORDER BY row_number",
+                            " ORDER BY " + revisionOrderClause(),
                     new String[]{domain}
             );
             while (c.moveToNext()) {
@@ -2311,7 +2337,7 @@ final String currentHash =
                             "correct_index, image_file, is_image FROM " + TABLE +
                             " WHERE LOWER(TRIM(megatheme))=LOWER(TRIM(?))" +
                             " AND " + revisionWhereClause() +
-                            " ORDER BY row_number",
+                            " ORDER BY " + revisionOrderClause(),
                     new String[]{domain}
             );
 
