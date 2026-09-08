@@ -66,7 +66,8 @@ jobs:
           npx --yes firebase-tools@15.28.2 deploy \
             --only hosting,functions:cgimport002Quizypedia \
             --project culturegeneralesync \
-            --non-interactive
+            --non-interactive \
+            --force
 
       - name: Contrôler le site déployé
         shell: bash
