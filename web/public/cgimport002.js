@@ -1,4 +1,4 @@
-// CGIMPORT002-FIX2 · génération depuis champs V7 + Info N
+// CGIMPORT003 · QCM sémantique par fiche Quizypedia
 // CGIMPORT002-WEB · URL Quizypedia -> fiches -> QCM -> Firestore
 const $ = id => document.getElementById(id);
 let extracted = null;
@@ -52,9 +52,76 @@ function questionText(label, name){
   return `Pour ${n}, quelle valeur correspond à « ${label} » ?`;
 }
 
+function semanticField(fiche,names){
+  const wanted=new Set(names.map(norm));
+  for(const field of fiche.fields||[]){
+    const label=norm(field.label||'');
+    const value=String(field.value||'').trim();
+    if(value&&wanted.has(label)) return value;
+  }
+  return '';
+}
+function semanticAnswer(fiche){
+  return semanticField(fiche,['Héroïne','Heroine','Personnage','Nom'])
+    || String(fiche.name||'').replace(/\s*\([^)]*\)\s*$/,'').trim();
+}
+function semanticClueLines(fiche){
+  const preferred=[
+    ['Œuvre',['Œuvre','Oeuvre','Roman','Livre','Titre']],
+    ['Auteur',['Auteur','Auteurs','Autrice']],
+    ['Date',['Date','Année','Annee','Époque','Epoque']],
+    ['Lieu',['Lieu','Pays','Ville','Région','Region']],
+    ['Particularités',['Particularités','Particularites','Description','Résumé','Resume','Indices','Caractéristiques','Caracteristiques']]
+  ];
+  const out=[];
+  const used=new Set();
+  for(const [display,names] of preferred){
+    const value=semanticField(fiche,names);
+    if(value){out.push(`${display} : ${value}`);for(const n of names)used.add(norm(n));}
+  }
+  if(out.length<2){
+    for(const field of fiche.fields||[]){
+      const label=String(field.label||'').trim(), value=String(field.value||'').trim();
+      const k=norm(label);
+      if(!label||!value||used.has(k)||/^info\s+\d+$/.test(k)) continue;
+      if(['heroine','personnage','nom'].includes(k)) continue;
+      out.push(`${label} : ${value}`);
+      if(out.length>=4) break;
+    }
+  }
+  return out;
+}
+function buildSemanticDrafts(data,mega,theme){
+  const fiches=data.fiches||[];
+  const answers=uniq(fiches.map(semanticAnswer).filter(Boolean));
+  if(answers.length<4) return [];
+  const result=[];
+  for(const fiche of fiches){
+    const good=semanticAnswer(fiche);
+    const clues=semanticClueLines(fiche);
+    if(!good||clues.length<2) continue;
+    const others=seededOrder(answers.filter(v=>norm(v)!==norm(good)),`cgimport003|${fiche.name}`).slice(0,3);
+    if(others.length<3) continue;
+    const options=seededOrder([good,...others],`cgimport003-opt|${fiche.name}`);
+    const answerLabel=semanticField(fiche,['Héroïne','Heroine'])?'héroïne':'personnage';
+    result.push({
+      selected:true, megatheme:mega, theme,
+      question:`Quelle ${answerLabel} correspond à ces indices ?\n${clues.join('\n')}`,
+      detail:`Quizypedia · ${fiche.name} · ${clues.join(' · ')}`,
+      options,
+      correct_index:options.findIndex(v=>norm(v)===norm(good))+1,
+      url_quizypedia:data.effectiveUrl||data.requestedUrl||'', url_internet:'', image_file:'', non_trouve:0, status:'', is_image:0,
+      fiche:fiche.name, label:'CGIMPORT003 · fiche complète'
+    });
+  }
+  return result;
+}
+
 function buildDrafts(data){
   const mega=$('cgimp2Mega').value.trim();
   const theme=$('cgimp2Theme').value.trim() || data.detectedTheme || '';
+  const semantic=buildSemanticDrafts(data,mega,theme);
+  if(semantic.length) return semantic;
   const byLabel=new Map();
   for(const f of data.fiches||[]){
     for(const field of f.fields||[]){

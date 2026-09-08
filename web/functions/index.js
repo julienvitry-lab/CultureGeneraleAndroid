@@ -1,4 +1,4 @@
-// CGIMPORT002-FIX2 · parser V7 fidèle + conservation Info N
+// CGIMPORT003 · champs sémantiques Quizypedia + génération par fiche
 const {onRequest} = require('firebase-functions/v2/https');
 const {initializeApp} = require('firebase-admin/app');
 const {getAuth} = require('firebase-admin/auth');
@@ -8,7 +8,7 @@ initializeApp();
 const STOP = new Set(['navigation','communaute','soutenir le projet','nom d utilisateur','mot de passe','se connecter','creer un compte','resultats et classements']);
 const NOISE = new Set(['confirmer','annuler','fermer','quitter la partie','continuer a jouer','nouvel utilisateur','duree','sur']);
 const HEADER=/^(.+?)\s*[\(\[]\s*(\d+)\s*\/\s*(\d+)\s*[\)\]]\s*$/;
-const DEFAULT_LABELS=['Auteur','Auteurs','Titre','Résumé','Nom','Prénom','Pays','Ville','Région','Département','Capitale','Date','Année','Naissance','Décès','Lieu','Nationalité','Profession','Fonction','Domaine','Catégorie','Genre','Type','Période','Créateur','Réalisateur','Scénariste','Dessinateur','Compositeur','Interprète','Acteur','Actrice','Personnage','Série','Album','Épisode','Sport','Club','Équipe','Langue','Surnom','Population','Superficie','Altitude','Monnaie','Devise','Capacité','Origine','Famille','Ordre','Classe','Espèce','Variété','Couleur','Matière','Symbole','Numéro','Formule','Record','Publication','Éditeur','Vainqueur','Finaliste','Score','Résultat','Lieu de naissance'];
+const DEFAULT_LABELS=['Héroïne','Heroine','Œuvre','Oeuvre','Particularités','Particularites','Auteur','Auteurs','Titre','Résumé','Nom','Prénom','Pays','Ville','Région','Département','Capitale','Date','Année','Naissance','Décès','Lieu','Nationalité','Profession','Fonction','Domaine','Catégorie','Genre','Type','Période','Créateur','Réalisateur','Scénariste','Dessinateur','Compositeur','Interprète','Acteur','Actrice','Personnage','Série','Album','Épisode','Sport','Club','Équipe','Langue','Surnom','Population','Superficie','Altitude','Monnaie','Devise','Capacité','Origine','Famille','Ordre','Classe','Espèce','Variété','Couleur','Matière','Symbole','Numéro','Formule','Record','Publication','Éditeur','Vainqueur','Finaliste','Score','Résultat','Lieu de naissance'];
 function clean(s){return String(s??'').replace(/\u00a0|\u202f|\ufeff/g,' ').replace(/\r/g,'\n').replace(/[ \t]+/g,' ').replace(/\n+/g,'\n').trim();}
 function one(s){return clean(s).replace(/\s+/g,' ').trim();}
 function norm(s){return one(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
