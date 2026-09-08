@@ -1,3 +1,4 @@
+// CGIMPORT002-FIX2 · parser V7 fidèle + conservation Info N
 const {onRequest} = require('firebase-functions/v2/https');
 const {initializeApp} = require('firebase-admin/app');
 const {getAuth} = require('firebase-admin/auth');
@@ -17,7 +18,85 @@ function badHeader(name){const k=norm(name);return ['quizypedia','connexion','du
 function prepare(lines){const out=[];for(let i=0;i<lines.length;i++){const line=one(lines[i]);if(HEADER.test(line)){out.push(line);continue}if(i+1<lines.length&&/^[\(\[]\s*\d+\s*\/\s*\d+\s*[\)\]]$/.test(one(lines[i+1]))&&!badHeader(line)){out.push(`${line} ${one(lines[++i])}`);continue}out.push(line)}return out;}
 function rawFiches(lines){lines=prepare(lines);const out=[];let cur=null,started=false,totalExpected=null;for(const line0 of lines){const line=one(line0);if(!line)continue;const key=norm(line.replace(/^[# *\.\-:]+|[# *\.\-:]+$/g,''));if(started&&(STOP.has(key)||[...STOP].some(x=>key.startsWith(x+' '))||line.startsWith('Contenus ©')))break;const m=line.match(HEADER);if(m&&!badHeader(m[1])){const total=Number(m[3]);if(totalExpected!==null&&total!==totalExpected)continue;totalExpected=total;if(cur)out.push(cur);cur={name:one(m[1]),position:`(${m[2]} / ${m[3]})`,number:Number(m[2]),total,lines:[],fields:[]};started=true;continue}if(cur&&!NOISE.has(key))cur.lines.push(line)}if(cur)out.push(cur);return out;}
 function inferLabels(fiches){const counts=new Map(),original=new Map();const min=fiches.length<=4?2:Math.max(2,Math.ceil(fiches.length*.35));for(const f of fiches){const seen=new Set();for(const line of f.lines){if(line.includes(':')){const left=one(line.split(':',1)[0]);if(left.length<=60){const k=norm(left);seen.add(k);if(!original.has(k))original.set(k,left)}}const tokens=line.split(/\s+/);for(let n=1;n<=Math.min(6,tokens.length-1);n++){const prefix=tokens.slice(0,n).join(' ').replace(/[ :]+$/,'');const value=tokens.slice(n).join(' ');if(!value||prefix.length>65||/[,;]$/.test(prefix)||!(/[A-ZÀ-ÖØ-Þ0-9]/.test(prefix[0])))continue;const k=norm(prefix);seen.add(k);if(!original.has(k))original.set(k,prefix)}}for(const k of seen)counts.set(k,(counts.get(k)||0)+1)}return [...counts].filter(([,c])=>c>=min).map(([k])=>original.get(k)).filter(Boolean);}
-function parseFields(lines,labels){const normalized=[...new Set([...DEFAULT_LABELS,...labels])].sort((a,b)=>b.length-a.length);const result=[];let current=null;for(const line0 of lines){const line=one(line0);let found=null,value='';if(line.includes(':')){const [left,...rest]=line.split(':');const lk=norm(left);const l=normalized.find(x=>norm(x)===lk);if(l){found=l;value=one(rest.join(':'))}}if(!found){for(const l of normalized){const re=new RegExp('^'+l.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s+','i');if(re.test(line)){found=l;value=one(line.replace(re,''));break}}}if(found){if(value)result.push({label:found,value});current=found;continue}if(current&&result.length){const last=result[result.length-1];if(last.label===current&&line.length<220)last.value=one(last.value+' '+line)}}const dedup=[];const seen=new Set();for(const f of result){const k=norm(f.label)+'|'+norm(f.value);if(!f.value||seen.has(k))continue;seen.add(k);dedup.push(f)}return dedup;}
+function labelScore(label,labelCounts){
+  const key=norm(label);
+  const count=labelCounts.get(key)||0;
+  const isDefault=DEFAULT_LABELS.some(x=>norm(x)===key);
+  const words=key.split(/\s+/).filter(Boolean);
+  const last=words.length?words[words.length-1]:'';
+  const stop=new Set(['de','du','des','d','l','la','le','les','a','au','aux','en','sur','sous','pour','par']);
+  return [(isDefault?1000:0)+count*10-(stop.has(last)?50:0),label.length,-key.length];
+}
+function betterScore(a,b){
+  if(!b)return true;
+  for(let i=0;i<a.length;i++){if(a[i]!==b[i])return a[i]>b[i]}
+  return false;
+}
+function parseFields(lines,labels){
+  const source=[...new Set([...DEFAULT_LABELS,...labels].map(one).filter(Boolean))];
+  const labelCounts=new Map();
+  for(const lab of source){const k=norm(lab);labelCounts.set(k,(labelCounts.get(k)||0)+1)}
+  const labelByNorm=new Map(source.map(l=>[norm(l),l]));
+  const ordered=[...source].sort((a,b)=>b.length-a.length);
+  const result=[];
+  let infoCounter=1;
+
+  for(let i=0;i<lines.length;i++){
+    const line=one(lines[i]);
+    if(!line)continue;
+    const key=norm(line.replace(/^[# *\.\-:]+|[# *\.\-:]+$/g,''));
+    if(NOISE.has(key))continue;
+
+    // V7 : tout "Champ : valeur" est un champ valide, même si le label
+    // n'était pas connu à l'avance.
+    if(line.includes(':')){
+      const p=line.indexOf(':');
+      const left=one(line.slice(0,p)), right=one(line.slice(p+1));
+      if(left.length>=1&&left.length<=65&&right){
+        result.push({label:left,value:right});
+        continue;
+      }
+    }
+
+    // V7 : champ sur une ligne, valeur sur la ligne suivante.
+    const known=labelByNorm.get(norm(line));
+    if(known && i+1<lines.length){
+      const next=one(lines[i+1]);
+      if(next && !labelByNorm.has(norm(next)) && !HEADER.test(next)){
+        result.push({label:known,value:next});
+        i++;
+        continue;
+      }
+    }
+
+    // V7 : "Auteur André Franquin", "Médaille d'or Carl Lewis", etc.
+    let best=null;
+    for(const lab of ordered){
+      if(!lab || line===lab || !line.toLowerCase().startsWith(lab.toLowerCase()+' '))continue;
+      const value=one(line.slice(lab.length));
+      if(!value)continue;
+      const score=labelScore(lab,labelCounts);
+      if(betterScore(score,best?.score))best={score,label:lab,value};
+    }
+    if(best){
+      result.push({label:best.label,value:best.value});
+      continue;
+    }
+
+    // Différence décisive par rapport à CGIMPORT002 initial :
+    // le V7 ne jetait jamais silencieusement le texte non reconnu.
+    result.push({label:`Info ${infoCounter}`,value:line});
+    infoCounter++;
+  }
+
+  const dedup=[],seen=new Set();
+  for(const f of result){
+    const k=norm(f.label)+'|'+norm(f.value);
+    if(!f.value||seen.has(k))continue;
+    seen.add(k);dedup.push(f);
+  }
+  return dedup;
+}
 function detectedTheme(url,html){try{const u=new URL(url);const p=decodeURIComponent(u.pathname).replace(/^\/+|\/+$/g,'');if(p.toLowerCase().startsWith('quiz/'))return one(p.slice(5));}catch{}const $=cheerio.load(html);return one($('h1').first().text())||one($('title').text()).replace(/\s*[|\-–].*$/,'');}
 async function requireUser(req){const h=String(req.headers.authorization||'');if(!h.startsWith('Bearer '))throw Object.assign(new Error('Authentification Firebase requise.'),{status:401});return getAuth().verifyIdToken(h.slice(7));}
 exports.cgimport002Quizypedia=onRequest({region:'europe-west1',timeoutSeconds:60,memory:'512MiB'},async(req,res)=>{try{if(req.method!=='POST')return res.status(405).json({ok:false,error:'Méthode non autorisée.'});await requireUser(req);const raw=one(req.body?.url);let u;try{u=new URL(raw)}catch{return res.status(400).json({ok:false,error:'URL invalide.'})}if(!/(^|\.)quizypedia\.fr$/i.test(u.hostname))return res.status(400).json({ok:false,error:'Seules les URL quizypedia.fr sont acceptées.'});if(!u.pathname.toLowerCase().includes('/quiz/'))return res.status(400).json({ok:false,error:'Cette URL ne semble pas être une page /quiz/ Quizypedia.'});const response=await fetch(u.toString(),{redirect:'follow',headers:{'user-agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36','accept-language':'fr-FR,fr;q=0.9'}});if(!response.ok)throw new Error(`Quizypedia HTTP ${response.status}`);const html=await response.text();const lines=linesFromHtml(html),labels=dynamicLabels(html),fiches=rawFiches(lines),inferred=inferLabels(fiches),allLabels=[...new Set([...labels,...inferred])];for(const f of fiches)f.fields=parseFields(f.lines,allLabels);return res.json({ok:true,requestedUrl:raw,effectiveUrl:response.url,detectedTheme:detectedTheme(response.url,html),fiches:fiches.map(f=>({name:f.name,position:f.position,number:f.number,total:f.total,fullText:f.lines.join(' | '),fields:f.fields}))});}catch(e){console.error('CGIMPORT002',e);return res.status(e.status||500).json({ok:false,error:e.message||'Erreur serveur CGIMPORT002.'})}});

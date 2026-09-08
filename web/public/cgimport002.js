@@ -1,3 +1,4 @@
+// CGIMPORT002-FIX2 · génération depuis champs V7 + Info N
 // CGIMPORT002-WEB · URL Quizypedia -> fiches -> QCM -> Firestore
 const $ = id => document.getElementById(id);
 let extracted = null;
@@ -23,6 +24,8 @@ const NOISY = new Set(['info','position','numero','numéro','total','image','pho
 function questionText(label, name){
   const k=norm(label);
   const n=`« ${name} »`;
+  if(/^info 1$/.test(k)) return `Que signifie ${n} ?`;
+  if(/^info [0-9]+$/.test(k)) return `Quelle information correspond à ${n} ?`;
   if(k==='auteur'||k==='auteurs') return `Qui est l’auteur de ${n} ?`;
   if(k==='realisateur'||k==='réalisateur') return `Qui a réalisé ${n} ?`;
   if(k==='compositeur') return `Qui est le compositeur associé à ${n} ?`;
@@ -73,7 +76,7 @@ function buildDrafts(data){
       result.push({
         selected:true, megatheme:mega, theme,
         question:questionText(bucket.label,item.fiche.name),
-        detail:`Quizypedia · ${item.fiche.name} · ${bucket.label}`,
+        detail:`Quizypedia · ${item.fiche.name} · ${bucket.label}${item.fiche.fullText?` · ${item.fiche.fullText}`:''}`,
         options, correct_index:options.findIndex(v=>norm(v)===norm(good))+1,
         url_quizypedia:data.effectiveUrl||data.requestedUrl||'', url_internet:'', image_file:'', non_trouve:0, status:'', is_image:0,
         fiche:item.fiche.name, label:bucket.label
