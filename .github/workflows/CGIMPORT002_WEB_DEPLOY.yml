@@ -1,0 +1,80 @@
+name: Déployer Culture Générale Web
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "web/**"
+      - ".github/workflows/CGIMPORT002_WEB_DEPLOY.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: culturegeneralesync-web-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/functions/package.json
+
+      - name: Vérifier les fichiers CGIMPORT002 Web
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f web/public/index.html
+          test -f web/public/cgimport002.js
+          test -f web/public/cgimport002.css
+          test -f web/functions/index.js
+          test -f web/functions/package.json
+          test -f web/firebase.json
+          grep -Fq 'CGIMPORT002' web/public/index.html
+          grep -Fq 'cgimport002Quizypedia' web/functions/index.js
+          grep -Fq '"/api/quizypedia"' web/firebase.json
+          node --check web/public/cgimport002.js
+          node --check web/functions/index.js
+          echo "CGIMPORT002 Web : fichiers et syntaxe OK"
+
+      - name: Authentification Google Cloud / Firebase
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_CULTUREGENERALESYNC }}
+
+      - name: Installer les dépendances Firebase Functions
+        working-directory: web/functions
+        run: npm install --omit=dev --no-audit --no-fund
+
+      - name: Déployer Hosting + Function
+        working-directory: web
+        env:
+          GOOGLE_CLOUD_PROJECT: culturegeneralesync
+        run: |
+          set -euo pipefail
+          npx --yes firebase-tools@15.28.2 deploy \
+            --only hosting,functions:cgimport002Quizypedia \
+            --project culturegeneralesync \
+            --non-interactive
+
+      - name: Contrôler le site déployé
+        shell: bash
+        run: |
+          set -euo pipefail
+          STAMP="$(date +%s)"
+          curl --fail --silent --show-error --location \
+            "https://culturegeneralesync.web.app/?cgimport002=${STAMP}" \
+            -o /tmp/cgimport002-live.html
+          grep -Fq 'CGIMPORT002' /tmp/cgimport002-live.html
+          echo "✅ CGIMPORT002 Web est servi par culturegeneralesync.web.app"
