@@ -34,6 +34,8 @@
 <link rel="stylesheet" href="./cgsync007.css?v=CGSYNC007_1">
 
 <link rel="stylesheet" href="./cgdedup001.css?v=CGDEDUP001_1">
+
+<link rel="stylesheet" href="./cgimport002.css?v=CGIMPORT002_WEB_1">
 </head>
 <body>
   <div class="app-shell">
@@ -243,5 +245,24 @@
 <script type="module" src="./cgsync007.js?v=CGSYNC007_1"></script>
 
 <script type="module" src="./cgdedup001.js?v=CGDEDUP001_1"></script>
+
+<section id="cgimport002Panel">
+  <div class="cgimp2-kicker">CGIMPORT002-WEB</div>
+  <h2 class="cgimp2-title">Import Quizypedia par URL</h2>
+  <p class="cgimp2-sub">Analyse une page Quizypedia, transforme ses fiches en QCM à 4 propositions, permet de les contrôler puis les ajoute à Firestore.</p>
+  <div class="cgimp2-grid">
+    <div class="cgimp2-field cgimp2-field-wide"><label for="cgimp2Url">Adresse Quizypedia</label><input id="cgimp2Url" type="url" placeholder="https://www.quizypedia.fr/quiz/..."></div>
+    <div class="cgimp2-field"><label for="cgimp2Mega">Mégathème</label><select id="cgimp2Mega"><option>Animaux et Plantes</option><option>Culture Classique</option><option selected>Culture Générale</option><option>Culture Moderne</option><option>Géographie</option><option>Histoire</option><option>Sciences et Techniques</option><option>Sport</option></select></div>
+    <div class="cgimp2-field"><label for="cgimp2Theme">Thème</label><input id="cgimp2Theme" placeholder="Détecté depuis l’URL si laissé vide"></div>
+    <div class="cgimp2-field"><label>Doublons</label><label style="display:flex;gap:8px;align-items:center"><input id="cgimp2SkipDuplicates" type="checkbox" checked style="width:auto"> Ignorer une question identique déjà présente</label></div>
+  </div>
+  <div class="cgimp2-actions"><button id="cgimp2Analyze" class="cgimp2-btn cgimp2-btn-primary">Analyser l’URL</button><button id="cgimp2Rebuild" class="cgimp2-btn">Régénérer avec ce thème</button></div>
+  <div id="cgimp2Status" class="cgimp2-status warn">Aucune donnée n’est écrite avant le bouton Importer.</div>
+  <div class="cgimp2-summary"><div class="cgimp2-stat"><small>Fiches extraites</small><strong id="cgimp2Fiches">—</strong></div><div class="cgimp2-stat"><small>Questions générées</small><strong id="cgimp2Questions">0</strong></div><div class="cgimp2-stat"><small>Champs exploitables</small><strong id="cgimp2Fields">0</strong></div><div class="cgimp2-stat"><small>Sélectionnées</small><strong id="cgimp2Selected">0</strong></div></div>
+  <div class="cgimp2-toolbar"><button id="cgimp2All" class="cgimp2-btn">Tout sélectionner</button><button id="cgimp2None" class="cgimp2-btn">Tout désélectionner</button><button id="cgimp2Import" class="cgimp2-btn cgimp2-btn-primary" disabled>Importer les questions sélectionnées</button></div>
+  <div id="cgimp2List" class="cgimp2-list"></div>
+</section>
+
+<script type="module" src="./cgimport002.js?v=CGIMPORT002_WEB_1"></script>
 </body>
 </html>
