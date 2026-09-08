@@ -149,3 +149,139 @@
   .cgimp4-answer{font-size:17px}
   .cgimp4-theme{font-size:16px}
 }
+
+
+/* CGIMPORT005 · aperçu avant import calqué sur les cartes du répertoire */
+.cgimp2-list{
+  display:grid;
+  gap:12px;
+  max-height:none;
+  overflow:visible;
+  padding-right:0;
+}
+
+.cgimp5-card{
+  width:100%;
+  box-sizing:border-box;
+  background:#0d3a5b;
+  border:1px solid rgba(255,255,255,.18);
+  border-radius:14px;
+  padding:14px 16px 12px;
+  color:#fff;
+  box-shadow:none;
+}
+
+.cgimp5-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  margin-bottom:6px;
+}
+
+.cgimp5-check{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  font-size:13px;
+  opacity:.88;
+}
+
+.cgimp5-check input{
+  width:auto!important;
+  margin:0;
+}
+
+.cgimp5-edit-button{
+  margin:0;
+  padding:7px 13px;
+  min-height:auto;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.28);
+  background:#0c5b84;
+  color:#fff;
+  font-weight:800;
+  cursor:pointer;
+}
+
+.cgimp5-id{
+  color:#54c8ff;
+  font-size:14px;
+  font-weight:800;
+  margin-top:2px;
+}
+
+.cgimp5-theme{
+  color:#d5e7f5;
+  font-size:13px;
+  margin:1px 0 10px;
+}
+
+.cgimp5-question{
+  font-size:16px;
+  line-height:1.3;
+  font-weight:800;
+  margin-bottom:4px;
+}
+
+.cgimp5-clues{
+  font-size:14px;
+  line-height:1.35;
+  color:#e5eef5;
+  margin-bottom:7px;
+}
+
+.cgimp5-options{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  column-gap:28px;
+  row-gap:3px;
+  margin:5px 0 7px;
+}
+
+.cgimp5-option{
+  display:flex;
+  align-items:flex-start;
+  gap:5px;
+  min-width:0;
+  font-size:15px;
+  line-height:1.28;
+}
+
+.cgimp5-letter{
+  flex:0 0 auto;
+  font-weight:800;
+  color:#fff;
+}
+
+.cgimp5-option.cgimp5-correct{
+  color:#63efaa;
+}
+
+.cgimp5-foot{
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px;
+  color:#9bc4df;
+  font-size:12px;
+  margin-top:6px;
+}
+
+.cgimp5-edit-details{
+  margin-top:10px;
+  border-top:1px solid rgba(255,255,255,.14);
+  padding-top:8px;
+}
+
+.cgimp5-edit-details summary{
+  cursor:pointer;
+  font-weight:800;
+  font-size:14px;
+}
+
+@media(max-width:760px){
+  .cgimp5-options{grid-template-columns:1fr}
+  .cgimp5-card{padding:12px}
+  .cgimp5-question{font-size:15px}
+  .cgimp5-option{font-size:14px}
+}
