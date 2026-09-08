@@ -1,3 +1,4 @@
+// CGIMPORT004 · aperçu import calqué sur l’écran de jeu
 // CGIMPORT003 · QCM sémantique par fiche Quizypedia
 // CGIMPORT002-WEB · URL Quizypedia -> fiches -> QCM -> Firestore
 const $ = id => document.getElementById(id);
@@ -159,13 +160,74 @@ function render(){
   $('cgimp2Selected').textContent=String(drafts.filter(q=>q.selected).length);
   $('cgimp2Fields').textContent=String(new Set(drafts.map(q=>norm(q.label))).size||0);
   const box=$('cgimp2List');
-  if(!drafts.length){box.innerHTML='<div class="cgimp2-empty">Aucune question générée pour le moment.</div>';return;}
-  box.innerHTML=drafts.map((q,i)=>`<article class="cgimp2-card" data-i="${i}"><div class="cgimp2-card-head"><input type="checkbox" class="cgimp2-check" ${q.selected?'checked':''}><div style="flex:1"><h4>${esc(q.fiche)}</h4><div class="cgimp2-meta">Champ : ${esc(q.label)} · Réponse ${q.correct_index}</div><div class="cgimp2-q">${esc(q.question)}</div><div class="cgimp2-options">${q.options.map((v,j)=>`<div class="${j+1===q.correct_index?'cgimp2-good':''}"><b>${'ABCD'[j]}.</b> ${esc(v)}</div>`).join('')}</div></div></div><details><summary>Modifier avant import</summary><div class="cgimp2-edit"><label class="wide">Question<input data-field="question" value="${esc(q.question)}"></label>${q.options.map((v,j)=>`<label>${'ABCD'[j]}<input data-opt="${j}" value="${esc(v)}"></label>`).join('')}<label>Bonne réponse<select data-field="correct_index">${[1,2,3,4].map(n=>`<option value="${n}" ${n===q.correct_index?'selected':''}>${'ABCD'[n-1]}</option>`).join('')}</select></label><label class="wide">Détail<input data-field="detail" value="${esc(q.detail)}"></label></div></details></article>`).join('');
+  if(!drafts.length){
+    box.innerHTML='<div class="cgimp2-empty">Aucune question générée pour le moment.</div>';
+    return;
+  }
+
+  box.innerHTML=drafts.map((q,i)=>{
+    const lines=String(q.question||'').split(/\n+/).map(s=>s.trim()).filter(Boolean);
+    const stem=lines.shift()||'Question';
+    const clues=lines.map(line=>{
+      const p=line.indexOf(':');
+      if(p>0){
+        const label=line.slice(0,p).trim();
+        const value=line.slice(p+1).trim();
+        return `<div class="cgimp4-clue"><span>${esc(label)} :</span><strong>${esc(value)}</strong></div>`;
+      }
+      return `<div class="cgimp4-clue"><strong>${esc(line)}</strong></div>`;
+    }).join('');
+
+    return `<article class="cgimp2-card cgimp4-card" data-i="${i}">
+      <div class="cgimp4-selectbar">
+        <label class="cgimp4-select">
+          <input type="checkbox" class="cgimp2-check" ${q.selected?'checked':''}>
+          <span>Sélectionner pour import</span>
+        </label>
+        <div class="cgimp4-meta">${esc(q.fiche)} · ${esc(q.label||'Question générée')}</div>
+      </div>
+
+      <div class="cgimp4-game">
+        <div class="cgimp4-question-panel">
+          <div class="cgimp4-theme">${esc($('cgimp2Theme')?.value || extracted?.detectedTheme || 'Quizypedia')}</div>
+          <div class="cgimp4-stem">${esc(stem)}</div>
+          <div class="cgimp4-clues">${clues}</div>
+        </div>
+
+        <div class="cgimp4-options">
+          ${q.options.map((v,j)=>`
+            <div class="cgimp4-option ${j+1===q.correct_index?'cgimp4-correct':''}">
+              <span class="cgimp4-letter">${'ABCD'[j]}</span>
+              <span class="cgimp4-answer">${esc(v)}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+
+      <details class="cgimp4-edit-details">
+        <summary>Modifier avant import</summary>
+        <div class="cgimp2-edit">
+          <label class="wide">Question<textarea data-field="question" rows="5">${esc(q.question)}</textarea></label>
+          ${q.options.map((v,j)=>`<label>${'ABCD'[j]}<input data-opt="${j}" value="${esc(v)}"></label>`).join('')}
+          <label>Bonne réponse<select data-field="correct_index">${[1,2,3,4].map(n=>`<option value="${n}" ${n===q.correct_index?'selected':''}>${'ABCD'[n-1]}</option>`).join('')}</select></label>
+          <label class="wide">Détail<textarea data-field="detail" rows="3">${esc(q.detail)}</textarea></label>
+        </div>
+      </details>
+    </article>`;
+  }).join('');
+
   box.querySelectorAll('.cgimp2-card').forEach(card=>{
     const i=Number(card.dataset.i),q=drafts[i];
-    card.querySelector('.cgimp2-check').addEventListener('change',e=>{q.selected=e.target.checked;renderCounters();});
-    card.querySelectorAll('[data-field]').forEach(inp=>inp.addEventListener('change',()=>{const f=inp.dataset.field;q[f]=f==='correct_index'?Number(inp.value):inp.value;}));
-    card.querySelectorAll('[data-opt]').forEach(inp=>inp.addEventListener('change',()=>{q.options[Number(inp.dataset.opt)]=inp.value;}));
+    card.querySelector('.cgimp2-check').addEventListener('change',e=>{
+      q.selected=e.target.checked;
+      renderCounters();
+    });
+    card.querySelectorAll('[data-field]').forEach(inp=>inp.addEventListener('change',()=>{
+      const f=inp.dataset.field;
+      q[f]=f==='correct_index'?Number(inp.value):inp.value;
+    }));
+    card.querySelectorAll('[data-opt]').forEach(inp=>inp.addEventListener('change',()=>{
+      q.options[Number(inp.dataset.opt)]=inp.value;
+    }));
   });
 }
 function renderCounters(){ $('cgimp2Selected').textContent=String(drafts.filter(q=>q.selected).length); }
