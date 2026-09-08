@@ -2006,6 +2006,19 @@ final String currentHash =
         revisionLp.setMargins(0, cmToPx(0.25f), 0, cmToPx(0.2f));
         root.addView(revision, revisionLp);
 
+        // CGIMPORT002_HOME_BUTTON_START
+        Button cgImport002 = btn("IMPORT QUIZYPEDIA\nNouvelle page → questions", 18);
+        cgImport002.setSingleLine(false);
+        cgImport002.setMaxLines(2);
+        setRoundedBackgroundWithStroke(cgImport002, NAVY, 14, Color.WHITE, 1);
+        cgImport002.setTextColor(Color.WHITE);
+        cgImport002.setOnClickListener(v -> QuizypediaImport002.show(this, dbFile));
+        LinearLayout.LayoutParams cgImport002Lp =
+                new LinearLayout.LayoutParams(-1, cmToPx(1.35f));
+        cgImport002Lp.setMargins(0, cmToPx(0.10f), 0, cmToPx(0.10f));
+        root.addView(cgImport002, cgImport002Lp);
+        // CGIMPORT002_HOME_BUTTON_END
+
         // CGSYNC006_HOME_BUTTON_START
         Button syncState = btn(cgSync006HomeLabel(), 15);
         syncState.setSingleLine(true);
