@@ -1,287 +1,84 @@
-/* CGIMPORT002-WEB · Import Quizypedia par URL */
-#cgimport002Panel{max-width:1180px;margin:24px auto 56px;padding:22px;border-radius:18px;background:linear-gradient(145deg,rgba(8,31,58,.98),rgba(12,69,100,.98));border:1px solid rgba(111,214,255,.4);box-shadow:0 12px 36px rgba(0,0,0,.24);color:#fff}
-.cgimp2-kicker{font-size:12px;font-weight:800;letter-spacing:.12em;color:#65d6ff}.cgimp2-title{margin:5px 0 4px;font-size:24px}.cgimp2-sub{margin:0 0 18px;opacity:.78}
-.cgimp2-grid{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:12px}.cgimp2-field{display:flex;flex-direction:column;gap:6px}.cgimp2-field-wide{grid-column:1/-1}.cgimp2-field label{font-size:13px;font-weight:700;opacity:.9}
-#cgimport002Panel input,#cgimport002Panel select,#cgimport002Panel textarea{box-sizing:border-box;width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.22);background:rgba(3,18,34,.78);color:#fff;font:inherit}
-.cgimp2-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}.cgimp2-btn{border:1px solid rgba(255,255,255,.24);border-radius:10px;padding:10px 14px;background:rgba(255,255,255,.08);color:#fff;font-weight:800;cursor:pointer}.cgimp2-btn-primary{background:#5ad7ff;color:#06131f;border-color:#5ad7ff}.cgimp2-btn-danger{background:rgba(255,102,102,.14);border-color:rgba(255,130,130,.4)}.cgimp2-btn:disabled{opacity:.45;cursor:not-allowed}
-.cgimp2-status{margin-top:12px;min-height:22px;font-size:13px}.cgimp2-status.ok{color:#8ff0b5}.cgimp2-status.err{color:#ffb0b0}.cgimp2-status.warn{color:#ffd58f}.cgimp2-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:16px}.cgimp2-stat{padding:12px;border-radius:12px;background:rgba(255,255,255,.06)}.cgimp2-stat small{display:block;opacity:.7}.cgimp2-stat strong{font-size:20px}
-.cgimp2-toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 10px}.cgimp2-list{display:grid;gap:10px;max-height:700px;overflow:auto;padding-right:4px}.cgimp2-card{border:1px solid rgba(255,255,255,.16);background:rgba(3,18,34,.62);border-radius:14px;padding:14px}.cgimp2-card-head{display:flex;gap:10px;align-items:flex-start}.cgimp2-card-head input[type=checkbox]{width:auto;margin-top:5px}.cgimp2-card h4{margin:0 0 8px;font-size:16px}.cgimp2-meta{font-size:12px;opacity:.72;margin-bottom:9px}.cgimp2-q{font-weight:800;margin:8px 0}.cgimp2-options{display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:13px}.cgimp2-good{color:#8ff0b5;font-weight:800}.cgimp2-edit{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.cgimp2-edit .wide{grid-column:1/-1}.cgimp2-empty{padding:20px;text-align:center;opacity:.72;border:1px dashed rgba(255,255,255,.22);border-radius:12px}
-@media(max-width:800px){.cgimp2-grid,.cgimp2-summary{grid-template-columns:1fr}.cgimp2-options,.cgimp2-edit{grid-template-columns:1fr}.cgimp2-field-wide,.cgimp2-edit .wide{grid-column:auto}}
+/* CGIMPORT008 FIX3 · panneau + cartes façon CGWEB006 */
+#cgimport002Panel{
+  max-width:1180px;margin:24px auto 56px;padding:22px;border-radius:18px;
+  background:linear-gradient(145deg,rgba(8,31,58,.98),rgba(12,69,100,.98));
+  border:1px solid rgba(111,214,255,.4);box-shadow:0 12px 36px rgba(0,0,0,.24);
+  color:#fff
+}
+.cgimp2-kicker{font-size:12px;font-weight:800;letter-spacing:.12em;color:#65d6ff}
+.cgimp2-title{margin:5px 0 4px;font-size:24px}
+.cgimp2-sub{margin:0 0 18px;opacity:.78}
+.cgimp2-grid{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:12px}
+.cgimp2-field{display:flex;flex-direction:column;gap:6px}
+.cgimp2-field-wide{grid-column:1/-1}
+.cgimp2-field label{font-size:13px;font-weight:700;opacity:.9}
+#cgimport002Panel input,#cgimport002Panel select,#cgimport002Panel textarea{
+  box-sizing:border-box;width:100%;padding:10px 12px;border-radius:10px;
+  border:1px solid rgba(255,255,255,.22);background:rgba(3,18,34,.78);
+  color:#fff;font:inherit
+}
+.cgimp2-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.cgimp2-btn{
+  border:1px solid rgba(255,255,255,.24);border-radius:10px;padding:10px 14px;
+  background:rgba(255,255,255,.08);color:#fff;font-weight:800;cursor:pointer
+}
+.cgimp2-btn-primary{background:#5ad7ff;color:#06131f;border-color:#5ad7ff}
+.cgimp2-btn:disabled{opacity:.45;cursor:not-allowed}
+.cgimp2-status{margin-top:12px;min-height:22px;font-size:13px}
+.cgimp2-status.ok{color:#8ff0b5}.cgimp2-status.err{color:#ffb0b0}.cgimp2-status.warn{color:#ffd58f}
+.cgimp2-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:16px}
+.cgimp2-stat{padding:12px;border-radius:12px;background:rgba(255,255,255,.06)}
+.cgimp2-stat small{display:block;opacity:.7}.cgimp2-stat strong{font-size:20px}
+.cgimp2-toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 10px}
+.cgimp2-list{display:grid;gap:12px;max-height:none;overflow:visible;padding-right:0}
+.cgimp2-edit{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.cgimp2-edit .wide{grid-column:1/-1}
+.cgimp2-empty{
+  padding:20px;text-align:center;opacity:.72;border:1px dashed rgba(255,255,255,.22);
+  border-radius:12px
+}
 
+/* Carte d'import alignée visuellement sur CGWEB006 */
+.cgimp8-card{
+  width:100%;box-sizing:border-box;padding:14px 18px 12px;
+  border:1px solid rgba(111,214,255,.22);border-radius:14px;
+  background:#0d3a5b;color:#fff
+}
+.cgimp8-card-top{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:8px
+}
+.cgimp8-lot{
+  display:inline-flex;align-items:center;gap:7px;width:auto!important;
+  padding:4px 10px;border-radius:18px;background:#15547b;color:#d8edf9;
+  font-size:13px;font-weight:700
+}
+.cgimp8-lot input{width:auto!important;margin:0!important;padding:0!important}
+.cgimp8-modify{
+  border:1px solid rgba(111,214,255,.35);border-radius:14px;padding:7px 14px;
+  background:#0d628e;color:#fff;font:inherit;font-weight:800;cursor:pointer
+}
+.cgimp8-source{color:#58d0ff;font-size:14px;font-weight:800;margin:0 0 1px}
+.cgimp8-category{color:#d7e9f5;font-size:13px;margin:0 0 10px}
+.cgimp8-question{font-size:16px;line-height:1.3;font-weight:900;margin:0 0 4px}
+.cgimp8-detail{font-size:15px;line-height:1.35;margin:0 0 7px;color:#f1f6fa}
+.cgimp8-options{
+  display:grid;grid-template-columns:1fr 1fr;column-gap:28px;row-gap:4px;margin:5px 0 8px
+}
+.cgimp8-option{font-size:15px;line-height:1.3;min-width:0}
+.cgimp8-option strong{font-weight:900}
+.cgimp8-correct{color:#63efaa}
+.cgimp8-footer{
+  display:flex;flex-wrap:wrap;gap:14px;color:#9fc6dd;font-size:12px;
+  padding-top:3px
+}
+.cgimp8-editor{
+  margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.14)
+}
+.cgimp8-editor summary{cursor:pointer;font-weight:800;font-size:14px}
 
-/* CGIMPORT004 · aperçu plein écran inspiré de l'affichage du jeu */
-.cgimp2-list{
-  display:grid;
-  gap:18px;
-  max-height:none;
-  overflow:visible;
-  padding-right:0;
-}
-.cgimp4-card{
-  padding:18px;
-  border-radius:18px;
-  overflow:hidden;
-}
-.cgimp4-selectbar{
-  display:flex;
-  justify-content:space-between;
-  gap:14px;
-  align-items:center;
-  margin-bottom:14px;
-  flex-wrap:wrap;
-}
-.cgimp4-select{
-  display:inline-flex;
-  align-items:center;
-  gap:8px;
-  font-weight:800;
-}
-.cgimp4-select input{width:auto!important}
-.cgimp4-meta{
-  font-size:13px;
-  opacity:.72;
-}
-.cgimp4-game{
-  width:100%;
-  display:grid;
-  gap:12px;
-}
-.cgimp4-question-panel{
-  width:100%;
-  box-sizing:border-box;
-  padding:18px 20px;
-  border-radius:18px;
-  background:#f8f9fd;
-  color:#101820;
-  border:1px solid rgba(255,255,255,.65);
-  text-align:center;
-}
-.cgimp4-theme{
-  display:inline-block;
-  margin:0 auto 12px;
-  padding:7px 14px;
-  border-radius:10px;
-  background:#123d93;
-  color:#fff;
-  font-size:18px;
-  font-weight:800;
-}
-.cgimp4-stem{
-  font-size:24px;
-  line-height:1.25;
-  font-weight:800;
-  color:#0f4ba5;
-  margin-bottom:12px;
-}
-.cgimp4-clues{
-  display:grid;
-  gap:7px;
-  max-width:1000px;
-  margin:0 auto;
-}
-.cgimp4-clue{
-  font-size:18px;
-  line-height:1.35;
-}
-.cgimp4-clue span{
-  font-style:italic;
-  margin-right:6px;
-}
-.cgimp4-clue strong{
-  font-weight:800;
-}
-.cgimp4-options{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:10px;
-}
-.cgimp4-option{
-  display:flex;
-  align-items:center;
-  min-height:62px;
-  border-radius:16px;
-  background:#f2f4fa;
-  color:#111827;
-  border:2px solid transparent;
-  overflow:hidden;
-}
-.cgimp4-option.cgimp4-correct{
-  border-color:#35d07f;
-  box-shadow:0 0 0 2px rgba(53,208,127,.12) inset;
-}
-.cgimp4-letter{
-  flex:0 0 54px;
-  height:54px;
-  margin:4px 10px 4px 6px;
-  border-radius:50%;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background:#2468b8;
-  color:#fff;
-  font-size:22px;
-  font-weight:900;
-}
-.cgimp4-answer{
-  padding:10px 12px 10px 0;
-  font-size:19px;
-  line-height:1.25;
-  font-weight:600;
-}
-.cgimp4-edit-details{
-  margin-top:14px;
-  border-top:1px solid rgba(255,255,255,.14);
-  padding-top:10px;
-}
-.cgimp4-edit-details summary{
-  cursor:pointer;
-  font-weight:800;
-  font-size:16px;
-}
-.cgimp2-edit textarea{
-  resize:vertical;
-  min-height:84px;
-}
 @media(max-width:800px){
-  .cgimp4-options{grid-template-columns:1fr}
-  .cgimp4-stem{font-size:21px}
-  .cgimp4-clue{font-size:16px}
-  .cgimp4-answer{font-size:17px}
-  .cgimp4-theme{font-size:16px}
-}
-
-
-/* CGIMPORT005 · aperçu avant import calqué sur les cartes du répertoire */
-.cgimp2-list{
-  display:grid;
-  gap:12px;
-  max-height:none;
-  overflow:visible;
-  padding-right:0;
-}
-
-.cgimp5-card{
-  width:100%;
-  box-sizing:border-box;
-  background:#0d3a5b;
-  border:1px solid rgba(255,255,255,.18);
-  border-radius:14px;
-  padding:14px 16px 12px;
-  color:#fff;
-  box-shadow:none;
-}
-
-.cgimp5-head{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:12px;
-  margin-bottom:6px;
-}
-
-.cgimp5-check{
-  display:inline-flex;
-  align-items:center;
-  gap:7px;
-  font-size:13px;
-  opacity:.88;
-}
-
-.cgimp5-check input{
-  width:auto!important;
-  margin:0;
-}
-
-.cgimp5-edit-button{
-  margin:0;
-  padding:7px 13px;
-  min-height:auto;
-  border-radius:14px;
-  border:1px solid rgba(255,255,255,.28);
-  background:#0c5b84;
-  color:#fff;
-  font-weight:800;
-  cursor:pointer;
-}
-
-.cgimp5-id{
-  color:#54c8ff;
-  font-size:14px;
-  font-weight:800;
-  margin-top:2px;
-}
-
-.cgimp5-theme{
-  color:#d5e7f5;
-  font-size:13px;
-  margin:1px 0 10px;
-}
-
-.cgimp5-question{
-  font-size:16px;
-  line-height:1.3;
-  font-weight:800;
-  margin-bottom:4px;
-}
-
-.cgimp5-clues{
-  font-size:14px;
-  line-height:1.35;
-  color:#e5eef5;
-  margin-bottom:7px;
-}
-
-.cgimp5-options{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  column-gap:28px;
-  row-gap:3px;
-  margin:5px 0 7px;
-}
-
-.cgimp5-option{
-  display:flex;
-  align-items:flex-start;
-  gap:5px;
-  min-width:0;
-  font-size:15px;
-  line-height:1.28;
-}
-
-.cgimp5-letter{
-  flex:0 0 auto;
-  font-weight:800;
-  color:#fff;
-}
-
-.cgimp5-option.cgimp5-correct{
-  color:#63efaa;
-}
-
-.cgimp5-foot{
-  display:flex;
-  flex-wrap:wrap;
-  gap:12px;
-  color:#9bc4df;
-  font-size:12px;
-  margin-top:6px;
-}
-
-.cgimp5-edit-details{
-  margin-top:10px;
-  border-top:1px solid rgba(255,255,255,.14);
-  padding-top:8px;
-}
-
-.cgimp5-edit-details summary{
-  cursor:pointer;
-  font-weight:800;
-  font-size:14px;
-}
-
-@media(max-width:760px){
-  .cgimp5-options{grid-template-columns:1fr}
-  .cgimp5-card{padding:12px}
-  .cgimp5-question{font-size:15px}
-  .cgimp5-option{font-size:14px}
+  .cgimp2-grid,.cgimp2-summary{grid-template-columns:1fr}
+  .cgimp2-field-wide,.cgimp2-edit .wide{grid-column:auto}
+  .cgimp2-edit,.cgimp8-options{grid-template-columns:1fr}
+  .cgimp8-card{padding:12px}
 }

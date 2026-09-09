@@ -1,8 +1,6 @@
-// CGIMPORT008 FIX2 · étendre le contexte visible autour des propositions Quizypedia
-// CGIMPORT008 FIX1 · interop CommonJS/ESM @sparticuz/chromium v149
-// CGIMPORT008 · import strict 1:1 Quizypedia
-// Aucune question, aucun détail et aucun distracteur n'est inventé.
-// Le navigateur serveur capture le questionnaire tel qu'il est présenté par Quizypedia.
+// CGIMPORT008 FIX3 · capture 12/12 + navigation sûre Quizypedia
+// Règle : Culture Générale ne fabrique ni question, ni détail, ni distracteur.
+// Les 4 propositions sont capturées telles qu'affichées par Quizypedia.
 
 const {onRequest} = require('firebase-functions/v2/https');
 const {initializeApp} = require('firebase-admin/app');
@@ -48,6 +46,8 @@ function norm(s){
   return one(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'')
     .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 }
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
 function linesFromHtml(html){
   const $=cheerio.load(html);
   $('script,style,noscript,svg').remove();
@@ -64,15 +64,18 @@ function dynamicLabels(html){
 }
 function badHeader(name){
   const k=norm(name);
-  return ['quizypedia','connexion','duels','defi','master quiz','themes','publie le','record en','creer un theme','trouver ']
-    .some(x=>k.startsWith(x)) || /^\d+ fiches?$/.test(k);
+  return ['quizypedia','connexion','duels','defi','master quiz','themes','publie le',
+    'record en','creer un theme','trouver '].some(x=>k.startsWith(x)) ||
+    /^\d+ fiches?$/.test(k);
 }
 function prepare(lines){
   const out=[];
   for(let i=0;i<lines.length;i++){
     const line=one(lines[i]);
     if(HEADER.test(line)){out.push(line);continue;}
-    if(i+1<lines.length && /^[\(\[]\s*\d+\s*\/\s*\d+\s*[\)\]]$/.test(one(lines[i+1])) && !badHeader(line)){
+    if(i+1<lines.length &&
+       /^[\(\[]\s*\d+\s*\/\s*\d+\s*[\)\]]$/.test(one(lines[i+1])) &&
+       !badHeader(line)){
       out.push(`${line} ${one(lines[++i])}`);
       continue;
     }
@@ -88,14 +91,22 @@ function rawFiches(lines){
     const line=one(line0);
     if(!line)continue;
     const key=norm(line.replace(/^[# *\.\-:]+|[# *\.\-:]+$/g,''));
-    if(started && (STOP.has(key)||[...STOP].some(x=>key.startsWith(x+' '))||line.startsWith('Contenus ©')))break;
+    if(started && (STOP.has(key) || [...STOP].some(x=>key.startsWith(x+' ')) ||
+       line.startsWith('Contenus ©'))) break;
     const m=line.match(HEADER);
     if(m&&!badHeader(m[1])){
       const total=Number(m[3]);
-      if(totalExpected!==null&&total!==totalExpected)continue;
+      if(totalExpected!==null && total!==totalExpected)continue;
       totalExpected=total;
       if(cur)out.push(cur);
-      cur={name:one(m[1]),position:`(${m[2]} / ${m[3]})`,number:Number(m[2]),total,lines:[],fields:[]};
+      cur={
+        name:one(m[1]),
+        position:`(${m[2]} / ${m[3]})`,
+        number:Number(m[2]),
+        total,
+        lines:[],
+        fields:[]
+      };
       started=true;
       continue;
     }
@@ -113,20 +124,24 @@ function inferLabels(fiches){
       if(line.includes(':')){
         const left=one(line.split(':',1)[0]);
         if(left.length<=60){
-          const k=norm(left);seen.add(k);if(!original.has(k))original.set(k,left);
+          const k=norm(left);seen.add(k);
+          if(!original.has(k))original.set(k,left);
         }
       }
       const tokens=line.split(/\s+/);
       for(let n=1;n<=Math.min(6,tokens.length-1);n++){
         const prefix=tokens.slice(0,n).join(' ').replace(/[ :]+$/,'');
         const value=tokens.slice(n).join(' ');
-        if(!value||prefix.length>65||/[,;]$/.test(prefix)||!(/[A-ZÀ-ÖØ-Þ0-9]/.test(prefix[0])))continue;
-        const k=norm(prefix);seen.add(k);if(!original.has(k))original.set(k,prefix);
+        if(!value||prefix.length>65||/[,;]$/.test(prefix)||
+           !(/[A-ZÀ-ÖØ-Þ0-9]/.test(prefix[0]))) continue;
+        const k=norm(prefix);seen.add(k);
+        if(!original.has(k))original.set(k,prefix);
       }
     }
     for(const k of seen)counts.set(k,(counts.get(k)||0)+1);
   }
-  return [...counts].filter(([,c])=>c>=min).map(([k])=>original.get(k)).filter(Boolean);
+  return [...counts].filter(([,c])=>c>=min)
+    .map(([k])=>original.get(k)).filter(Boolean);
 }
 function parseFields(lines,labels){
   const source=[...new Set([...DEFAULT_LABELS,...labels].map(one).filter(Boolean))];
@@ -145,7 +160,8 @@ function parseFields(lines,labels){
       const p=line.indexOf(':');
       const left=one(line.slice(0,p)),right=one(line.slice(p+1));
       if(left.length>=1&&left.length<=65&&right){
-        result.push({label:left,value:right});continue;
+        result.push({label:left,value:right});
+        continue;
       }
     }
 
@@ -153,17 +169,19 @@ function parseFields(lines,labels){
     if(known&&i+1<lines.length){
       const next=one(lines[i+1]);
       if(next&&!labelByNorm.has(norm(next))&&!HEADER.test(next)){
-        result.push({label:known,value:next});i++;continue;
+        result.push({label:known,value:next});
+        i++;
+        continue;
       }
     }
 
-    let matched=false;
+    let best=null;
     for(const lab of ordered){
       if(!lab||line===lab||!line.toLowerCase().startsWith(lab.toLowerCase()+' '))continue;
       const value=one(line.slice(lab.length));
-      if(value){result.push({label:lab,value});matched=true;break;}
+      if(value && (!best || lab.length>best.label.length))best={label:lab,value};
     }
-    if(matched)continue;
+    if(best){result.push(best);continue;}
 
     result.push({label:`Info ${infoCounter++}`,value:line});
   }
@@ -179,23 +197,25 @@ function parseFields(lines,labels){
 
 function parseQuestionnaireUrl(raw){
   let u;
-  try{u=new URL(raw);}catch{throw Object.assign(new Error('URL invalide.'),{status:400});}
+  try{u=new URL(raw);}catch{
+    throw Object.assign(new Error('URL invalide.'),{status:400});
+  }
   if(!/(^|\.)quizypedia\.fr$/i.test(u.hostname)){
     throw Object.assign(new Error('Seules les URL quizypedia.fr sont acceptées.'),{status:400});
   }
   const parts=decodeURIComponent(u.pathname).split('/').filter(Boolean);
-  if(parts.length<3 || norm(parts[0])!=='quiz'){
+  if(parts.length<3||norm(parts[0])!=='quiz'){
     throw Object.assign(new Error(
-      "CGIMPORT008 exige l’URL complète d’un questionnaire : /quiz/<thème>/<questionnaire>/"
+      'CGIMPORT008 exige l’URL complète /quiz/<thème>/<questionnaire>/'
     ),{status:400});
   }
   return {
     url:u,
     theme:one(parts[1]),
-    questionnaire:one(parts.slice(2).join(' / '))
+    questionnaire:one(parts.slice(2).join(' / ')),
+    pathname:u.pathname.replace(/\/+$/,'')+'/'
   };
 }
-
 async function requireUser(req){
   const h=String(req.headers.authorization||'');
   if(!h.startsWith('Bearer ')){
@@ -203,70 +223,77 @@ async function requireUser(req){
   }
   return getAuth().verifyIdToken(h.slice(7));
 }
-
 function allSourceValues(fiches){
   const map=new Map();
   for(const fiche of fiches){
+    map.set(norm(fiche.name),fiche.name);
     for(const field of fiche.fields||[]){
-      const value=one(field.value);
-      const k=norm(value);
-      if(k.length<1)continue;
-      if(!map.has(k))map.set(k,value);
+      const value=one(field.value),k=norm(value);
+      if(k&&!map.has(k))map.set(k,value);
     }
   }
   return map;
 }
 
-async function clickText(page, labels){
-  return page.evaluate((labels)=>{
+/* FIX3 : jamais de terme vide, jamais de flèche générique. */
+async function clickSafeText(page,labels,{allowStartsWith=false}={}){
+  const safeLabels=labels.map(norm).filter(k=>k.length>=2);
+  if(!safeLabels.length)return {ok:false,reason:'no-safe-label'};
+  return page.evaluate(({safeLabels,allowStartsWith})=>{
     const n=s=>String(s??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
       .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
-    const wanted=labels.map(n);
-    const nodes=[...document.querySelectorAll('button,a,[role="button"],input[type="button"],input[type="submit"],[onclick]')];
+    const nodes=[...document.querySelectorAll(
+      'button,a,[role="button"],input[type="button"],input[type="submit"],[onclick]'
+    )];
     const visible=el=>{
       const r=el.getBoundingClientRect(),cs=getComputedStyle(el);
-      return r.width>10&&r.height>10&&cs.display!=='none'&&cs.visibility!=='hidden'&&Number(cs.opacity||1)>0.05;
+      return r.width>8&&r.height>8&&cs.display!=='none'&&
+        cs.visibility!=='hidden'&&Number(cs.opacity||1)>0.05;
     };
     for(const el of nodes){
       if(!visible(el))continue;
-      const text=(el.value||el.innerText||el.textContent||'').trim();
-      const k=n(text);
-      if(wanted.some(w=>k===w||k.startsWith(w+' ')||k.includes(w))){
-        el.click();return {ok:true,text};
-      }
+      const candidates=[
+        el.value,el.innerText,el.textContent,
+        el.getAttribute('aria-label'),el.getAttribute('title')
+      ].map(n).filter(Boolean);
+      const matches=candidates.some(k=>safeLabels.some(w=>
+        k===w || (allowStartsWith&&k.startsWith(w+' '))
+      ));
+      if(!matches)continue;
+      el.click();
+      return {ok:true,text:(el.innerText||el.textContent||el.value||'').trim()};
     }
     return {ok:false};
-  },labels);
+  },{safeLabels,allowStartsWith});
 }
 
-async function collectOptions(page, sourceValues){
+async function collectOptions(page,sourceValues){
   return page.evaluate((sourceValues)=>{
     const n=s=>String(s??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
       .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
-    const known=new Map(sourceValues.map(v=>[n(v),v]));
+    const known=new Map(sourceValues.map(v=>[n(v),v]).filter(([k])=>k));
     const selectors=[
       'button','a','[role="button"]','input[type="button"]','input[type="submit"]',
       '[onclick]','label','[tabindex]','[class*="answer"]','[class*="response"]',
-      '[class*="choice"]','[class*="proposition"]'
+      '[class*="choice"]','[class*="proposition"]','[class*="option"]'
     ].join(',');
     const visible=el=>{
       const r=el.getBoundingClientRect(),cs=getComputedStyle(el);
-      return r.width>20&&r.height>14&&r.bottom>0&&r.top<innerHeight&&
-        cs.display!=='none'&&cs.visibility!=='hidden'&&Number(cs.opacity||1)>0.05;
+      return r.width>20&&r.height>14&&cs.display!=='none'&&
+        cs.visibility!=='hidden'&&Number(cs.opacity||1)>0.05;
     };
     const score=el=>{
-      const tag=el.tagName.toLowerCase(),cs=getComputedStyle(el);
+      const tag=el.tagName.toLowerCase(),cs=getComputedStyle(el),r=el.getBoundingClientRect();
       let s=0;
-      if(tag==='button')s+=30;
-      if(tag==='label')s+=20;
-      if(tag==='a')s+=10;
-      if(el.getAttribute('role')==='button')s+=25;
-      if(el.hasAttribute('onclick'))s+=20;
-      if(cs.cursor==='pointer')s+=15;
+      if(tag==='button')s+=40;
+      if(tag==='label')s+=24;
+      if(tag==='a')s+=8;
+      if(el.getAttribute('role')==='button')s+=30;
+      if(el.hasAttribute('onclick'))s+=24;
+      if(cs.cursor==='pointer')s+=18;
       if(el.tabIndex>=0)s+=8;
-      const r=el.getBoundingClientRect();
-      if(r.width>100)s+=4;
-      return s-(r.width*r.height/100000);
+      if(r.width>100)s+=6;
+      return s-(r.width*r.height/150000);
     };
 
     const found=[];
@@ -275,8 +302,7 @@ async function collectOptions(page, sourceValues){
       const raw=(el.value||el.innerText||el.textContent||'').trim().replace(/\s+/g,' ');
       const k=n(raw);
       if(!known.has(k))continue;
-      const r=el.getBoundingClientRect();
-      found.push({el,text:known.get(k),norm:k,score:score(el),rect:{x:r.x,y:r.y,w:r.width,h:r.height}});
+      found.push({el,text:known.get(k),norm:k,score:score(el)});
     }
 
     const best=new Map();
@@ -291,113 +317,65 @@ async function collectOptions(page, sourceValues){
         ok:false,
         count:items.length,
         options:items.map(x=>x.text),
+        url:location.href,
         clickable:[...document.querySelectorAll('button,a,[role="button"]')]
-          .filter(visible).map(el=>(el.innerText||el.textContent||'').trim().replace(/\s+/g,' '))
+          .filter(visible)
+          .map(el=>(el.innerText||el.textContent||el.getAttribute('aria-label')||'')
+            .trim().replace(/\s+/g,' '))
           .filter(Boolean).slice(0,30)
       };
     }
 
-    const optionNorms=new Set(items.map(x=>x.norm));
-
-    // Petit ancêtre commun des quatre choix.
     let common=items[0].el;
-    while(common&&common!==document.body&&!items.every(x=>common.contains(x.el))) common=common.parentElement;
+    while(common&&common!==document.body&&!items.every(x=>common.contains(x.el))){
+      common=common.parentElement;
+    }
     if(!common)common=document.body;
 
-    // CGIMPORT008 FIX2 :
-    // le premier code ne regardait que l'ancêtre commun des boutons.
-    // Sur Quizypedia, la description/consigne de la question est souvent dans
-    // un bloc frère juste au-dessus. On remonte donc progressivement jusqu'au
-    // PREMIER conteneur qui contient une valeur de fiche source autre que A/B/C/D.
-    const sourceEntries=[...known.entries()]
-      .filter(([k,v])=>k.length>=3&&!optionNorms.has(k));
-
-    const sourceMatches=text=>{
-      const t=n(text);
-      const hits=[];
-      for(const [k,v] of sourceEntries){
-        if(k.length>=3&&t.includes(k)) hits.push(v);
-      }
-      // éviter les doublons de valeurs normalisées
-      return [...new Map(hits.map(v=>[n(v),v])).values()];
-    };
-
-    let contextNode=common;
-    let contextText=(common.innerText||'').trim().replace(/\s+/g,' ');
-    let contextMatches=sourceMatches(contextText);
-
-    let node=common;
-    for(let depth=0;depth<8 && node && node!==document.body;depth++){
-      node=node.parentElement;
-      if(!node)break;
-      const text=(node.innerText||'').trim().replace(/\s+/g,' ');
-      const hits=sourceMatches(text);
-      if(hits.length>0){
-        contextNode=node;
-        contextText=text;
-        contextMatches=hits;
-        break;
-      }
-    }
-
-    // Dernier filet de sécurité strict : texte réellement visible dans le viewport,
-    // sans inclure les blocs hors écran. Cela reste du contenu source, jamais généré.
-    if(contextMatches.length===0){
-      const visibleTexts=[];
-      for(const el of document.querySelectorAll('body *')){
-        const r=el.getBoundingClientRect(),cs=getComputedStyle(el);
-        if(r.width<20||r.height<10||r.bottom<=0||r.top>=innerHeight)continue;
-        if(cs.display==='none'||cs.visibility==='hidden'||Number(cs.opacity||1)<=0.05)continue;
-        // Ne garder que les feuilles textuelles pour limiter les duplications.
-        if([...el.children].some(ch=>(ch.innerText||'').trim()))continue;
-        const text=(el.innerText||el.textContent||'').trim().replace(/\s+/g,' ');
-        if(text)visibleTexts.push(text);
-      }
-      const viewportText=[...new Set(visibleTexts)].join(' | ');
-      const hits=sourceMatches(viewportText);
-      if(hits.length>0){
-        contextText=viewportText;
-        contextMatches=hits;
-      }
-    }
-
+    const containerText=(common.innerText||'').trim().replace(/\s+/g,' ');
+    const options=items.map(x=>x.text);
     return {
       ok:true,
-      options:items.map(x=>x.text),
-      containerText:contextText,
-      contextMatches:contextMatches.slice(0,12),
-      rects:items.map(x=>x.rect)
+      options,
+      containerText,
+      url:location.href,
+      signature:options.map(n).join('|')+'||'+n(containerText).slice(0,1200)
     };
   },sourceValues);
 }
-function identifySourceFiche(fiches, options, containerText){
-  const optionNorms=new Set(options.map(norm));
 
-  // Le champ de réponse est le libellé dont les valeurs couvrent le mieux les 4 options visibles.
-  const labelCoverage=new Map();
+function identifySourceFiche(fiches,options,containerText){
+  const optionNorms=new Set(options.map(norm));
+  const coverage=new Map();
+
   for(const fiche of fiches){
-    for(const field of fiche.fields||[]){
+    const values=[{label:'Nom',value:fiche.name},...(fiche.fields||[])];
+    for(const field of values){
       const lk=norm(field.label),vk=norm(field.value);
       if(!lk||!optionNorms.has(vk))continue;
-      if(!labelCoverage.has(lk))labelCoverage.set(lk,{label:field.label,values:new Set()});
-      labelCoverage.get(lk).values.add(vk);
+      if(!coverage.has(lk))coverage.set(lk,{label:field.label,values:new Set()});
+      coverage.get(lk).values.add(vk);
     }
   }
-  const answerLabel=[...labelCoverage.values()].sort((a,b)=>b.values.size-a.values.size)[0];
+  const answerLabel=[...coverage.values()].sort((a,b)=>b.values.size-a.values.size)[0];
   if(!answerLabel||answerLabel.values.size<3){
-    return {ok:false,error:"Impossible d’identifier le champ de réponse à partir des 4 propositions Quizypedia."};
+    return {ok:false,error:'Champ de réponse non identifiable depuis les 4 propositions.'};
   }
+
   const answerLabelKey=norm(answerLabel.label);
   const visible=norm(containerText);
-
   const candidates=[];
+
   for(const fiche of fiches){
-    const answerFields=(fiche.fields||[]).filter(f=>norm(f.label)===answerLabelKey && optionNorms.has(norm(f.value)));
+    const values=[{label:'Nom',value:fiche.name},...(fiche.fields||[])];
+    const answerFields=values.filter(f=>
+      norm(f.label)===answerLabelKey && optionNorms.has(norm(f.value))
+    );
     if(answerFields.length!==1)continue;
 
     const clues=[];
     let score=0;
-    for(const field of fiche.fields||[]){
+    for(const field of values){
       if(norm(field.label)===answerLabelKey)continue;
       const value=one(field.value),vk=norm(value);
       if(vk.length<3||optionNorms.has(vk))continue;
@@ -406,29 +384,33 @@ function identifySourceFiche(fiches, options, containerText){
         score+=Math.min(vk.length,300);
       }
     }
-    if(score>0)candidates.push({fiche,answer:one(answerFields[0].value),clues,score});
+    if(score>0){
+      candidates.push({
+        fiche,
+        answer:one(answerFields[0].value),
+        clues,
+        score
+      });
+    }
   }
 
   candidates.sort((a,b)=>b.score-a.score);
   if(!candidates.length){
-    return {ok:false,error:"Aucune fiche source ne correspond aux indices visibles du questionnaire."};
+    return {ok:false,error:'Aucune fiche source ne correspond aux indices visibles.'};
   }
   if(candidates.length>1&&candidates[0].score===candidates[1].score){
-    return {ok:false,error:"Plusieurs fiches source correspondent aux mêmes indices visibles ; capture strictement 1:1 impossible."};
+    return {ok:false,error:'Correspondance ambiguë entre plusieurs fiches source.'};
   }
 
   const hit=candidates[0];
   const correctIndex=options.findIndex(v=>norm(v)===norm(hit.answer))+1;
   if(correctIndex<1){
-    return {ok:false,error:"La réponse source n’est pas présente parmi les quatre propositions visibles."};
+    return {ok:false,error:'Réponse source absente des quatre propositions visibles.'};
   }
 
-  let detail='';
-  if(hit.clues.length===1){
-    detail=hit.clues[0].value; // strict : valeur exacte, sans reformulation.
-  }else{
-    detail=hit.clues.map(c=>`${c.label} : ${c.value}`).join('\n');
-  }
+  const detail=hit.clues.length===1
+    ? hit.clues[0].value
+    : hit.clues.map(c=>`${c.label} : ${c.value}`).join('\n');
 
   return {
     ok:true,
@@ -441,45 +423,97 @@ function identifySourceFiche(fiches, options, containerText){
   };
 }
 
-async function clickOption(page, text){
+async function clickOption(page,text){
   return page.evaluate((target)=>{
     const n=s=>String(s??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
       .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
     const wanted=n(target);
+    if(!wanted)return false;
+
     const selectors=[
-      'button','a','[role="button"]','input[type="button"]','input[type="submit"]',
+      'button','a','[role="button"]','input[type="button"],input[type="submit"]',
       '[onclick]','label','[tabindex]','[class*="answer"]','[class*="response"]',
-      '[class*="choice"]','[class*="proposition"]'
+      '[class*="choice"]','[class*="proposition"]','[class*="option"]'
     ].join(',');
     const visible=el=>{
       const r=el.getBoundingClientRect(),cs=getComputedStyle(el);
-      return r.width>20&&r.height>14&&r.bottom>0&&r.top<innerHeight&&
-        cs.display!=='none'&&cs.visibility!=='hidden'&&Number(cs.opacity||1)>0.05;
+      return r.width>20&&r.height>14&&cs.display!=='none'&&
+        cs.visibility!=='hidden'&&Number(cs.opacity||1)>0.05;
     };
+
     let best=null,bestScore=-1e9;
     for(const el of document.querySelectorAll(selectors)){
       if(!visible(el))continue;
       const raw=(el.value||el.innerText||el.textContent||'').trim().replace(/\s+/g,' ');
       if(n(raw)!==wanted)continue;
       const tag=el.tagName.toLowerCase(),cs=getComputedStyle(el),r=el.getBoundingClientRect();
-      let s=(tag==='button'?30:0)+(tag==='label'?20:0)+(el.getAttribute('role')==='button'?25:0)+
-        (el.hasAttribute('onclick')?20:0)+(cs.cursor==='pointer'?15:0)+(el.tabIndex>=0?8:0)-
-        (r.width*r.height/100000);
+      let s=(tag==='button'?40:0)+(tag==='label'?24:0)+
+        (el.getAttribute('role')==='button'?30:0)+(el.hasAttribute('onclick')?24:0)+
+        (cs.cursor==='pointer'?18:0)+(el.tabIndex>=0?8:0)-
+        (r.width*r.height/150000);
       if(s>bestScore){best=el;bestScore=s;}
     }
     if(!best)return false;
-    best.click();return true;
+    best.click();
+    return true;
   },text);
 }
 
-async function captureStrictQuestionnaire(url, fiches, questionnaire){
+async function waitForNewState(page,sourceValues,previousSignature,timeoutMs=5500){
+  const end=Date.now()+timeoutMs;
+  let last=null;
+  while(Date.now()<end){
+    await sleep(250);
+    last=await collectOptions(page,sourceValues);
+    if(last.ok&&last.signature!==previousSignature)return last;
+  }
+  return null;
+}
+
+/* FIX3 : navigation sûre.
+   1) on attend d'abord la transition automatique ;
+   2) sinon on clique seulement un contrôle explicitement nommé ;
+   3) aucune flèche générique, aucun includes("") possible. */
+async function advanceSafely(page,sourceValues,previousState,questionnairePath){
+  let next=await waitForNewState(page,sourceValues,previousState.signature,3200);
+  if(next)return {ok:true,state:next,mode:'auto'};
+
+  const currentPath=await page.evaluate(()=>location.pathname);
+  if(!currentPath.startsWith(questionnairePath.replace(/\/+$/,''))){
+    return {ok:false,error:`Sortie du questionnaire détectée : ${currentPath}`};
+  }
+
+  const clicked=await clickSafeText(page,[
+    'Question suivante','Suivant','Continuer','Prochaine question'
+  ],{allowStartsWith:false});
+
+  if(!clicked.ok){
+    return {ok:false,error:'Aucune transition automatique et aucun bouton Suivant sûr détecté.'};
+  }
+
+  next=await waitForNewState(page,sourceValues,previousState.signature,5000);
+  if(next)return {ok:true,state:next,mode:'button'};
+
+  return {ok:false,error:`Le bouton « ${clicked.text||'Suivant'} » n’a pas affiché une nouvelle question.`};
+}
+
+async function startGame(page){
+  // N'accepte que des libellés non vides et explicites.
+  let r=await clickSafeText(page,['Jeu normal'],{allowStartsWith:true});
+  if(!r.ok)r=await clickSafeText(page,['Entraînement'],{allowStartsWith:true});
+  if(!r.ok)return false;
+  await sleep(1200);
+  return true;
+}
+
+async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnairePath){
   if(typeof chromium.executablePath!=='function'){
     throw new Error(
-      `CGIMPORT008 Chromium API incompatible: executablePath=${typeof chromium.executablePath}; `+
-      `exports=${Object.keys(chromiumModule||{}).join(',')}`
+      `Chromium API incompatible: executablePath=${typeof chromium.executablePath}`
     );
   }
-  chromium.setGraphicsMode = false;
+
+  chromium.setGraphicsMode=false;
   const headlessType='shell';
   const browser=await puppeteer.launch({
     args:await puppeteer.defaultArgs({args:chromium.args,headless:headlessType}),
@@ -498,73 +532,97 @@ async function captureStrictQuestionnaire(url, fiches, questionnaire){
     await page.setExtraHTTPHeaders({'Accept-Language':'fr-FR,fr;q=0.9'});
     await page.goto(url,{waitUntil:'networkidle2',timeout:50000});
 
-    // Fermer d'éventuels bandeaux non essentiels sans jamais répondre au quiz.
-    await clickText(page,['Accepter','Tout accepter','J’accepte']).catch(()=>{});
-
-    // Le mode normal parcourt normalement les fiches du questionnaire une fois chacune.
-    let start=await clickText(page,['Jeu normal']);
-    if(!start.ok)start=await clickText(page,['Entraînement']);
-    if(!start.ok){
-      return {questions:[],complete:false,diagnostics:['Bouton Jeu normal / Entraînement introuvable.']};
-    }
-    await new Promise(r=>setTimeout(r,1300));
+    await clickSafeText(page,['Accepter','Tout accepter','J accepte'],{
+      allowStartsWith:false
+    }).catch(()=>{});
 
     const sourceValues=[...allSourceValues(fiches).values()];
+    const expected=fiches.length;
     const questions=[];
     const seen=new Set();
-    const expected=fiches.length;
-    const maxTurns=Math.max(12,expected*3);
+    const maxSessions=5;
 
-    for(let turn=0;turn<maxTurns && seen.size<expected;turn++){
+    for(let session=1;session<=maxSessions&&seen.size<expected;session++){
+      if(session>1){
+        // Revenir exactement au questionnaire avant de relancer une partie.
+        await page.goto(url,{waitUntil:'networkidle2',timeout:50000});
+        await sleep(700);
+      }
+
+      const started=await startGame(page);
+      if(!started){
+        diagnostics.push(`Session ${session}: bouton Jeu normal / Entraînement introuvable.`);
+        break;
+      }
+
       let state=null;
-      for(let attempt=0;attempt<15;attempt++){
+      for(let attempt=0;attempt<18;attempt++){
         state=await collectOptions(page,sourceValues);
         if(state.ok)break;
-        await new Promise(r=>setTimeout(r,300));
+        await sleep(300);
       }
       if(!state||!state.ok){
-        diagnostics.push(`Tour ${turn+1}: ${state?.count??0} proposition(s) source détectée(s).`);
-        if(state?.clickable?.length)diagnostics.push(`Éléments cliquables: ${state.clickable.join(' | ')}`);
-        break;
+        diagnostics.push(`Session ${session}: première question non détectée.`);
+        continue;
       }
 
-      const match=identifySourceFiche(fiches,state.options,state.containerText);
-      if(!match.ok){
-        diagnostics.push(`Tour ${turn+1}: ${match.error}`);
-        diagnostics.push(`Propositions: ${state.options.join(' | ')}`);
-        if(state.contextMatches?.length){
-          diagnostics.push(`Valeurs source visibles: ${state.contextMatches.join(' | ')}`);
+      const maxTurns=Math.max(expected*3,24);
+      for(let turn=1;turn<=maxTurns&&seen.size<expected;turn++){
+        if(!state?.ok){
+          diagnostics.push(`Session ${session}, tour ${turn}: état de question absent.`);
+          break;
         }
-        diagnostics.push(`Contexte visible: ${state.containerText.slice(0,1000)}`);
-        break;
-      }
 
-      if(!seen.has(match.sourceNumber)){
-        questions.push({
-          question:questionnaire,               // exact depuis l'URL Quizypedia
-          detail:match.detail,                  // exact depuis la/les propriété(s) visible(s)
-          options:state.options,                // exactes telles qu'affichées par Quizypedia
-          correct_index:match.correctIndex,     // position de la réponse source dans ces 4 options
-          correct_text:match.correctText,
-          source_fiche:match.sourceFiche,
-          source_number:match.sourceNumber,
-          answer_label:match.answerLabel
-        });
-        seen.add(match.sourceNumber);
-      }
+        const match=identifySourceFiche(fiches,state.options,state.containerText);
+        if(!match.ok){
+          diagnostics.push(`Session ${session}, tour ${turn}: ${match.error}`);
+          diagnostics.push(`Propositions: ${state.options.join(' | ')}`);
+          break;
+        }
 
-      const clicked=await clickOption(page,match.correctText);
-      if(!clicked){
-        diagnostics.push(`Tour ${turn+1}: impossible de cliquer la réponse source « ${match.correctText} ».`);
-        break;
-      }
+        if(!seen.has(match.sourceNumber)){
+          questions.push({
+            question:questionnaire,
+            detail:match.detail,
+            options:state.options,
+            correct_index:match.correctIndex,
+            correct_text:match.correctText,
+            source_fiche:match.sourceFiche,
+            source_number:match.sourceNumber,
+            answer_label:match.answerLabel
+          });
+          seen.add(match.sourceNumber);
+        }
 
-      await new Promise(r=>setTimeout(r,650));
-      await clickText(page,['Suivant','Continuer','Question suivante','→']).catch(()=>{});
-      await new Promise(r=>setTimeout(r,450));
+        if(seen.size>=expected)break;
+
+        const clicked=await clickOption(page,match.correctText);
+        if(!clicked){
+          diagnostics.push(
+            `Session ${session}, tour ${turn}: réponse source « ${match.correctText} » non cliquable.`
+          );
+          break;
+        }
+
+        const advanced=await advanceSafely(
+          page,sourceValues,state,questionnairePath
+        );
+        if(!advanced.ok){
+          diagnostics.push(`Session ${session}, tour ${turn}: ${advanced.error}`);
+          break;
+        }
+
+        state=advanced.state;
+      }
     }
 
     questions.sort((a,b)=>a.source_number-b.source_number);
+    if(questions.length!==expected){
+      diagnostics.unshift(
+        `Capture incomplète après sessions sûres : ${questions.length}/${expected}.`
+      );
+    }
+
     return {
       questions,
       complete:questions.length===expected,
@@ -577,12 +635,14 @@ async function captureStrictQuestionnaire(url, fiches, questionnaire){
 
 exports.cgimport002Quizypedia=onRequest({
   region:'europe-west1',
-  timeoutSeconds:180,
+  timeoutSeconds:300,
   memory:'1GiB',
-  concurrency:4
+  concurrency:2
 },async(req,res)=>{
   try{
-    if(req.method!=='POST')return res.status(405).json({ok:false,error:'Méthode non autorisée.'});
+    if(req.method!=='POST'){
+      return res.status(405).json({ok:false,error:'Méthode non autorisée.'});
+    }
     await requireUser(req);
 
     const raw=one(req.body?.url);
@@ -591,7 +651,9 @@ exports.cgimport002Quizypedia=onRequest({
     const response=await fetch(parsed.url.toString(),{
       redirect:'follow',
       headers:{
-        'user-agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/149.0 Safari/537.36',
+        'user-agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '+
+          'Chrome/149.0 Safari/537.36',
         'accept-language':'fr-FR,fr;q=0.9'
       }
     });
@@ -606,10 +668,17 @@ exports.cgimport002Quizypedia=onRequest({
     for(const f of fiches)f.fields=parseFields(f.lines,allLabels);
 
     if(fiches.length<4){
-      throw new Error(`CGIMPORT008 strict : seulement ${fiches.length} fiche(s) source détectée(s).`);
+      throw new Error(
+        `CGIMPORT008 strict : seulement ${fiches.length} fiche(s) source détectée(s).`
+      );
     }
 
-    const capture=await captureStrictQuestionnaire(response.url,fiches,parsed.questionnaire);
+    const capture=await captureStrictQuestionnaire(
+      response.url,
+      fiches,
+      parsed.questionnaire,
+      parsed.pathname
+    );
 
     return res.json({
       ok:true,
@@ -620,18 +689,22 @@ exports.cgimport002Quizypedia=onRequest({
       theme:parsed.theme,
       questionnaire:parsed.questionnaire,
       fiches:fiches.map(f=>({
-        name:f.name,position:f.position,number:f.number,total:f.total,
-        fullText:f.lines.join(' | '),fields:f.fields
+        name:f.name,
+        position:f.position,
+        number:f.number,
+        total:f.total,
+        fullText:f.lines.join(' | '),
+        fields:f.fields
       })),
       questions:capture.questions,
       diagnostics:capture.diagnostics
     });
   }catch(e){
-    console.error('CGIMPORT008',e);
+    console.error('CGIMPORT008 FIX3',e);
     return res.status(e.status||500).json({
       ok:false,
       strict:true,
-      error:e.message||'Erreur serveur CGIMPORT008.'
+      error:e.message||'Erreur serveur CGIMPORT008 FIX3.'
     });
   }
 });
