@@ -1,6 +1,8 @@
-// CGIMPORT008 FIX4 · contexte complet + prévisualisation CGWEB006 + import strict 1:1
+// CGIMPORT008 FIX5 · appel direct Cloud Function, contournement du proxy Hosting 60 s
 
 const $=id=>document.getElementById(id);
+const CGIMPORT008_CAPTURE_ENDPOINT =
+  'https://europe-west1-culturegeneralesync.cloudfunctions.net/cgimport002Quizypedia';
 let extracted=null;
 let drafts=[];
 let strictComplete=false;
@@ -179,11 +181,11 @@ async function analyze(){
   const btn=$('cgimp2Analyze');
   btn.disabled=true;
   btn.textContent='Capture…';
-  status('Capture stricte 12/12 en cours…','warn');
+  status('Capture stricte en cours… cela peut prendre plus d’une minute.','warn');
 
   try{
     const token=await user.getIdToken();
-    const res=await fetch('/api/quizypedia',{
+    const res=await fetch(CGIMPORT008_CAPTURE_ENDPOINT,{
       method:'POST',
       headers:{
         'Content-Type':'application/json',
@@ -307,9 +309,9 @@ function relabelUi(){
   if(!panel)return;
   const kicker=panel.querySelector('.cgimp2-kicker');
   const sub=panel.querySelector('.cgimp2-sub');
-  if(kicker)kicker.textContent='CGIMPORT008 FIX4 · 1:1';
+  if(kicker)kicker.textContent='CGIMPORT008 FIX5 · 1:1';
   if(sub)sub.textContent=
-    'Capture sûre avec contexte complet de chaque question Quizypedia : question, détail et A/B/C/D sont repris de la source sans génération.';
+    'Capture 1:1 via la Cloud Function directe : pas de limite Firebase Hosting à 60 s ; question, détail et A/B/C/D restent issus de Quizypedia.';
 
   if($('cgimp2Analyze'))$('cgimp2Analyze').textContent='Capturer le questionnaire';
   if($('cgimp2Rebuild'))$('cgimp2Rebuild').textContent='Appliquer mégathème/thème';

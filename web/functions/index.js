@@ -1,4 +1,4 @@
-// CGIMPORT008 FIX4 · contexte complet + capture 12/12 + navigation sûre Quizypedia
+// CGIMPORT008 FIX5 · appel direct Cloud Function + CORS, sans timeout Firebase Hosting 60 s
 // Règle : Culture Générale ne fabrique ni question, ni détail, ni distracteur.
 // Les 4 propositions sont capturées telles qu'affichées par Quizypedia.
 
@@ -737,9 +737,13 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
 
 exports.cgimport002Quizypedia=onRequest({
   region:'europe-west1',
-  timeoutSeconds:300,
+  timeoutSeconds:420,
   memory:'1GiB',
-  concurrency:2
+  concurrency:2,
+  cors:[
+    'https://culturegeneralesync.web.app',
+    'https://culturegeneralesync.firebaseapp.com'
+  ]
 },async(req,res)=>{
   try{
     if(req.method!=='POST'){
@@ -775,11 +779,21 @@ exports.cgimport002Quizypedia=onRequest({
       );
     }
 
+    const captureStartedAt=Date.now();
+    console.log(
+      `CGIMPORT008 FIX5 capture start: ${fiches.length} fiche(s), questionnaire=${parsed.questionnaire}`
+    );
+
     const capture=await captureStrictQuestionnaire(
       response.url,
       fiches,
       parsed.questionnaire,
       parsed.pathname
+    );
+
+    console.log(
+      `CGIMPORT008 FIX5 capture end: ${capture.questions.length}/${fiches.length} en `+
+      `${Math.round((Date.now()-captureStartedAt)/1000)} s`
     );
 
     return res.json({
@@ -802,11 +816,11 @@ exports.cgimport002Quizypedia=onRequest({
       diagnostics:capture.diagnostics
     });
   }catch(e){
-    console.error('CGIMPORT008 FIX4',e);
+    console.error('CGIMPORT008 FIX5',e);
     return res.status(e.status||500).json({
       ok:false,
       strict:true,
-      error:e.message||'Erreur serveur CGIMPORT008 FIX4.'
+      error:e.message||'Erreur serveur CGIMPORT008 FIX5.'
     });
   }
 });
