@@ -1,3 +1,4 @@
+// CGIMPORT008 FIX1 · interop CommonJS/ESM @sparticuz/chromium v149
 // CGIMPORT008 · import strict 1:1 Quizypedia
 // Aucune question, aucun détail et aucun distracteur n'est inventé.
 // Le navigateur serveur capture le questionnaire tel qu'il est présenté par Quizypedia.
@@ -6,7 +7,8 @@ const {onRequest} = require('firebase-functions/v2/https');
 const {initializeApp} = require('firebase-admin/app');
 const {getAuth} = require('firebase-admin/auth');
 const cheerio = require('cheerio');
-const chromium = require('@sparticuz/chromium');
+const chromiumModule = require('@sparticuz/chromium');
+const chromium = chromiumModule.default || chromiumModule;
 const puppeteer = require('puppeteer-core');
 
 initializeApp();
@@ -411,12 +413,19 @@ async function clickOption(page, text){
 }
 
 async function captureStrictQuestionnaire(url, fiches, questionnaire){
+  if(typeof chromium.executablePath!=='function'){
+    throw new Error(
+      `CGIMPORT008 Chromium API incompatible: executablePath=${typeof chromium.executablePath}; `+
+      `exports=${Object.keys(chromiumModule||{}).join(',')}`
+    );
+  }
   chromium.setGraphicsMode = false;
+  const headlessType='shell';
   const browser=await puppeteer.launch({
-    args:chromium.args,
+    args:await puppeteer.defaultArgs({args:chromium.args,headless:headlessType}),
     defaultViewport:{width:1440,height:1000,deviceScaleFactor:1},
     executablePath:await chromium.executablePath(),
-    headless:chromium.headless
+    headless:headlessType
   });
 
   const diagnostics=[];
