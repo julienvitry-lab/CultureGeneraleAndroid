@@ -1,4 +1,4 @@
-// CGIMPORT008 FIX3 · capture 12/12 + navigation sûre Quizypedia
+// CGIMPORT008 FIX4 · contexte complet + capture 12/12 + navigation sûre Quizypedia
 // Règle : Culture Générale ne fabrique ni question, ni détail, ni distracteur.
 // Les 4 propositions sont capturées telles qu'affichées par Quizypedia.
 
@@ -271,6 +271,7 @@ async function collectOptions(page,sourceValues){
   return page.evaluate((sourceValues)=>{
     const n=s=>String(s??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
       .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+    const plain=s=>String(s??'').trim().replace(/\s+/g,' ');
     const known=new Map(sourceValues.map(v=>[n(v),v]).filter(([k])=>k));
     const selectors=[
       'button','a','[role="button"]','input[type="button"]','input[type="submit"]',
@@ -278,6 +279,7 @@ async function collectOptions(page,sourceValues){
       '[class*="choice"]','[class*="proposition"]','[class*="option"]'
     ].join(',');
     const visible=el=>{
+      if(!el||!el.getBoundingClientRect)return false;
       const r=el.getBoundingClientRect(),cs=getComputedStyle(el);
       return r.width>20&&r.height>14&&cs.display!=='none'&&
         cs.visibility!=='hidden'&&Number(cs.opacity||1)>0.05;
@@ -299,7 +301,7 @@ async function collectOptions(page,sourceValues){
     const found=[];
     for(const el of document.querySelectorAll(selectors)){
       if(!visible(el))continue;
-      const raw=(el.value||el.innerText||el.textContent||'').trim().replace(/\s+/g,' ');
+      const raw=plain(el.value||el.innerText||el.textContent||'');
       const k=n(raw);
       if(!known.has(k))continue;
       found.push({el,text:known.get(k),norm:k,score:score(el)});
@@ -320,11 +322,15 @@ async function collectOptions(page,sourceValues){
         url:location.href,
         clickable:[...document.querySelectorAll('button,a,[role="button"]')]
           .filter(visible)
-          .map(el=>(el.innerText||el.textContent||el.getAttribute('aria-label')||'')
-            .trim().replace(/\s+/g,' '))
+          .map(el=>plain(el.innerText||el.textContent||el.getAttribute('aria-label')||''))
           .filter(Boolean).slice(0,30)
       };
     }
+
+    const optionNorms=new Set(items.map(x=>x.norm));
+    const clueEntries=[...known.entries()]
+      .filter(([k])=>k.length>=4&&!optionNorms.has(k))
+      .sort((a,b)=>b[0].length-a[0].length);
 
     let common=items[0].el;
     while(common&&common!==document.body&&!items.every(x=>common.contains(x.el))){
@@ -332,19 +338,95 @@ async function collectOptions(page,sourceValues){
     }
     if(!common)common=document.body;
 
-    const containerText=(common.innerText||'').trim().replace(/\s+/g,' ');
+    const hitList=text=>{
+      const nt=n(text);
+      const hits=[];
+      const seen=new Set();
+      for(const [k,original] of clueEntries){
+        if(seen.has(k)||!nt.includes(k))continue;
+        seen.add(k);
+        hits.push({norm:k,text:original,length:k.length});
+        if(hits.length>=24)break;
+      }
+      return hits;
+    };
+
+    /* FIX4 : on remonte depuis le bloc A/B/C/D jusqu'au PLUS PETIT ancêtre
+       qui contient au moins une valeur source supplémentaire (description,
+       particularité, nom, etc.). On ne s'arrête donc plus au simple wrapper
+       des quatre réponses. */
+    let contextEl=null,contextText='',contextHits=[];
+    let node=common;
+    for(let depth=0;node&&depth<10;depth++,node=node.parentElement){
+      if(node===document.documentElement)break;
+      const text=plain(node.innerText||'');
+      if(!text)continue;
+      const hits=hitList(text);
+      if(hits.length){
+        contextEl=node;
+        contextText=text;
+        contextHits=hits;
+        break;
+      }
+    }
+
+    /* Fallback géométrique : si la structure DOM sépare l'énoncé et les
+       réponses en deux branches, on récupère les valeurs source visibles
+       autour du bloc de réponses, surtout juste au-dessus. */
+    if(!contextHits.length){
+      const rects=items.map(x=>x.el.getBoundingClientRect());
+      const left=Math.min(...rects.map(r=>r.left));
+      const right=Math.max(...rects.map(r=>r.right));
+      const top=Math.min(...rects.map(r=>r.top));
+      const bottom=Math.max(...rects.map(r=>r.bottom));
+      const nearby=[];
+      const candidates=document.querySelectorAll(
+        'main,article,section,div,p,h1,h2,h3,h4,h5,strong,span,li'
+      );
+      for(const el of candidates){
+        if(!visible(el))continue;
+        if(items.some(x=>el===x.el||el.contains(x.el)))continue;
+        const r=el.getBoundingClientRect();
+        const horizontal=r.right>=left-120&&r.left<=right+120;
+        const vertical=r.bottom>=top-650&&r.top<=bottom+180;
+        if(!horizontal||!vertical)continue;
+        const text=plain(el.innerText||'');
+        if(!text||text.length>1800)continue;
+        const hits=hitList(text);
+        if(!hits.length)continue;
+        const distance=r.bottom<=top ? top-r.bottom : Math.max(0,r.top-bottom);
+        nearby.push({text,hits,distance,area:r.width*r.height});
+      }
+      nearby.sort((a,b)=>a.distance-b.distance||a.area-b.area||b.hits[0].length-a.hits[0].length);
+      if(nearby.length){
+        contextText=plain(`${nearby[0].text} ${(common.innerText||'')}`);
+        contextHits=hitList(contextText);
+      }
+    }
+
+    /* Dernier fallback contrôlé : texte visible du contenu principal.
+       Les menus restent possibles dans ce texte, mais identifySourceFiche()
+       privilégie les valeurs source longues et discriminantes. */
+    if(!contextHits.length){
+      const main=document.querySelector('main,[role="main"],#main,.main,.content')||document.body;
+      contextText=plain(main.innerText||document.body.innerText||'');
+      contextHits=hitList(contextText);
+    }
+
     const options=items.map(x=>x.text);
+    const contextNorm=n(contextText);
     return {
       ok:true,
       options,
-      containerText,
+      contextText,
+      contextHits:contextHits.map(h=>h.text),
       url:location.href,
-      signature:options.map(n).join('|')+'||'+n(containerText).slice(0,1200)
+      signature:options.map(n).join('|')+'||'+contextNorm.slice(0,1800)
     };
   },sourceValues);
 }
 
-function identifySourceFiche(fiches,options,containerText){
+function identifySourceFiche(fiches,options,contextText){
   const optionNorms=new Set(options.map(norm));
   const coverage=new Map();
 
@@ -357,19 +439,22 @@ function identifySourceFiche(fiches,options,containerText){
       coverage.get(lk).values.add(vk);
     }
   }
-  const answerLabel=[...coverage.values()].sort((a,b)=>b.values.size-a.values.size)[0];
+
+  const answerLabel=[...coverage.values()]
+    .sort((a,b)=>b.values.size-a.values.size)[0];
   if(!answerLabel||answerLabel.values.size<3){
     return {ok:false,error:'Champ de réponse non identifiable depuis les 4 propositions.'};
   }
 
   const answerLabelKey=norm(answerLabel.label);
-  const visible=norm(containerText);
+  const visible=norm(contextText);
   const candidates=[];
+  const semanticBonus=/description|particular|resume|résumé|detail|détail|indice|definition|définition|info/i;
 
   for(const fiche of fiches){
     const values=[{label:'Nom',value:fiche.name},...(fiche.fields||[])];
     const answerFields=values.filter(f=>
-      norm(f.label)===answerLabelKey && optionNorms.has(norm(f.value))
+      norm(f.label)===answerLabelKey&&optionNorms.has(norm(f.value))
     );
     if(answerFields.length!==1)continue;
 
@@ -378,28 +463,39 @@ function identifySourceFiche(fiches,options,containerText){
     for(const field of values){
       if(norm(field.label)===answerLabelKey)continue;
       const value=one(field.value),vk=norm(value);
-      if(vk.length<3||optionNorms.has(vk))continue;
-      if(visible.includes(vk)){
-        clues.push({label:one(field.label),value});
-        score+=Math.min(vk.length,300);
-      }
+      if(vk.length<4||optionNorms.has(vk))continue;
+      if(!visible.includes(vk))continue;
+
+      const label=one(field.label);
+      const longBonus=Math.min(vk.length,500);
+      const discriminantBonus=vk.length>=25?180:vk.length>=12?70:0;
+      const labelBonus=semanticBonus.test(label)?120:0;
+      clues.push({label,value,length:vk.length});
+      score+=longBonus+discriminantBonus+labelBonus;
     }
+
     if(score>0){
       candidates.push({
         fiche,
         answer:one(answerFields[0].value),
         clues,
-        score
+        score,
+        longest:Math.max(...clues.map(c=>c.length))
       });
     }
   }
 
-  candidates.sort((a,b)=>b.score-a.score);
+  candidates.sort((a,b)=>
+    b.score-a.score || b.longest-a.longest || a.fiche.number-b.fiche.number
+  );
+
   if(!candidates.length){
-    return {ok:false,error:'Aucune fiche source ne correspond aux indices visibles.'};
+    return {ok:false,error:'Aucune fiche source ne correspond au contexte complet de la question.'};
   }
-  if(candidates.length>1&&candidates[0].score===candidates[1].score){
-    return {ok:false,error:'Correspondance ambiguë entre plusieurs fiches source.'};
+  if(candidates.length>1 &&
+     candidates[0].score===candidates[1].score &&
+     candidates[0].longest===candidates[1].longest){
+    return {ok:false,error:'Correspondance ambiguë entre plusieurs fiches source dans le contexte complet.'};
   }
 
   const hit=candidates[0];
@@ -408,9 +504,12 @@ function identifySourceFiche(fiches,options,containerText){
     return {ok:false,error:'Réponse source absente des quatre propositions visibles.'};
   }
 
-  const detail=hit.clues.length===1
-    ? hit.clues[0].value
-    : hit.clues.map(c=>`${c.label} : ${c.value}`).join('\n');
+  /* Le détail reste 1:1 : on reprend les valeurs source réellement trouvées.
+     Si plusieurs indices sont affichés, ils restent séparés par leurs libellés. */
+  const bestClues=[...hit.clues].sort((a,b)=>b.length-a.length);
+  const detail=bestClues.length===1
+    ? bestClues[0].value
+    : bestClues.map(c=>`${c.label} : ${c.value}`).join('\n');
 
   return {
     ok:true,
@@ -419,7 +518,8 @@ function identifySourceFiche(fiches,options,containerText){
     answerLabel:answerLabel.label,
     detail,
     correctIndex,
-    correctText:hit.answer
+    correctText:hit.answer,
+    matchScore:hit.score
   };
 }
 
@@ -573,10 +673,12 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
           break;
         }
 
-        const match=identifySourceFiche(fiches,state.options,state.containerText);
+        const match=identifySourceFiche(fiches,state.options,state.contextText);
         if(!match.ok){
           diagnostics.push(`Session ${session}, tour ${turn}: ${match.error}`);
           diagnostics.push(`Propositions: ${state.options.join(' | ')}`);
+          if(state.contextHits?.length)diagnostics.push(`Valeurs source dans le contexte: ${state.contextHits.slice(0,8).join(' | ')}`);
+          if(state.contextText)diagnostics.push(`Contexte: ${state.contextText.slice(0,900)}`);
           break;
         }
 
@@ -700,11 +802,11 @@ exports.cgimport002Quizypedia=onRequest({
       diagnostics:capture.diagnostics
     });
   }catch(e){
-    console.error('CGIMPORT008 FIX3',e);
+    console.error('CGIMPORT008 FIX4',e);
     return res.status(e.status||500).json({
       ok:false,
       strict:true,
-      error:e.message||'Erreur serveur CGIMPORT008 FIX3.'
+      error:e.message||'Erreur serveur CGIMPORT008 FIX4.'
     });
   }
 });

@@ -1,4 +1,4 @@
-// CGIMPORT008 FIX3 · prévisualisation CGWEB006 + import strict 1:1
+// CGIMPORT008 FIX4 · contexte complet + prévisualisation CGWEB006 + import strict 1:1
 
 const $=id=>document.getElementById(id);
 let extracted=null;
@@ -307,9 +307,9 @@ function relabelUi(){
   if(!panel)return;
   const kicker=panel.querySelector('.cgimp2-kicker');
   const sub=panel.querySelector('.cgimp2-sub');
-  if(kicker)kicker.textContent='CGIMPORT008 FIX3 · 1:1';
+  if(kicker)kicker.textContent='CGIMPORT008 FIX4 · 1:1';
   if(sub)sub.textContent=
-    'Capture sûre de toutes les fiches Quizypedia : question, détail et A/B/C/D sont repris de la source sans génération.';
+    'Capture sûre avec contexte complet de chaque question Quizypedia : question, détail et A/B/C/D sont repris de la source sans génération.';
 
   if($('cgimp2Analyze'))$('cgimp2Analyze').textContent='Capturer le questionnaire';
   if($('cgimp2Rebuild'))$('cgimp2Rebuild').textContent='Appliquer mégathème/thème';
