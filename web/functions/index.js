@@ -1,3 +1,4 @@
+// CGIMPORT008 FIX2 · étendre le contexte visible autour des propositions Quizypedia
 // CGIMPORT008 FIX1 · interop CommonJS/ESM @sparticuz/chromium v149
 // CGIMPORT008 · import strict 1:1 Quizypedia
 // Aucune question, aucun détail et aucun distracteur n'est inventé.
@@ -291,25 +292,84 @@ async function collectOptions(page, sourceValues){
         count:items.length,
         options:items.map(x=>x.text),
         clickable:[...document.querySelectorAll('button,a,[role="button"]')]
-          .filter(visible).map(el=>(el.innerText||el.textContent||'').trim().replace(/\s+/g,' ')).filter(Boolean).slice(0,30)
+          .filter(visible).map(el=>(el.innerText||el.textContent||'').trim().replace(/\s+/g,' '))
+          .filter(Boolean).slice(0,30)
       };
     }
 
-    // Trouver le plus petit ancêtre commun aux quatre propositions.
+    const optionNorms=new Set(items.map(x=>x.norm));
+
+    // Petit ancêtre commun des quatre choix.
     let common=items[0].el;
     while(common&&common!==document.body&&!items.every(x=>common.contains(x.el))) common=common.parentElement;
     if(!common)common=document.body;
-    const containerText=(common.innerText||'').trim().replace(/\s+/g,' ');
+
+    // CGIMPORT008 FIX2 :
+    // le premier code ne regardait que l'ancêtre commun des boutons.
+    // Sur Quizypedia, la description/consigne de la question est souvent dans
+    // un bloc frère juste au-dessus. On remonte donc progressivement jusqu'au
+    // PREMIER conteneur qui contient une valeur de fiche source autre que A/B/C/D.
+    const sourceEntries=[...known.entries()]
+      .filter(([k,v])=>k.length>=3&&!optionNorms.has(k));
+
+    const sourceMatches=text=>{
+      const t=n(text);
+      const hits=[];
+      for(const [k,v] of sourceEntries){
+        if(k.length>=3&&t.includes(k)) hits.push(v);
+      }
+      // éviter les doublons de valeurs normalisées
+      return [...new Map(hits.map(v=>[n(v),v])).values()];
+    };
+
+    let contextNode=common;
+    let contextText=(common.innerText||'').trim().replace(/\s+/g,' ');
+    let contextMatches=sourceMatches(contextText);
+
+    let node=common;
+    for(let depth=0;depth<8 && node && node!==document.body;depth++){
+      node=node.parentElement;
+      if(!node)break;
+      const text=(node.innerText||'').trim().replace(/\s+/g,' ');
+      const hits=sourceMatches(text);
+      if(hits.length>0){
+        contextNode=node;
+        contextText=text;
+        contextMatches=hits;
+        break;
+      }
+    }
+
+    // Dernier filet de sécurité strict : texte réellement visible dans le viewport,
+    // sans inclure les blocs hors écran. Cela reste du contenu source, jamais généré.
+    if(contextMatches.length===0){
+      const visibleTexts=[];
+      for(const el of document.querySelectorAll('body *')){
+        const r=el.getBoundingClientRect(),cs=getComputedStyle(el);
+        if(r.width<20||r.height<10||r.bottom<=0||r.top>=innerHeight)continue;
+        if(cs.display==='none'||cs.visibility==='hidden'||Number(cs.opacity||1)<=0.05)continue;
+        // Ne garder que les feuilles textuelles pour limiter les duplications.
+        if([...el.children].some(ch=>(ch.innerText||'').trim()))continue;
+        const text=(el.innerText||el.textContent||'').trim().replace(/\s+/g,' ');
+        if(text)visibleTexts.push(text);
+      }
+      const viewportText=[...new Set(visibleTexts)].join(' | ');
+      const hits=sourceMatches(viewportText);
+      if(hits.length>0){
+        contextText=viewportText;
+        contextMatches=hits;
+      }
+    }
 
     return {
       ok:true,
       options:items.map(x=>x.text),
-      containerText,
+      containerText:contextText,
+      contextMatches:contextMatches.slice(0,12),
       rects:items.map(x=>x.rect)
     };
   },sourceValues);
 }
-
 function identifySourceFiche(fiches, options, containerText){
   const optionNorms=new Set(options.map(norm));
 
@@ -472,7 +532,10 @@ async function captureStrictQuestionnaire(url, fiches, questionnaire){
       if(!match.ok){
         diagnostics.push(`Tour ${turn+1}: ${match.error}`);
         diagnostics.push(`Propositions: ${state.options.join(' | ')}`);
-        diagnostics.push(`Bloc visible: ${state.containerText.slice(0,800)}`);
+        if(state.contextMatches?.length){
+          diagnostics.push(`Valeurs source visibles: ${state.contextMatches.join(' | ')}`);
+        }
+        diagnostics.push(`Contexte visible: ${state.containerText.slice(0,1000)}`);
         break;
       }
 
