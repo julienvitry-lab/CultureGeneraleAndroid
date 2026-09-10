@@ -1,4 +1,4 @@
-// CGIMPORT009 FIX2 · reprise automatique multi-session + thème complet 1:1
+// CGIMPORT009 FIX3 · multi-session compatible Firebase + thème complet 1:1
 // Règle : Culture Générale ne fabrique ni question, ni détail, ni distracteur.
 // Les 4 propositions sont capturées telles qu'affichées par Quizypedia.
 
@@ -896,7 +896,7 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
     const questions=[];
     const seen=new Set();
 
-    // FIX2 : plusieurs parties indépendantes, chacune dans un contexte navigateur neuf.
+    // FIX3 : plusieurs parties indépendantes, chacune dans une page neuve avec stockage nettoyé.
     const maxSessions=Math.min(10,Math.max(5,Math.ceil(expected/2)));
     let consecutiveNoProgress=0;
     let sessionsUsed=0;
@@ -904,19 +904,29 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
     for(let session=1;session<=maxSessions&&seen.size<expected;session++){
       sessionsUsed=session;
       const seenBefore=seen.size;
-      let context=null;
       let page=null;
+      let cdp=null;
       let sessionEnd='';
 
       try{
-        if(typeof browser.createBrowserContext==='function'){
-          context=await browser.createBrowserContext();
-          page=await context.newPage();
-        }else{
-          // Fallback compatible : nouvelle page + suppression explicite des cookies.
-          page=await browser.newPage();
-          const cookies=await page.cookies().catch(()=>[]);
-          if(cookies.length)await page.deleteCookie(...cookies).catch(()=>{});
+        /*
+         * FIX3 FIREBASE :
+         * ne pas créer de BrowserContext isolé avec Chromium headless-shell.
+         * Chaque session utilise une page neuve dans le contexte par défaut,
+         * puis vide explicitement cookies, cache et stockage de Quizypedia.
+         */
+        page=await browser.newPage();
+        await page.setCacheEnabled(false).catch(()=>{});
+
+        cdp=await page.createCDPSession().catch(()=>null);
+        if(cdp){
+          await cdp.send('Network.enable').catch(()=>{});
+          await cdp.send('Network.clearBrowserCookies').catch(()=>{});
+          await cdp.send('Network.clearBrowserCache').catch(()=>{});
+          await cdp.send('Storage.clearDataForOrigin',{
+            origin:new URL(url).origin,
+            storageTypes:'all'
+          }).catch(()=>{});
         }
 
         await page.setUserAgent(
@@ -1054,8 +1064,8 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
           end:sessionEnd||'session terminée'
         });
 
+        if(cdp)await cdp.detach().catch(()=>{});
         if(page)await page.close().catch(()=>{});
-        if(context)await context.close().catch(()=>{});
 
         if(newCount===0)consecutiveNoProgress++;
         else consecutiveNoProgress=0;
@@ -1165,7 +1175,7 @@ exports.cgimport002Quizypedia=onRequest({
      * Le frontend CGIMPORT009 enchaîne ces appels un par un pour éviter un énorme
      * traitement serveur unique.
      */
-    console.log('CGIMPORT009 FIX2 capture start:',{
+    console.log('CGIMPORT009 FIX3 capture start:',{
       url:parsed.url.toString(),
       questionnaire:parsed.questionnaire
     });
@@ -1191,7 +1201,7 @@ exports.cgimport002Quizypedia=onRequest({
       parsed.pathname
     );
 
-    console.log('CGIMPORT009 FIX2 capture end:',{
+    console.log('CGIMPORT009 FIX3 capture end:',{
       questionnaire:parsed.questionnaire,
       questions:capture.questions.length,
       fiches:fiches.length,
@@ -1223,11 +1233,11 @@ exports.cgimport002Quizypedia=onRequest({
       sessionStats:capture.sessionStats||[]
     });
   }catch(e){
-    console.error('CGIMPORT009 FIX2',e);
+    console.error('CGIMPORT009 FIX3',e);
     return res.status(e.status||500).json({
       ok:false,
       strict:true,
-      error:e.message||'Erreur serveur CGIMPORT009 FIX2.'
+      error:e.message||'Erreur serveur CGIMPORT009 FIX3.'
     });
   }
 });
