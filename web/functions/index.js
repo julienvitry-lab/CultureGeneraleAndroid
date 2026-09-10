@@ -1,4 +1,4 @@
-// CGIMPORT009 FIX3 · multi-session compatible Firebase + thème complet 1:1
+// CGIMPORT009 FIX4 · diagnostic exact des fiches manquantes + multi-session Firebase
 // Règle : Culture Générale ne fabrique ni question, ni détail, ni distracteur.
 // Les 4 propositions sont capturées telles qu'affichées par Quizypedia.
 
@@ -1087,13 +1087,30 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
 
     questions.sort((a,b)=>a.source_number-b.source_number);
 
+    const missingFiches=fiches
+      .filter(f=>!seen.has(Number(f.number)))
+      .map(f=>({
+        number:Number(f.number),
+        total:Number(f.total||expected),
+        name:one(f.name),
+        position:f.position||`(${f.number} / ${f.total||expected})`
+      }))
+      .sort((a,b)=>a.number-b.number);
+
     if(questions.length!==expected){
+      const missingText=missingFiches.length
+        ? missingFiches.map(f=>`${f.name} — n°${f.number}/${f.total}`).join(' ; ')
+        : 'indéterminée';
+
+      diagnostics.unshift(
+        `Fiche(s) source manquante(s) : ${missingText}.`
+      );
       diagnostics.unshift(
         `Capture incomplète après reprise multi-session : ${questions.length}/${expected}.`
       );
     }else if(sessionStats.length>1){
       diagnostics.unshift(
-        `Capture complète ${questions.length}/${expected} en ${sessionStats.length} session(s) indépendante(s).`
+        `Capture complète ${questions.length}/${expected} en ${sessionStats.length} session(s) Firebase-compatibles.`
       );
     }
 
@@ -1101,6 +1118,7 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
       questions,
       complete:questions.length===expected,
       diagnostics,
+      missingFiches,
       sessionsUsed:sessionStats.length,
       sessionStats
     };
@@ -1175,7 +1193,7 @@ exports.cgimport002Quizypedia=onRequest({
      * Le frontend CGIMPORT009 enchaîne ces appels un par un pour éviter un énorme
      * traitement serveur unique.
      */
-    console.log('CGIMPORT009 FIX3 capture start:',{
+    console.log('CGIMPORT009 FIX4 capture start:',{
       url:parsed.url.toString(),
       questionnaire:parsed.questionnaire
     });
@@ -1201,7 +1219,7 @@ exports.cgimport002Quizypedia=onRequest({
       parsed.pathname
     );
 
-    console.log('CGIMPORT009 FIX3 capture end:',{
+    console.log('CGIMPORT009 FIX4 capture end:',{
       questionnaire:parsed.questionnaire,
       questions:capture.questions.length,
       fiches:fiches.length,
@@ -1229,15 +1247,16 @@ exports.cgimport002Quizypedia=onRequest({
       })),
       questions:capture.questions,
       diagnostics:capture.diagnostics,
+      missingFiches:capture.missingFiches||[],
       sessionsUsed:capture.sessionsUsed||1,
       sessionStats:capture.sessionStats||[]
     });
   }catch(e){
-    console.error('CGIMPORT009 FIX3',e);
+    console.error('CGIMPORT009 FIX4',e);
     return res.status(e.status||500).json({
       ok:false,
       strict:true,
-      error:e.message||'Erreur serveur CGIMPORT009 FIX3.'
+      error:e.message||'Erreur serveur CGIMPORT009 FIX4.'
     });
   }
 });
