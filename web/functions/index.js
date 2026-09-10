@@ -1,4 +1,4 @@
-// CGIMPORT009 · découverte automatique des questionnaires d’un thème + capture 1:1 FIX6
+// CGIMPORT009 FIX2 · reprise automatique multi-session + thème complet 1:1
 // Règle : Culture Générale ne fabrique ni question, ni détail, ni distracteur.
 // Les 4 propositions sont capturées telles qu'affichées par Quizypedia.
 
@@ -889,124 +889,210 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
   });
 
   const diagnostics=[];
+  const sessionStats=[];
   try{
-    const page=await browser.newPage();
-    await page.setUserAgent(
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '+
-      '(KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36'
-    );
-    await page.setExtraHTTPHeaders({'Accept-Language':'fr-FR,fr;q=0.9'});
-    await page.goto(url,{waitUntil:'networkidle2',timeout:50000});
-
-    await clickSafeText(page,['Accepter','Tout accepter','J accepte'],{
-      allowStartsWith:false
-    }).catch(()=>{});
-
     const sourceValues=[...allSourceValues(fiches).values()];
     const expected=fiches.length;
     const questions=[];
     const seen=new Set();
-    const maxSessions=5;
+
+    // FIX2 : plusieurs parties indépendantes, chacune dans un contexte navigateur neuf.
+    const maxSessions=Math.min(10,Math.max(5,Math.ceil(expected/2)));
+    let consecutiveNoProgress=0;
+    let sessionsUsed=0;
 
     for(let session=1;session<=maxSessions&&seen.size<expected;session++){
-      if(session>1){
-        // Revenir exactement au questionnaire avant de relancer une partie.
-        await page.goto(url,{waitUntil:'networkidle2',timeout:50000});
-        await sleep(700);
-      }
+      sessionsUsed=session;
+      const seenBefore=seen.size;
+      let context=null;
+      let page=null;
+      let sessionEnd='';
 
-      const started=await startGame(page);
-      if(!started){
-        diagnostics.push(`Session ${session}: bouton Jeu normal / Entraînement introuvable.`);
-        break;
-      }
-
-      let state=null;
-      for(let attempt=0;attempt<18;attempt++){
-        state=await collectOptions(page,sourceValues);
-        if(state.ok)break;
-        await sleep(300);
-      }
-      if(!state||!state.ok){
-        diagnostics.push(`Session ${session}: première question non détectée.`);
-        continue;
-      }
-
-      const maxTurns=Math.max(expected*3,24);
-      for(let turn=1;turn<=maxTurns&&seen.size<expected;turn++){
-        if(!state?.ok){
-          diagnostics.push(`Session ${session}, tour ${turn}: état de question absent.`);
-          break;
+      try{
+        if(typeof browser.createBrowserContext==='function'){
+          context=await browser.createBrowserContext();
+          page=await context.newPage();
+        }else{
+          // Fallback compatible : nouvelle page + suppression explicite des cookies.
+          page=await browser.newPage();
+          const cookies=await page.cookies().catch(()=>[]);
+          if(cookies.length)await page.deleteCookie(...cookies).catch(()=>{});
         }
 
-        const match=identifySourceFiche(fiches,state.options,state.contextText);
-        if(!match.ok){
-          diagnostics.push(`Session ${session}, tour ${turn}: ${match.error}`);
-          diagnostics.push(`Propositions: ${state.options.join(' | ')}`);
-          if(state.contextHits?.length)diagnostics.push(`Valeurs source dans le contexte: ${state.contextHits.slice(0,8).join(' | ')}`);
-          if(state.panelLines?.length)diagnostics.push(`Panneau visible: ${state.panelLines.slice(0,12).join(' | ')}`);
-          if(state.contextText)diagnostics.push(`Contexte: ${state.contextText.slice(0,900)}`);
-          break;
+        await page.setUserAgent(
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '+
+          '(KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36'
+        );
+        await page.setExtraHTTPHeaders({'Accept-Language':'fr-FR,fr;q=0.9'});
+        page.setDefaultNavigationTimeout(50000);
+
+        await page.goto(url,{
+          waitUntil:'networkidle2',
+          timeout:50000
+        });
+
+        await clickSafeText(page,['Accepter','Tout accepter','J accepte'],{
+          allowStartsWith:false
+        }).catch(()=>{});
+
+        const started=await startGame(page);
+        if(!started){
+          sessionEnd='démarrage du jeu introuvable';
+          diagnostics.push(`Session ${session}: bouton Jeu normal / Entraînement introuvable.`);
+          continue;
         }
 
-        if(!seen.has(match.sourceNumber)){
-          if(!state.questionText){
-            diagnostics.push(
-              `Session ${session}, tour ${turn}: panneau Quizypedia trouvé mais intitulé visible de question introuvable.`
-            );
+        let state=null;
+        for(let attempt=0;attempt<18;attempt++){
+          state=await collectOptions(page,sourceValues);
+          if(state.ok)break;
+          await sleep(300);
+        }
+
+        if(!state||!state.ok){
+          sessionEnd='première question non détectée';
+          diagnostics.push(`Session ${session}: première question non détectée.`);
+          continue;
+        }
+
+        const maxTurns=Math.max(expected*3,24);
+
+        for(let turn=1;turn<=maxTurns&&seen.size<expected;turn++){
+          if(!state?.ok){
+            sessionEnd='état de question absent';
+            diagnostics.push(`Session ${session}, tour ${turn}: état de question absent.`);
+            break;
+          }
+
+          const match=identifySourceFiche(fiches,state.options,state.contextText);
+          if(!match.ok){
+            sessionEnd='question non identifiable';
+            diagnostics.push(`Session ${session}, tour ${turn}: ${match.error}`);
+            diagnostics.push(`Propositions: ${state.options.join(' | ')}`);
+            if(state.contextHits?.length){
+              diagnostics.push(
+                `Valeurs source dans le contexte: ${state.contextHits.slice(0,8).join(' | ')}`
+              );
+            }
             if(state.panelLines?.length){
-              diagnostics.push(`Panneau: ${state.panelLines.slice(0,12).join(' | ')}`);
+              diagnostics.push(
+                `Panneau visible: ${state.panelLines.slice(0,12).join(' | ')}`
+              );
             }
             break;
           }
 
-          questions.push({
-            question:state.questionText,
-            detail:state.detailText||'',
-            options:state.options,
-            correct_index:match.correctIndex,
-            correct_text:match.correctText,
-            source_fiche:match.sourceFiche,
-            source_number:match.sourceNumber,
-            answer_label:match.answerLabel,
-            verbatim_panel:true
-          });
-          seen.add(match.sourceNumber);
-        }
+          if(!seen.has(match.sourceNumber)){
+            if(!state.questionText){
+              sessionEnd='intitulé visible introuvable';
+              diagnostics.push(
+                `Session ${session}, tour ${turn}: panneau Quizypedia trouvé mais intitulé visible de question introuvable.`
+              );
+              if(state.panelLines?.length){
+                diagnostics.push(`Panneau: ${state.panelLines.slice(0,12).join(' | ')}`);
+              }
+              break;
+            }
 
-        if(seen.size>=expected)break;
+            questions.push({
+              question:state.questionText,
+              detail:state.detailText||'',
+              options:state.options,
+              correct_index:match.correctIndex,
+              correct_text:match.correctText,
+              source_fiche:match.sourceFiche,
+              source_number:match.sourceNumber,
+              answer_label:match.answerLabel,
+              verbatim_panel:true
+            });
+            seen.add(match.sourceNumber);
+          }
 
-        const clicked=await clickOption(page,match.correctText);
-        if(!clicked){
-          diagnostics.push(
-            `Session ${session}, tour ${turn}: réponse source « ${match.correctText} » non cliquable.`
+          if(seen.size>=expected){
+            sessionEnd='capture complète';
+            break;
+          }
+
+          const clicked=await clickOption(page,match.correctText);
+          if(!clicked){
+            sessionEnd='réponse source non cliquable';
+            diagnostics.push(
+              `Session ${session}, tour ${turn}: réponse source « ${match.correctText} » non cliquable.`
+            );
+            break;
+          }
+
+          const advanced=await advanceSafely(
+            page,sourceValues,state,questionnairePath
           );
-          break;
-        }
 
-        const advanced=await advanceSafely(
-          page,sourceValues,state,questionnairePath
-        );
-        if(!advanced.ok){
-          diagnostics.push(`Session ${session}, tour ${turn}: ${advanced.error}`);
-          break;
-        }
+          if(!advanced.ok){
+            /*
+             * FIX2 : absence de Suivant = FIN DE PARTIE probable.
+             * Ce n'est plus une erreur fatale. On ferme cette session puis on
+             * relance automatiquement une partie totalement neuve en gardant
+             * toutes les fiches déjà capturées dans "seen".
+             */
+            sessionEnd='fin de partie probable';
+            diagnostics.push(
+              `Session ${session}, tour ${turn}: fin de partie probable ; reprise automatique dans une nouvelle session.`
+            );
+            break;
+          }
 
-        state=advanced.state;
+          state=advanced.state;
+        }
+      }catch(e){
+        sessionEnd=`exception: ${e.message}`;
+        diagnostics.push(`Session ${session}: ${e.message}`);
+      }finally{
+        const newCount=seen.size-seenBefore;
+        sessionStats.push({
+          session,
+          newQuestions:newCount,
+          totalSeen:seen.size,
+          end:sessionEnd||'session terminée'
+        });
+
+        if(page)await page.close().catch(()=>{});
+        if(context)await context.close().catch(()=>{});
+
+        if(newCount===0)consecutiveNoProgress++;
+        else consecutiveNoProgress=0;
       }
+
+      if(seen.size>=expected)break;
+
+      // Évite de tourner inutilement si 3 sessions neuves consécutives n'apportent rien.
+      if(consecutiveNoProgress>=3){
+        diagnostics.push(
+          `Arrêt de sécurité après ${consecutiveNoProgress} sessions consécutives sans nouvelle fiche.`
+        );
+        break;
+      }
+
+      // Petit délai avant de relancer une partie indépendante.
+      await sleep(500);
     }
 
     questions.sort((a,b)=>a.source_number-b.source_number);
+
     if(questions.length!==expected){
       diagnostics.unshift(
-        `Capture incomplète après sessions sûres : ${questions.length}/${expected}.`
+        `Capture incomplète après reprise multi-session : ${questions.length}/${expected}.`
+      );
+    }else if(sessionStats.length>1){
+      diagnostics.unshift(
+        `Capture complète ${questions.length}/${expected} en ${sessionStats.length} session(s) indépendante(s).`
       );
     }
 
     return {
       questions,
       complete:questions.length===expected,
-      diagnostics
+      diagnostics,
+      sessionsUsed:sessionStats.length,
+      sessionStats
     };
   }finally{
     await browser.close().catch(()=>{});
@@ -1079,7 +1165,7 @@ exports.cgimport002Quizypedia=onRequest({
      * Le frontend CGIMPORT009 enchaîne ces appels un par un pour éviter un énorme
      * traitement serveur unique.
      */
-    console.log('CGIMPORT009 capture start:',{
+    console.log('CGIMPORT009 FIX2 capture start:',{
       url:parsed.url.toString(),
       questionnaire:parsed.questionnaire
     });
@@ -1105,7 +1191,7 @@ exports.cgimport002Quizypedia=onRequest({
       parsed.pathname
     );
 
-    console.log('CGIMPORT009 capture end:',{
+    console.log('CGIMPORT009 FIX2 capture end:',{
       questionnaire:parsed.questionnaire,
       questions:capture.questions.length,
       fiches:fiches.length,
@@ -1132,14 +1218,16 @@ exports.cgimport002Quizypedia=onRequest({
         fields:f.fields
       })),
       questions:capture.questions,
-      diagnostics:capture.diagnostics
+      diagnostics:capture.diagnostics,
+      sessionsUsed:capture.sessionsUsed||1,
+      sessionStats:capture.sessionStats||[]
     });
   }catch(e){
-    console.error('CGIMPORT009',e);
+    console.error('CGIMPORT009 FIX2',e);
     return res.status(e.status||500).json({
       ok:false,
       strict:true,
-      error:e.message||'Erreur serveur CGIMPORT009.'
+      error:e.message||'Erreur serveur CGIMPORT009 FIX2.'
     });
   }
 });

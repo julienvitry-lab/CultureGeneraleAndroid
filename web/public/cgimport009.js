@@ -1,4 +1,4 @@
-// CGIMPORT009 · import d'un thème Quizypedia complet
+// CGIMPORT009 FIX2 · import thème complet + reprise automatique multi-session
 // URL thème -> découverte des questionnaires -> capture séquentielle 1:1 -> import unique.
 // Le moteur individuel reste strictement verbatim : aucun contenu QCM n'est inventé.
 
@@ -179,7 +179,11 @@ function ensureBatchUi(){
 
 function stateLabel(q){
   if(q.state==='running')return 'Capture…';
-  if(q.state==='ok')return `${q.captured||0}/${q.expected||q.captured||0}`;
+  if(q.state==='ok'){
+    const sessions=Number(q.sessionsUsed||1);
+    return `${q.captured||0}/${q.expected||q.captured||0}`+
+      (sessions>1?` · ${sessions} sessions`:'');
+  }
   if(q.state==='partial')return `${q.captured||0}/${q.expected||'?'}`;
   if(q.state==='error')return 'Erreur';
   return 'À capturer';
@@ -371,7 +375,8 @@ async function captureQuestionnaireItem(item,index,total){
     const data=await apiCall({mode:'capture',url:item.url});
     item.expected=Number(data.fiches?.length||0);
     item.captured=Number(data.questions?.length||0);
-    item.diagnostic=(data.diagnostics||[]).slice(0,2).join(' · ');
+    item.sessionsUsed=Number(data.sessionsUsed||1);
+    item.diagnostic=(data.diagnostics||[]).slice(0,3).join(' · ');
     item.state=data.strictComplete?'ok':'partial';
     item.url=canonicalUrl(data.effectiveUrl||item.url);
     replaceDraftsForQuestionnaire(data,item);
@@ -451,7 +456,7 @@ async function captureDirect(url){
 
     if(strictComplete){
       status(
-        `✅ Capture stricte complète : ${drafts.length}/${data.fiches.length} QCM. `+
+        `✅ Capture stricte complète : ${drafts.length}/${data.fiches.length} QCM en ${Number(data.sessionsUsed||1)} session(s). `+
         `Aucun contenu n’a été inventé. Aucun import n’a encore eu lieu.`,
         'ok'
       );
@@ -496,7 +501,8 @@ async function discoverTheme(url){
       state:'pending',
       expected:0,
       captured:0,
-      diagnostic:''
+      diagnostic:'',
+      sessionsUsed:0
     }));
 
     render();
@@ -629,10 +635,9 @@ function relabelUi(){
   const kicker=panel.querySelector('.cgimp2-kicker');
   const sub=panel.querySelector('.cgimp2-sub');
 
-  if(kicker)kicker.textContent='CGIMPORT009 · THÈME COMPLET · 1:1';
+  if(kicker)kicker.textContent='CGIMPORT009 FIX2 · MULTI-SESSION · 1:1';
   if(sub)sub.textContent=
-    'Collez l’URL d’un thème Quizypedia pour détecter tous ses questionnaires, puis les capturer en lot. '+
-    'Une URL de questionnaire reste compatible. Aucun contenu QCM n’est inventé.';
+    'Collez l’URL d’un thème Quizypedia : chaque questionnaire est capturé en lot et, si une partie se termine avant couverture complète, une nouvelle session est relancée automatiquement. Aucun contenu QCM n’est inventé.';
 
   if($('cgimp2Analyze'))$('cgimp2Analyze').textContent='Analyser l’URL';
   if($('cgimp2Rebuild'))$('cgimp2Rebuild').textContent='Appliquer mégathème/thème';
