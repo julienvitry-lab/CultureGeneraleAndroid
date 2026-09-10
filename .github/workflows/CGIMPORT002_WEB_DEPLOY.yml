@@ -41,12 +41,18 @@ jobs:
           test -f web/functions/index.js
           test -f web/functions/package.json
           test -f web/firebase.json
+          test -f web/storage.rules
+          test -f web/public/cgimage001.js
+          test -f web/public/cgimage001.css
           grep -Fq 'CGIMPORT002' web/public/index.html
           grep -Fq 'cgimport002Quizypedia' web/functions/index.js
           grep -Fq '"/api/quizypedia"' web/firebase.json
+          grep -Fq 'cgimage001.js?v=CGIMAGE001_1' web/public/index.html
+          grep -Fq 'question-images' web/storage.rules
           node --check web/public/cgimport002.js
+          node --check web/public/cgimage001.js
           node --check web/functions/index.js
-          echo "CGIMPORT002 Web : fichiers et syntaxe OK"
+          echo "CGIMPORT002 + CGIMAGE001 : fichiers et syntaxe OK"
 
       - name: Authentification Google Cloud / Firebase
         uses: google-github-actions/auth@v2
@@ -57,14 +63,14 @@ jobs:
         working-directory: web/functions
         run: npm install --omit=dev --no-audit --no-fund
 
-      - name: Déployer Hosting + Function
+      - name: Déployer Hosting + Function + règles Storage
         working-directory: web
         env:
           GOOGLE_CLOUD_PROJECT: culturegeneralesync
         run: |
           set -euo pipefail
           npx --yes firebase-tools@15.28.2 deploy \
-            --only hosting,functions:cgimport002Quizypedia \
+            --only hosting,functions:cgimport002Quizypedia,storage \
             --project culturegeneralesync \
             --non-interactive \
             --force
@@ -78,4 +84,5 @@ jobs:
             "https://culturegeneralesync.web.app/?cgimport002=${STAMP}" \
             -o /tmp/cgimport002-live.html
           grep -Fq 'CGIMPORT002' /tmp/cgimport002-live.html
-          echo "✅ CGIMPORT002 Web est servi par culturegeneralesync.web.app"
+          grep -Fq 'cgimage001.js?v=CGIMAGE001_1' /tmp/cgimport002-live.html
+          echo "✅ CGIMPORT002 + CGIMAGE001 sont servis par culturegeneralesync.web.app"

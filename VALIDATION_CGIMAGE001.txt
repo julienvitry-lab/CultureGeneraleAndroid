@@ -1,0 +1,18 @@
+CGIMAGE001 — VALIDATION DU PACK
+================================
+
+Contrôles effectués avant livraison :
+- web/public/app.js : syntaxe JavaScript OK
+- web/public/cgweb006.js : syntaxe JavaScript OK
+- web/public/cgweb016fix2.js : syntaxe JavaScript OK
+- web/public/cgimage001.js : syntaxe JavaScript OK
+- web/firebase.json : JSON valide
+- index.html : CGIMAGE001 CSS + JS référencés
+- storage.rules : chemin users/<uid>/question-images/... présent
+- app/build.gradle : firebase-storage présent
+- Android : CgImage001Cache.java présent et appelé par MainActivity
+- compatibilité locale : image_file historique conservé
+- chemin Cloud : users/<uid>/question-images/... reconnu
+- workflow : déploiement Storage ajouté
+
+La compilation Android complète sera validée par GitHub Actions.

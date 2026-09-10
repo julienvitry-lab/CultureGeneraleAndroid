@@ -3117,29 +3117,75 @@ final String currentHash =
         LinearLayout.LayoutParams areaLp = new LinearLayout.LayoutParams(-1, 0, 1);
         areaLp.setMargins(0, dp(4), 0, dp(4));
         root.addView(imageArea, areaLp);
+        renderQuestionImage(imageArea, current.imageFile, 18);
+    }
 
-        File f = imageFile(current.imageFile);
+    // CGIMAGE001 : Storage central + cache Android automatique.
+    private void renderQuestionImage(FrameLayout imageArea, String imageName, int messageTextSize) {
+        if (imageArea == null) return;
+        imageArea.removeAllViews();
+
+        File f = imageFile(imageName);
         Bitmap bm = (f != null && f.exists()) ? decode(f) : null;
-        if (bm == null) {
-            TextView missing = tv("Image introuvable : " + current.imageFile, 18, Color.WHITE, Gravity.CENTER, true);
-            setRoundedBackground(missing, RED, 14);
-            FrameLayout.LayoutParams missingLp = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
-            missingLp.setMargins(dp(12), dp(12), dp(12), dp(12));
-            imageArea.addView(missing, missingLp);
+        if (bm != null) {
+            ImageView iv = new ImageView(this);
+            iv.setImageBitmap(bm);
+            iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            iv.setBackgroundColor(Color.BLACK);
+            imageArea.addView(iv, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
             return;
         }
 
-        ImageView iv = new ImageView(this);
-        iv.setImageBitmap(bm);
-        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        iv.setBackgroundColor(Color.BLACK);
-        FrameLayout.LayoutParams ivLp = new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER);
-        imageArea.addView(iv, ivLp);
+        if (CgImage001Cache.isCloudPath(imageName)) {
+            TextView loading = tv("Chargement de l’image…", messageTextSize, Color.WHITE, Gravity.CENTER, true);
+            setRoundedBackground(loading, DARK, 14);
+            FrameLayout.LayoutParams loadingLp = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
+            loadingLp.setMargins(dp(12), dp(12), dp(12), dp(12));
+            imageArea.addView(loading, loadingLp);
+
+            final String storagePath = imageName.trim();
+            CgImage001Cache.ensureCached(this, storagePath, (cached, error) -> runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed() || !imageArea.isAttachedToWindow()) return;
+                imageArea.removeAllViews();
+                Bitmap loaded = (cached != null && cached.exists()) ? decode(cached) : null;
+                if (loaded != null) {
+                    ImageView iv = new ImageView(this);
+                    iv.setImageBitmap(loaded);
+                    iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                    iv.setBackgroundColor(Color.BLACK);
+                    imageArea.addView(iv, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+                } else {
+                    String message = error == null
+                            ? "Image Cloud indisponible"
+                            : "Image Cloud indisponible : " + safe(error.getMessage());
+                    TextView missing = tv(message, messageTextSize, Color.WHITE, Gravity.CENTER, true);
+                    setRoundedBackground(missing, RED, 14);
+                    FrameLayout.LayoutParams missingLp = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
+                    missingLp.setMargins(dp(12), dp(12), dp(12), dp(12));
+                    imageArea.addView(missing, missingLp);
+                }
+            }));
+            return;
+        }
+
+        TextView missing = tv("Image introuvable : " + safe(imageName), messageTextSize, Color.WHITE, Gravity.CENTER, true);
+        setRoundedBackground(missing, RED, 14);
+        FrameLayout.LayoutParams missingLp = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
+        missingLp.setMargins(dp(12), dp(12), dp(12), dp(12));
+        imageArea.addView(missing, missingLp);
     }
 
     private File imageFile(String name) {
         if (name == null || name.trim().length() == 0) return null;
         String n = name.trim();
+
+        // CGIMAGE001 : nouveau contrat Cloud. Le fichier n'est jamais conservé
+        // dans le dossier Images de l'utilisateur ; seule une copie de cache OS est utilisée.
+        if (CgImage001Cache.isCloudPath(n)) {
+            return CgImage001Cache.cachedFile(this, n);
+        }
+
+        // Compatibilité totale avec les images historiques locales.
         File direct = new File(imagesFolder, n);
         if (direct.exists()) return direct;
         String lower = n.toLowerCase(Locale.ROOT);
@@ -3964,23 +4010,7 @@ final String currentHash =
         areaLp.setMargins(0, gap, 0, gap);
         root.addView(imageArea, areaLp);
 
-        File f = imageFile(imageFile);
-        Bitmap bm = (f != null && f.exists()) ? decode(f) : null;
-        if (bm == null) {
-            TextView missing = tv("Image introuvable : " + imageFile, 22, Color.WHITE, Gravity.CENTER, true);
-            setRoundedBackground(missing, RED, 14);
-            FrameLayout.LayoutParams missingLp = new FrameLayout.LayoutParams(-1, -2, Gravity.CENTER);
-            missingLp.setMargins(dp(6), dp(6), dp(6), dp(6));
-            imageArea.addView(missing, missingLp);
-            return;
-        }
-
-        ImageView iv = new ImageView(this);
-        iv.setImageBitmap(bm);
-        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        iv.setBackgroundColor(Color.BLACK);
-        FrameLayout.LayoutParams ivLp = new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER);
-        imageArea.addView(iv, ivLp);
+        renderQuestionImage(imageArea, imageFile, 22);
     }
 
     private List<Question> loadThemeQuestionQuestions(String theme, String question) {

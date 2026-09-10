@@ -168,7 +168,9 @@ window.CGWEB001 = {
     const allowed = [
       "megatheme", "theme", "question", "detail",
       "proposition_a", "proposition_b", "proposition_c", "proposition_d",
-      "correct_index", "url_quizypedia", "url_internet", "image_file",
+      "correct_index", "url_quizypedia", "url_internet", "image_file", "image_thumb_file", "image_source_url", "image_mime",
+      "image_width", "image_height", "image_bytes", "image_sha256",
+      "image_schema", "image_origin", "image_original_name", "image_updated_ms",
       "non_trouve", "is_image"
     ];
     const clean = {};
@@ -459,7 +461,9 @@ window.CGINDEX001_API = {
 const CGSYNC007_EDITABLE_FIELDS = new Set([
   "megatheme", "theme", "question", "detail",
   "proposition_a", "proposition_b", "proposition_c", "proposition_d",
-  "correct_index", "url_quizypedia", "url_internet", "image_file",
+  "correct_index", "url_quizypedia", "url_internet", "image_file", "image_thumb_file", "image_source_url", "image_mime",
+      "image_width", "image_height", "image_bytes", "image_sha256",
+      "image_schema", "image_origin", "image_original_name", "image_updated_ms",
   "non_trouve", "is_image", "status",
   "updated_at", "updated_from", "cloud_schema"
 ]);
@@ -735,7 +739,10 @@ const CGDEDUP001_FIELDS = new Set([
   "megatheme", "theme", "question", "detail",
   "proposition_a", "proposition_b", "proposition_c", "proposition_d",
   "correct_index", "url_quizypedia", "url_internet",
-  "image_file", "non_trouve", "status", "is_image"
+  "image_file", "image_thumb_file", "image_source_url", "image_mime",
+  "image_width", "image_height", "image_bytes", "image_sha256",
+  "image_schema", "image_origin", "image_original_name", "image_updated_ms",
+  "non_trouve", "status", "is_image"
 ]);
 
 function cgdedup001CleanPatch(patch) {

@@ -1,0 +1,37 @@
+/* CGIMAGE001 · images Firebase Storage */
+.cgimg1-row-media{
+  width:min(300px,100%);
+  height:160px;
+  margin:9px 0 8px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  border:1px solid rgba(111,214,255,.24);
+  border-radius:12px;
+  background:#031c30;
+  color:#98b9cc;
+}
+.cgimg1-row-media img{width:100%;height:100%;object-fit:contain;background:#07131d}
+.cgimg1-row-legacy{margin:8px 0;padding:7px 9px;border-radius:9px;background:rgba(245,205,40,.08);color:#e2c86f;font-size:.75rem}
+.cgimg1-error{color:#ff9999}
+.cgimg1-editor{
+  border:1px solid rgba(111,214,255,.25);
+  border-radius:13px;
+  padding:12px;
+  background:rgba(4,29,48,.7);
+}
+.cgimg1-editor-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:8px}
+.cgimg1-editor-head span{font-size:.72rem;color:#7fb9d4}
+.cgimg1-editor-preview{height:210px;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px dashed rgba(255,255,255,.2);border-radius:10px;background:#07131d;color:#a9becb;text-align:center;padding:8px;box-sizing:border-box}
+.cgimg1-editor-preview img{width:100%;height:100%;object-fit:contain}
+.cgimg1-editor-actions{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;margin-top:9px}
+.cgimg1-editor-actions input[type=file]{min-width:0;color:#d9e8f2}
+.cgimg1-editor-state{margin-top:7px;color:#a9dff4;font-size:.78rem}
+.cgimg1-create-label small{color:#93b5c9;font-size:.72rem;font-weight:500}
+.cgimg1-create-label input[type=file]{padding:8px}
+@media(max-width:760px){
+ .cgimg1-editor-actions{grid-template-columns:1fr}
+ .cgimg1-editor-preview{height:180px}
+ .cgimg1-row-media{width:100%;height:180px}
+}

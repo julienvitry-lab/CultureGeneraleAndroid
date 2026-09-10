@@ -22,8 +22,8 @@ android {
         applicationId 'fr.culturegenerale.android'
         minSdk 23
         targetSdk 35
-        versionCode 961
-        versionName '9.6.1-cgimport002'
+        versionCode 962
+        versionName '9.6.2-cgimage001'
     }
 
     signingConfigs {
@@ -51,4 +51,5 @@ dependencies {
     implementation platform('com.google.firebase:firebase-bom:34.16.0')
     implementation 'com.google.firebase:firebase-firestore'
     implementation 'com.google.firebase:firebase-auth'
+    implementation 'com.google.firebase:firebase-storage'
 }

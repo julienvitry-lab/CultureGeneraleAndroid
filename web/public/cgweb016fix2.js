@@ -124,6 +124,11 @@
                 <input id="cg16CreateStatus">
               </label>
 
+              <label class="cg16-wide cgimg1-create-label">Image de la question
+                <input id="cg16CreateImage" type="file" accept="image/*">
+                <small>Firebase Storage sera la source officielle ; Android conservera uniquement un cache automatique.</small>
+              </label>
+
               <div class="cg16-create-actions cg16-wide">
                 <span id="cg16CreateState" class="cg16-create-state"></span>
                 <button id="cg16CreateReset" type="button" class="cg16-btn cg16-secondary">Réinitialiser</button>
@@ -314,6 +319,7 @@
     ]) {
       if ($(id)) $(id).value = "";
     }
+    if ($("cg16CreateImage")) $("cg16CreateImage").value = "";
     if ($("cg16CreateState")) $("cg16CreateState").textContent = "";
   }
 
@@ -350,14 +356,31 @@
       proposition_c: $("cg16CreateC").value,
       proposition_d: $("cg16CreateD").value,
       correct_index: rawCorrect === "" ? null : Number(rawCorrect),
-      status: $("cg16CreateStatus").value.trim()
+      status: $("cg16CreateStatus").value.trim(),
+      image_file: "",
+      is_image: 0
     };
+    const selectedImage = $("cg16CreateImage")?.files?.[0] || null;
 
     button.disabled = true;
     state.textContent = "Création…";
     try {
       const id = await api.create(payload);
-      state.textContent = `✅ Question ${id} créée.`;
+      let imageMessage = "";
+      if (selectedImage) {
+        if (!window.CGIMAGE001?.uploadForQuestion) {
+          imageMessage = " · ⚠ image non envoyée (CGIMAGE001 indisponible)";
+        } else {
+          state.textContent = `Question ${id} créée · envoi de l’image…`;
+          try {
+            await window.CGIMAGE001.uploadForQuestion(id, selectedImage, {expectedRevision: 1, sourceOrigin: "manual_create"});
+            imageMessage = " · image enregistrée";
+          } catch (imageError) {
+            imageMessage = ` · ⚠ image non enregistrée : ${imageError?.message || imageError}`;
+          }
+        }
+      }
+      state.textContent = `✅ Question ${id} créée${imageMessage}.`;
       if (typeof window.CGWEB006_reload === "function") {
         await window.CGWEB006_reload(true);
       }
@@ -367,7 +390,7 @@
       resetCreateForm({ preserveClassification: false });
       $("cg16CreateMega").value = mega;
       $("cg16CreateTheme").value = theme;
-      $("cg16CreateState").textContent = `✅ Question ${id} créée.`;
+      $("cg16CreateState").textContent = `✅ Question ${id} créée${imageMessage}.`;
     } catch (error) {
       state.textContent = "❌ " + (error?.message || String(error));
     } finally {
