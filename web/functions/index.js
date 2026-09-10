@@ -1,4 +1,4 @@
-// CGIMPORT008 FIX5 · appel direct Cloud Function + CORS, sans timeout Firebase Hosting 60 s
+// CGIMPORT008 FIX6 · panneau Quizypedia verbatim + appel direct Cloud Function
 // Règle : Culture Générale ne fabrique ni question, ni détail, ni distracteur.
 // Les 4 propositions sont capturées telles qu'affichées par Quizypedia.
 
@@ -271,20 +271,27 @@ async function collectOptions(page,sourceValues){
   return page.evaluate((sourceValues)=>{
     const n=s=>String(s??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
       .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
-    const plain=s=>String(s??'').trim().replace(/\s+/g,' ');
+    const plain=s=>String(s??'').trim().replace(/[ \t]+/g,' ').replace(/\r/g,'');
+    const oneLine=s=>plain(s).replace(/\n+/g,' ').replace(/\s+/g,' ').trim();
     const known=new Map(sourceValues.map(v=>[n(v),v]).filter(([k])=>k));
+    const pathParts=decodeURIComponent(location.pathname).split('/').filter(Boolean);
+    const questionnaireFromUrl=pathParts.length>=3 ? pathParts.slice(2).join(' / ') : '';
+    const questionnaireNorm=n(questionnaireFromUrl);
+
     const selectors=[
       'button','a','[role="button"]','input[type="button"]','input[type="submit"]',
       '[onclick]','label','[tabindex]','[class*="answer"]','[class*="response"]',
       '[class*="choice"]','[class*="proposition"]','[class*="option"]'
     ].join(',');
+
     const visible=el=>{
       if(!el||!el.getBoundingClientRect)return false;
       const r=el.getBoundingClientRect(),cs=getComputedStyle(el);
       return r.width>20&&r.height>14&&cs.display!=='none'&&
         cs.visibility!=='hidden'&&Number(cs.opacity||1)>0.05;
     };
-    const score=el=>{
+
+    const scoreOption=el=>{
       const tag=el.tagName.toLowerCase(),cs=getComputedStyle(el),r=el.getBoundingClientRect();
       let s=0;
       if(tag==='button')s+=40;
@@ -301,10 +308,10 @@ async function collectOptions(page,sourceValues){
     const found=[];
     for(const el of document.querySelectorAll(selectors)){
       if(!visible(el))continue;
-      const raw=plain(el.value||el.innerText||el.textContent||'');
+      const raw=oneLine(el.value||el.innerText||el.textContent||'');
       const k=n(raw);
       if(!known.has(k))continue;
-      found.push({el,text:known.get(k),norm:k,score:score(el)});
+      found.push({el,text:known.get(k),norm:k,score:scoreOption(el)});
     }
 
     const best=new Map();
@@ -312,8 +319,10 @@ async function collectOptions(page,sourceValues){
       const prev=best.get(item.norm);
       if(!prev||item.score>prev.score)best.set(item.norm,item);
     }
+
     let items=[...best.values()].sort((a,b)=>b.score-a.score);
     if(items.length>4)items=items.slice(0,4);
+
     if(items.length!==4){
       return {
         ok:false,
@@ -322,21 +331,16 @@ async function collectOptions(page,sourceValues){
         url:location.href,
         clickable:[...document.querySelectorAll('button,a,[role="button"]')]
           .filter(visible)
-          .map(el=>plain(el.innerText||el.textContent||el.getAttribute('aria-label')||''))
+          .map(el=>oneLine(el.innerText||el.textContent||el.getAttribute('aria-label')||''))
           .filter(Boolean).slice(0,30)
       };
     }
 
     const optionNorms=new Set(items.map(x=>x.norm));
+    const options=items.map(x=>x.text);
     const clueEntries=[...known.entries()]
       .filter(([k])=>k.length>=4&&!optionNorms.has(k))
       .sort((a,b)=>b[0].length-a[0].length);
-
-    let common=items[0].el;
-    while(common&&common!==document.body&&!items.every(x=>common.contains(x.el))){
-      common=common.parentElement;
-    }
-    if(!common)common=document.body;
 
     const hitList=text=>{
       const nt=n(text);
@@ -346,82 +350,253 @@ async function collectOptions(page,sourceValues){
         if(seen.has(k)||!nt.includes(k))continue;
         seen.add(k);
         hits.push({norm:k,text:original,length:k.length});
-        if(hits.length>=24)break;
+        if(hits.length>=30)break;
       }
       return hits;
     };
 
-    /* FIX4 : on remonte depuis le bloc A/B/C/D jusqu'au PLUS PETIT ancêtre
-       qui contient au moins une valeur source supplémentaire (description,
-       particularité, nom, etc.). On ne s'arrête donc plus au simple wrapper
-       des quatre réponses. */
-    let contextEl=null,contextText='',contextHits=[];
-    let node=common;
-    for(let depth=0;node&&depth<10;depth++,node=node.parentElement){
-      if(node===document.documentElement)break;
-      const text=plain(node.innerText||'');
-      if(!text)continue;
-      const hits=hitList(text);
-      if(hits.length){
-        contextEl=node;
-        contextText=text;
-        contextHits=hits;
-        break;
+    const optionRects=items.map(x=>x.el.getBoundingClientRect());
+    const left=Math.min(...optionRects.map(r=>r.left));
+    const right=Math.max(...optionRects.map(r=>r.right));
+    const top=Math.min(...optionRects.map(r=>r.top));
+    const answerWidth=Math.max(1,right-left);
+
+    /*
+     * FIX6 : trouver le PANNEAU DE QUESTION, pas seulement le wrapper A/B/C/D.
+     *
+     * On cherche un bloc visible situé au-dessus des quatre propositions,
+     * horizontalement aligné avec elles, contenant :
+     * - au moins une valeur source de la fiche ;
+     * - et idéalement le véritable intitulé visible de la question.
+     *
+     * Le score favorise :
+     * - plusieurs indices source ;
+     * - un texte avec "?" ;
+     * - l'intitulé du questionnaire s'il est réellement visible ;
+     * - la proximité immédiate au-dessus des réponses.
+     */
+    const blockSelectors='article,section,fieldset,form,div,main,[role="group"],[class*="question"],[class*="quiz"]';
+    const panelCandidates=[];
+
+    const candidateQuestionScore=(el,text)=>{
+      const nt=n(text);
+      const descendants=[el,...el.querySelectorAll('h1,h2,h3,h4,h5,h6,p,div,span,strong,b')];
+      let bestQ={text:'',score:-1};
+
+      for(const node of descendants){
+        if(!visible(node))continue;
+        const raw=oneLine(node.innerText||node.textContent||'');
+        if(raw.length<4||raw.length>260)continue;
+
+        const nk=n(raw);
+        if(!nk||optionNorms.has(nk))continue;
+        if(options.some(v=>nk===n(v)))continue;
+
+        const cs=getComputedStyle(node);
+        const size=parseFloat(cs.fontSize)||0;
+        const weight=parseInt(cs.fontWeight,10)||400;
+        const tag=node.tagName.toLowerCase();
+
+        let score=0;
+        if(/[?？]/.test(raw))score+=1200;
+        if(questionnaireNorm&&nk===questionnaireNorm)score+=1000;
+        else if(questionnaireNorm&&nk.includes(questionnaireNorm)&&questionnaireNorm.length>=8)score+=650;
+        if(/^h[1-6]$/.test(tag))score+=260;
+        if(weight>=600)score+=130;
+        score+=Math.min(size,40)*4;
+        if(raw.length<=140)score+=80;
+        if(hitList(raw).length)score-=220;
+
+        if(score>bestQ.score)bestQ={text:raw,score};
       }
+
+      return bestQ;
+    };
+
+    for(const el of document.querySelectorAll(blockSelectors)){
+      if(!visible(el)||el===document.body||el===document.documentElement)continue;
+      if(items.some(x=>el===x.el||el.contains(x.el)))continue;
+
+      const r=el.getBoundingClientRect();
+      if(r.top>=top+30||r.bottom>top+45)continue;
+
+      const overlap=Math.max(0,Math.min(r.right,right)-Math.max(r.left,left));
+      const overlapRatio=overlap/Math.max(1,Math.min(r.width,answerWidth));
+      if(overlapRatio<0.35)continue;
+
+      const distance=Math.max(0,top-r.bottom);
+      if(distance>760)continue;
+
+      const rawText=plain(el.innerText||'');
+      const flat=oneLine(rawText);
+      if(flat.length<8||flat.length>4200)continue;
+
+      const hits=hitList(flat);
+      if(!hits.length)continue;
+
+      const q=candidateQuestionScore(el,flat);
+      const hitScore=hits.reduce((sum,h)=>sum+Math.min(h.length,220),0);
+      let score=
+        hits.length*320+
+        hitScore+
+        Math.max(0,q.score)+
+        Math.max(0,320-distance);
+
+      // Éviter un immense conteneur de page lorsqu'un panneau plus précis existe.
+      score-=Math.min((r.width*r.height)/6000,260);
+
+      panelCandidates.push({
+        el,
+        rawText,
+        flat,
+        hits,
+        question:q.text,
+        questionScore:q.score,
+        distance,
+        score,
+        area:r.width*r.height
+      });
     }
 
-    /* Fallback géométrique : si la structure DOM sépare l'énoncé et les
-       réponses en deux branches, on récupère les valeurs source visibles
-       autour du bloc de réponses, surtout juste au-dessus. */
-    if(!contextHits.length){
-      const rects=items.map(x=>x.el.getBoundingClientRect());
-      const left=Math.min(...rects.map(r=>r.left));
-      const right=Math.max(...rects.map(r=>r.right));
-      const top=Math.min(...rects.map(r=>r.top));
-      const bottom=Math.max(...rects.map(r=>r.bottom));
-      const nearby=[];
-      const candidates=document.querySelectorAll(
-        'main,article,section,div,p,h1,h2,h3,h4,h5,strong,span,li'
-      );
-      for(const el of candidates){
-        if(!visible(el))continue;
-        if(items.some(x=>el===x.el||el.contains(x.el)))continue;
-        const r=el.getBoundingClientRect();
-        const horizontal=r.right>=left-120&&r.left<=right+120;
-        const vertical=r.bottom>=top-650&&r.top<=bottom+180;
-        if(!horizontal||!vertical)continue;
-        const text=plain(el.innerText||'');
-        if(!text||text.length>1800)continue;
-        const hits=hitList(text);
+    panelCandidates.sort((a,b)=>
+      b.score-a.score ||
+      b.hits.length-a.hits.length ||
+      a.distance-b.distance ||
+      a.area-b.area
+    );
+
+    let panel=panelCandidates[0]||null;
+
+    /*
+     * Fallback : si le panneau est structurellement lié aux réponses dans un
+     * même parent, remonter depuis leur ancêtre commun et conserver le premier
+     * bloc contenant plusieurs valeurs source. Ce fallback sert uniquement au
+     * contexte ; le mode verbatim reste signalé comme dégradé si aucun intitulé
+     * de question n'est extrait.
+     */
+    let common=items[0].el;
+    while(common&&common!==document.body&&!items.every(x=>common.contains(x.el))){
+      common=common.parentElement;
+    }
+    if(!common)common=document.body;
+
+    if(!panel){
+      let node=common;
+      for(let depth=0;node&&depth<10;depth++,node=node.parentElement){
+        if(node===document.documentElement)break;
+        const rawText=plain(node.innerText||'');
+        const flat=oneLine(rawText);
+        const hits=hitList(flat);
         if(!hits.length)continue;
-        const distance=r.bottom<=top ? top-r.bottom : Math.max(0,r.top-bottom);
-        nearby.push({text,hits,distance,area:r.width*r.height});
-      }
-      nearby.sort((a,b)=>a.distance-b.distance||a.area-b.area||b.hits[0].length-a.hits[0].length);
-      if(nearby.length){
-        contextText=plain(`${nearby[0].text} ${(common.innerText||'')}`);
-        contextHits=hitList(contextText);
+        const q=candidateQuestionScore(node,flat);
+        panel={
+          el:node,rawText,flat,hits,
+          question:q.text,questionScore:q.score,
+          distance:0,score:0,area:0
+        };
+        if(hits.length>=2||q.text)break;
       }
     }
 
-    /* Dernier fallback contrôlé : texte visible du contenu principal.
-       Les menus restent possibles dans ce texte, mais identifySourceFiche()
-       privilégie les valeurs source longues et discriminantes. */
+    let panelRaw=panel?.rawText||'';
+    let panelText=panel?.flat||'';
+    let panelHits=panel?.hits||[];
+    let questionText=panel?.question||'';
+
+    /*
+     * Reconstituer les lignes visibles du panneau.
+     * innerText conserve les ruptures visuelles de Quizypedia.
+     */
+    let lines=String(panelRaw||'')
+      .replace(/\u00a0|\u202f/g,' ')
+      .replace(/\r/g,'\n')
+      .split(/\n+/)
+      .map(s=>s.replace(/[ \t]+/g,' ').trim())
+      .filter(Boolean);
+
+    // Si le candidat DOM de question n'a pas été trouvé, chercher une ligne.
+    if(!questionText){
+      const withQuestionMark=lines.find(line=>/[?？]/.test(line));
+      if(withQuestionMark)questionText=withQuestionMark;
+      else if(questionnaireNorm){
+        const same=lines.find(line=>n(line)===questionnaireNorm);
+        if(same)questionText=same;
+      }
+    }
+
+    const qNorm=n(questionText);
+    let qIndex=qNorm ? lines.findIndex(line=>n(line)===qNorm) : -1;
+
+    /*
+     * Ne garder dans "detail" que ce qui est VISUELLEMENT après la question
+     * dans le panneau. Les titres placés avant la question (ex. nom du thème)
+     * sont exclus.
+     */
+    let detailLines=qIndex>=0 ? lines.slice(qIndex+1) : [];
+
+    // Supprimer d'éventuels compteurs et toute proposition A/B/C/D si un
+    // conteneur de fallback les a incluses.
+    detailLines=detailLines.filter(line=>{
+      const k=n(line);
+      if(!k)return false;
+      if(/^[\(\[]?\s*\d+\s*\/\s*\d+\s*[\)\]]?$/.test(line))return false;
+      if(optionNorms.has(k))return false;
+      if(/^[abcd]\s*[.:\-]\s*/i.test(line)){
+        const tail=n(line.replace(/^[abcd]\s*[.:\-]\s*/i,''));
+        if(optionNorms.has(tail))return false;
+      }
+      return true;
+    });
+
+    /*
+     * Quizypedia peut rendre un libellé et sa valeur sur deux lignes
+     * ("Particularités :" puis le texte). On les rassemble sans changer les
+     * mots ni la ponctuation source.
+     */
+    const merged=[];
+    for(let i=0;i<detailLines.length;i++){
+      const line=detailLines[i];
+      if(/:\s*$/.test(line)&&i+1<detailLines.length){
+        merged.push(`${line} ${detailLines[++i]}`.trim());
+      }else{
+        merged.push(line);
+      }
+    }
+
+    const detailText=merged.join('\n').trim();
+
+    /*
+     * Contexte d'identification : panneau complet s'il existe, sinon fallback
+     * historique. L'identification de la bonne fiche reste indépendante de
+     * l'extraction verbatim question/detail.
+     */
+    let contextText=panelText;
+    let contextHits=panelHits;
+
     if(!contextHits.length){
       const main=document.querySelector('main,[role="main"],#main,.main,.content')||document.body;
-      contextText=plain(main.innerText||document.body.innerText||'');
+      contextText=oneLine(main.innerText||document.body.innerText||'');
       contextHits=hitList(contextText);
     }
 
-    const options=items.map(x=>x.text);
-    const contextNorm=n(contextText);
+    const signature=
+      options.map(n).join('|')+'||'+
+      n(questionText)+'||'+
+      n(detailText).slice(0,1800);
+
     return {
       ok:true,
       options,
+      questionText,
+      detailText,
+      panelText,
+      panelLines:lines.slice(0,30),
+      panelHits:panelHits.map(h=>h.text),
+      verbatimPanel:Boolean(questionText),
       contextText,
       contextHits:contextHits.map(h=>h.text),
       url:location.href,
-      signature:options.map(n).join('|')+'||'+contextNorm.slice(0,1800)
+      signature
     };
   },sourceValues);
 }
@@ -678,20 +853,32 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
           diagnostics.push(`Session ${session}, tour ${turn}: ${match.error}`);
           diagnostics.push(`Propositions: ${state.options.join(' | ')}`);
           if(state.contextHits?.length)diagnostics.push(`Valeurs source dans le contexte: ${state.contextHits.slice(0,8).join(' | ')}`);
+          if(state.panelLines?.length)diagnostics.push(`Panneau visible: ${state.panelLines.slice(0,12).join(' | ')}`);
           if(state.contextText)diagnostics.push(`Contexte: ${state.contextText.slice(0,900)}`);
           break;
         }
 
         if(!seen.has(match.sourceNumber)){
+          if(!state.questionText){
+            diagnostics.push(
+              `Session ${session}, tour ${turn}: panneau Quizypedia trouvé mais intitulé visible de question introuvable.`
+            );
+            if(state.panelLines?.length){
+              diagnostics.push(`Panneau: ${state.panelLines.slice(0,12).join(' | ')}`);
+            }
+            break;
+          }
+
           questions.push({
-            question:questionnaire,
-            detail:match.detail,
+            question:state.questionText,
+            detail:state.detailText||'',
             options:state.options,
             correct_index:match.correctIndex,
             correct_text:match.correctText,
             source_fiche:match.sourceFiche,
             source_number:match.sourceNumber,
-            answer_label:match.answerLabel
+            answer_label:match.answerLabel,
+            verbatim_panel:true
           });
           seen.add(match.sourceNumber);
         }
@@ -781,7 +968,7 @@ exports.cgimport002Quizypedia=onRequest({
 
     const captureStartedAt=Date.now();
     console.log(
-      `CGIMPORT008 FIX5 capture start: ${fiches.length} fiche(s), questionnaire=${parsed.questionnaire}`
+      `CGIMPORT008 FIX6 capture start: ${fiches.length} fiche(s), questionnaire=${parsed.questionnaire}`
     );
 
     const capture=await captureStrictQuestionnaire(
@@ -792,7 +979,7 @@ exports.cgimport002Quizypedia=onRequest({
     );
 
     console.log(
-      `CGIMPORT008 FIX5 capture end: ${capture.questions.length}/${fiches.length} en `+
+      `CGIMPORT008 FIX6 capture end: ${capture.questions.length}/${fiches.length} en `+
       `${Math.round((Date.now()-captureStartedAt)/1000)} s`
     );
 
@@ -816,11 +1003,11 @@ exports.cgimport002Quizypedia=onRequest({
       diagnostics:capture.diagnostics
     });
   }catch(e){
-    console.error('CGIMPORT008 FIX5',e);
+    console.error('CGIMPORT008 FIX6',e);
     return res.status(e.status||500).json({
       ok:false,
       strict:true,
-      error:e.message||'Erreur serveur CGIMPORT008 FIX5.'
+      error:e.message||'Erreur serveur CGIMPORT008 FIX6.'
     });
   }
 });

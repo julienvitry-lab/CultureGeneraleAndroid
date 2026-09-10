@@ -1,4 +1,4 @@
-// CGIMPORT008 FIX5 · appel direct Cloud Function, contournement du proxy Hosting 60 s
+// CGIMPORT008 FIX6 · panneau Quizypedia verbatim + appel direct Cloud Function
 
 const $=id=>document.getElementById(id);
 const CGIMPORT008_CAPTURE_ENDPOINT =
@@ -309,9 +309,9 @@ function relabelUi(){
   if(!panel)return;
   const kicker=panel.querySelector('.cgimp2-kicker');
   const sub=panel.querySelector('.cgimp2-sub');
-  if(kicker)kicker.textContent='CGIMPORT008 FIX5 · 1:1';
+  if(kicker)kicker.textContent='CGIMPORT008 FIX6 · 1:1';
   if(sub)sub.textContent=
-    'Capture 1:1 via la Cloud Function directe : pas de limite Firebase Hosting à 60 s ; question, détail et A/B/C/D restent issus de Quizypedia.';
+    'Capture verbatim du panneau Quizypedia : question visible, tous les indices du panneau et A/B/C/D sont repris sans reformulation.';
 
   if($('cgimp2Analyze'))$('cgimp2Analyze').textContent='Capturer le questionnaire';
   if($('cgimp2Rebuild'))$('cgimp2Rebuild').textContent='Appliquer mégathème/thème';
