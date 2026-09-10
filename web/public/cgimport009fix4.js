@@ -1,32 +1,3 @@
-// CGWEB016 FIX1 · bootstrap forcé depuis le frontend CGIMPORT009 FIX4 déjà chargé.
-// Cette activation ne dépend plus d'une modification de index.html.
-(() => {
-  const VERSION = "CGWEB016_FIX1_20260910";
-
-  if (!document.querySelector('link[data-cgweb016-fix1]')) {
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = `./cgweb016fix1.css?v=${VERSION}`;
-    link.dataset.cgweb016Fix1 = VERSION;
-    document.head.appendChild(link);
-  }
-
-  if (!window.__CGWEB016_FIX1_LOADING__) {
-    window.__CGWEB016_FIX1_LOADING__ = true;
-    import(`./cgweb016fix1.js?v=${VERSION}`)
-      .then(() => {
-        window.__CGWEB016_FIX1_ACTIVE__ = true;
-        document.documentElement.dataset.cgweb016 = "FIX1";
-        console.info("CGWEB016 FIX1 actif");
-      })
-      .catch((error) => {
-        window.__CGWEB016_FIX1_LOADING__ = false;
-        console.error("CGWEB016 FIX1 : chargement impossible", error);
-      });
-  }
-})();
-
-
 // CGIMPORT009 FIX4 · diagnostic exact des fiches manquantes + hard cache bust
 // URL thème -> découverte des questionnaires -> capture séquentielle 1:1 -> import unique.
 // Le moteur individuel reste strictement verbatim : aucun contenu QCM n'est inventé.
