@@ -1,4 +1,4 @@
-// CGIMPORT008 FIX6 · panneau Quizypedia verbatim + appel direct Cloud Function
+// CGIMPORT009 · découverte automatique des questionnaires d’un thème + capture 1:1 FIX6
 // Règle : Culture Générale ne fabrique ni question, ni détail, ni distracteur.
 // Les 4 propositions sont capturées telles qu'affichées par Quizypedia.
 
@@ -195,7 +195,7 @@ function parseFields(lines,labels){
   return dedup;
 }
 
-function parseQuestionnaireUrl(raw){
+function parseQuizypediaUrl(raw){
   let u;
   try{u=new URL(raw);}catch{
     throw Object.assign(new Error('URL invalide.'),{status:400});
@@ -203,19 +203,110 @@ function parseQuestionnaireUrl(raw){
   if(!/(^|\.)quizypedia\.fr$/i.test(u.hostname)){
     throw Object.assign(new Error('Seules les URL quizypedia.fr sont acceptées.'),{status:400});
   }
+
   const parts=decodeURIComponent(u.pathname).split('/').filter(Boolean);
-  if(parts.length<3||norm(parts[0])!=='quiz'){
+  if(parts.length<2||norm(parts[0])!=='quiz'){
     throw Object.assign(new Error(
-      'CGIMPORT008 exige l’URL complète /quiz/<thème>/<questionnaire>/'
+      'URL Quizypedia attendue : /quiz/<thème>/ ou /quiz/<thème>/<questionnaire>/'
     ),{status:400});
   }
+
+  const theme=one(parts[1]);
+  const kind=parts.length>=3?'questionnaire':'theme';
+
   return {
     url:u,
-    theme:one(parts[1]),
-    questionnaire:one(parts.slice(2).join(' / ')),
+    kind,
+    theme,
+    questionnaire:kind==='questionnaire'?one(parts.slice(2).join(' / ')):'',
     pathname:u.pathname.replace(/\/+$/,'')+'/'
   };
 }
+
+function fetchHeaders(){
+  return {
+    'user-agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '+
+      'Chrome/149.0 Safari/537.36',
+    'accept-language':'fr-FR,fr;q=0.9'
+  };
+}
+
+async function fetchQuizypedia(url){
+  const response=await fetch(url,{
+    redirect:'follow',
+    headers:fetchHeaders()
+  });
+  if(!response.ok)throw new Error(`Quizypedia HTTP ${response.status}`);
+  return {
+    response,
+    html:await response.text()
+  };
+}
+
+function discoverQuestionnairesFromTheme(html,effectiveUrl,theme){
+  const $=cheerio.load(html);
+  const themeKey=norm(theme);
+  const found=[];
+  const seen=new Set();
+
+  const pushCandidate=(rawHref,label='')=>{
+    rawHref=one(rawHref);
+    if(!rawHref)return;
+
+    let u;
+    try{u=new URL(rawHref,effectiveUrl);}catch{return;}
+    if(!/(^|\.)quizypedia\.fr$/i.test(u.hostname))return;
+
+    let parts;
+    try{
+      parts=decodeURIComponent(u.pathname).split('/').filter(Boolean);
+    }catch{
+      return;
+    }
+
+    if(parts.length<3||norm(parts[0])!=='quiz'||norm(parts[1])!==themeKey)return;
+
+    const title=one(parts.slice(2).join(' / '));
+    if(!title)return;
+
+    const canonicalPath='/'+parts.map(p=>encodeURIComponent(p).replace(/%2F/gi,'%252F')).join('/')+'/';
+    const canonical=new URL(canonicalPath,u.origin).toString();
+    const key=norm(title)+'|'+canonical.toLowerCase();
+    if(seen.has(key))return;
+    seen.add(key);
+
+    const visibleLabel=one(label);
+    found.push({
+      title,
+      label:visibleLabel&&norm(visibleLabel)!==norm(theme)?visibleLabel:title,
+      url:canonical
+    });
+  };
+
+  $('a[href],form[action],[data-href],[data-url]').each((_,el)=>{
+    const node=$(el);
+    const href=
+      node.attr('href')||
+      node.attr('action')||
+      node.attr('data-href')||
+      node.attr('data-url')||
+      '';
+    pushCandidate(href,node.text());
+  });
+
+  // Fallback : certaines pages peuvent injecter des URL dans des attributs ou scripts.
+  if(!found.length){
+    const re=/["']([^"']*\/quiz\/[^"']+)["']/g;
+    let m;
+    while((m=re.exec(html))!==null){
+      pushCandidate(m[1],'');
+    }
+  }
+
+  return found;
+}
+
 async function requireUser(req){
   const h=String(req.headers.authorization||'');
   if(!h.startsWith('Bearer ')){
@@ -932,6 +1023,7 @@ exports.cgimport002Quizypedia=onRequest({
     'https://culturegeneralesync.firebaseapp.com'
   ]
 },async(req,res)=>{
+  const startedAt=Date.now();
   try{
     if(req.method!=='POST'){
       return res.status(405).json({ok:false,error:'Méthode non autorisée.'});
@@ -939,20 +1031,60 @@ exports.cgimport002Quizypedia=onRequest({
     await requireUser(req);
 
     const raw=one(req.body?.url);
-    const parsed=parseQuestionnaireUrl(raw);
+    const mode=one(req.body?.mode||'auto').toLowerCase();
+    const parsed=parseQuizypediaUrl(raw);
 
-    const response=await fetch(parsed.url.toString(),{
-      redirect:'follow',
-      headers:{
-        'user-agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '+
-          'Chrome/149.0 Safari/537.36',
-        'accept-language':'fr-FR,fr;q=0.9'
-      }
+    /*
+     * CGIMPORT009 DISCOVERY
+     * Une URL de thème ne lance pas Chromium. On lit seulement la page du thème
+     * et on renvoie les questionnaires appartenant exactement à ce thème.
+     */
+    if(mode==='discover'||parsed.kind==='theme'){
+      const {response,html}=await fetchQuizypedia(parsed.url.toString());
+      const effectiveParsed=parseQuizypediaUrl(response.url);
+
+      const questionnaires=discoverQuestionnairesFromTheme(
+        html,
+        response.url,
+        effectiveParsed.theme||parsed.theme
+      );
+
+      console.log('CGIMPORT009 discover:',{
+        theme:effectiveParsed.theme||parsed.theme,
+        count:questionnaires.length,
+        ms:Date.now()-startedAt
+      });
+
+      return res.json({
+        ok:true,
+        mode:'discover',
+        kind:'theme',
+        requestedUrl:raw,
+        effectiveUrl:response.url,
+        theme:effectiveParsed.theme||parsed.theme,
+        questionnaires,
+        count:questionnaires.length
+      });
+    }
+
+    if(parsed.kind!=='questionnaire'){
+      throw Object.assign(new Error(
+        'Une URL de questionnaire est requise pour la capture individuelle.'
+      ),{status:400});
+    }
+
+    /*
+     * CAPTURE INDIVIDUELLE
+     * Le moteur FIX6 reste inchangé : chaque appel ne traite qu'un questionnaire.
+     * Le frontend CGIMPORT009 enchaîne ces appels un par un pour éviter un énorme
+     * traitement serveur unique.
+     */
+    console.log('CGIMPORT009 capture start:',{
+      url:parsed.url.toString(),
+      questionnaire:parsed.questionnaire
     });
-    if(!response.ok)throw new Error(`Quizypedia HTTP ${response.status}`);
 
-    const html=await response.text();
+    const {response,html}=await fetchQuizypedia(parsed.url.toString());
     const lines=linesFromHtml(html);
     const labels=dynamicLabels(html);
     const fiches=rawFiches(lines);
@@ -962,14 +1094,9 @@ exports.cgimport002Quizypedia=onRequest({
 
     if(fiches.length<4){
       throw new Error(
-        `CGIMPORT008 strict : seulement ${fiches.length} fiche(s) source détectée(s).`
+        `CGIMPORT009 strict : seulement ${fiches.length} fiche(s) source détectée(s).`
       );
     }
-
-    const captureStartedAt=Date.now();
-    console.log(
-      `CGIMPORT008 FIX6 capture start: ${fiches.length} fiche(s), questionnaire=${parsed.questionnaire}`
-    );
 
     const capture=await captureStrictQuestionnaire(
       response.url,
@@ -978,13 +1105,18 @@ exports.cgimport002Quizypedia=onRequest({
       parsed.pathname
     );
 
-    console.log(
-      `CGIMPORT008 FIX6 capture end: ${capture.questions.length}/${fiches.length} en `+
-      `${Math.round((Date.now()-captureStartedAt)/1000)} s`
-    );
+    console.log('CGIMPORT009 capture end:',{
+      questionnaire:parsed.questionnaire,
+      questions:capture.questions.length,
+      fiches:fiches.length,
+      complete:capture.complete,
+      ms:Date.now()-startedAt
+    });
 
     return res.json({
       ok:true,
+      mode:'capture',
+      kind:'questionnaire',
       strict:true,
       strictComplete:capture.complete,
       requestedUrl:raw,
@@ -1003,11 +1135,11 @@ exports.cgimport002Quizypedia=onRequest({
       diagnostics:capture.diagnostics
     });
   }catch(e){
-    console.error('CGIMPORT008 FIX6',e);
+    console.error('CGIMPORT009',e);
     return res.status(e.status||500).json({
       ok:false,
       strict:true,
-      error:e.message||'Erreur serveur CGIMPORT008 FIX6.'
+      error:e.message||'Erreur serveur CGIMPORT009.'
     });
   }
 });
