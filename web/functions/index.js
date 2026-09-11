@@ -1260,3 +1260,6 @@ exports.cgimport002Quizypedia=onRequest({
     });
   }
 });
+
+// CGIMAGE005_EXPORT
+exports.cgimage005MigrateBatch = require('./cgimage005').cgimage005MigrateBatch;
