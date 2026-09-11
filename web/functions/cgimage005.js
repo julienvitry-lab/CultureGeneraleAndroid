@@ -70,15 +70,13 @@ function sha256(buffer) {
 }
 function sourceSeeds(data) {
   const out = [];
-  const push = (label, value) => {
-    const u = one(value);
-    if (!u || !isHttpUrl(u)) return;
-    if (!out.some(item => item.url === u)) out.push({label, url: u});
-  };
-  push('url_internet', data?.url_internet);
-  push('image_source_url', data?.image_source_url);
-  if (!isCloudPath(data?.image_file)) push('image_file', data?.image_file);
-  push('url_quizypedia', data?.url_quizypedia);
+  const raw = one(data?.url_quizypedia);
+  if (!raw || !isHttpUrl(raw)) return out;
+  try {
+    const u = new URL(raw);
+    if (!/(^|\.)quizypedia\.fr$/i.test(u.hostname)) return out;
+    out.push({label: 'url_quizypedia', url: u.toString()});
+  } catch (_) {}
   return out;
 }
 function candidateImageFromHtml(html, baseUrl) {
@@ -88,7 +86,9 @@ function candidateImageFromHtml(html, baseUrl) {
     const v = one(raw);
     if (!v) return;
     try {
-      const u = new URL(v, baseUrl).toString();
+      const parsed = new URL(v, baseUrl);
+      if (!/(^|\.)quizypedia\.fr$/i.test(parsed.hostname)) return;
+      const u = parsed.toString();
       if (!candidates.includes(u)) candidates.push(u);
     } catch (_) {}
   };
@@ -107,6 +107,10 @@ async function fetchImageFromUrl(url) {
   const contentType = one(response.headers.get('content-type') || '').toLowerCase();
   const length = Number(response.headers.get('content-length') || 0);
   if (contentType.startsWith('image/')) {
+    const finalHost = new URL(response.url || url).hostname;
+    if (!/(^|\.)quizypedia\.fr$/i.test(finalHost)) {
+      throw new Error('Redirection image hors Quizypedia refusée');
+    }
     if (length > MAX_BYTES) throw new Error(`Image trop volumineuse (${length} octets)`);
     const buffer = Buffer.from(await response.arrayBuffer());
     if (!buffer.length) throw new Error('Image vide');
@@ -118,7 +122,11 @@ async function fetchImageFromUrl(url) {
     const candidates = candidateImageFromHtml(html, response.url || url);
     for (const candidate of candidates) {
       try {
+        const candidateHost = new URL(candidate).hostname;
+        if (!/(^|\.)quizypedia\.fr$/i.test(candidateHost)) continue;
         const nested = await fetch(candidate, {redirect: 'follow', headers: fetchHeaders()});
+        const nestedHost = new URL(nested.url || candidate).hostname;
+        if (!/(^|\.)quizypedia\.fr$/i.test(nestedHost)) continue;
         if (!nested.ok) continue;
         const nestedType = one(nested.headers.get('content-type') || '').toLowerCase();
         if (!nestedType.startsWith('image/')) continue;
