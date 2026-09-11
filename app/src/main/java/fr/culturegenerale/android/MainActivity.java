@@ -4480,6 +4480,36 @@ private void flagAndNext(String status, String msg) {
         }
     }
 
+
+    // CGIMAGE004_PREFETCH_METHOD
+    private void cgImage004PrefetchDocuments(
+            java.util.List<com.google.firebase.firestore.DocumentSnapshot> documents) {
+        if (documents == null || documents.isEmpty()) return;
+
+        java.util.ArrayList<String> paths = new java.util.ArrayList<>();
+        java.util.HashSet<String> unique = new java.util.HashSet<>();
+
+        for (com.google.firebase.firestore.DocumentSnapshot document : documents) {
+            if (document == null) continue;
+
+            Object rawPath = document.get("image_file");
+            String imageFile = rawPath == null ? "" : String.valueOf(rawPath).trim();
+
+            if (!CgImage001Cache.isCloudPath(imageFile)) continue;
+
+            if (unique.add(imageFile)) {
+                paths.add(imageFile);
+            }
+        }
+
+        if (!paths.isEmpty()) {
+            CgImage004Prefetcher.enqueue(this, paths);
+            android.util.Log.i(
+                    "CGIMAGE004",
+                    paths.size() + " image(s) proposée(s) au préchargement");
+        }
+    }
+
     // CGSYNC002_CONTENT_METHODS_END
 
 
@@ -4919,6 +4949,8 @@ private void flagAndNext(String status, String msg) {
                             final int finalApplied = applied;
 
                             runOnUiThread(() -> {
+                                // CGIMAGE004_CATCHUP_HOOK
+                                cgImage004PrefetchDocuments(docs);
                                 cgSync006Log(
                                         "CONTENU",
                                         docs.size() + " reçu(s) · "
@@ -5045,10 +5077,14 @@ private void flagAndNext(String status, String msg) {
                                     .apply();
 
                             final int finalApplied = applied;
-                            runOnUiThread(() -> cgSync006Log(
-                                    "CONTENU LIVE",
-                                    changedDocs.size() + " changement(s) · "
-                                            + finalApplied + " appliqué(s)"));
+                            runOnUiThread(() -> {
+                                // CGIMAGE004_LIVE_HOOK
+                                cgImage004PrefetchDocuments(changedDocs);
+                                cgSync006Log(
+                                        "CONTENU LIVE",
+                                        changedDocs.size() + " changement(s) · "
+                                                + finalApplied + " appliqué(s)");
+                            });
 
                         } catch (Exception errorDb) {
                             final String message = cgSync006SafeError(errorDb);
