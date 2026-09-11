@@ -1,0 +1,20 @@
+/* CGIMAGE002 · Gestion avancée des images côté Web */
+.cgimg2-panel{max-width:1180px;margin:28px auto;padding:24px;border:1px solid rgba(128,145,170,.28);border-radius:18px;background:var(--panel,#0d2344);box-shadow:0 18px 50px rgba(0,0,0,.16)}
+.cgimg2-kicker{font-size:.78rem;font-weight:700;letter-spacing:.08em;opacity:.68;text-transform:uppercase}
+.cgimg2-title{margin:6px 0 4px}.cgimg2-sub{margin:0 0 18px;opacity:.8}
+.cgimg2-toolbar{display:grid;grid-template-columns:170px minmax(220px,1fr) auto auto auto;gap:10px;align-items:center}
+.cgimg2-toolbar input,.cgimg2-toolbar select,.cgimg2-form input{box-sizing:border-box;width:100%;min-height:42px;padding:9px 11px;border:1px solid rgba(150,165,190,.38);border-radius:10px;background:rgba(255,255,255,.06);color:inherit;font:inherit}
+.cgimg2-btn{min-height:40px;padding:9px 13px;border:1px solid rgba(155,172,200,.4);border-radius:10px;background:rgba(255,255,255,.07);color:inherit;font:inherit;font-weight:650;cursor:pointer}
+.cgimg2-btn:hover{background:rgba(255,255,255,.12)}.cgimg2-btn:disabled{opacity:.5;cursor:wait}
+.cgimg2-primary{background:#2767d8;border-color:#3978e8;color:white}.cgimg2-primary:hover{background:#2e70e6}.cgimg2-danger{border-color:#b86168}
+.cgimg2-status,.cgimg2-editor-state{margin:14px 0;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.05)}
+.cgimg2-ok{color:#88e0ab}.cgimg2-warn{color:#ffd17a}.cgimg2-bad,.cgimg2-error{color:#ff9aa0}
+.cgimg2-rows{display:grid;gap:8px}.cgimg2-row{display:flex;gap:14px;align-items:center;justify-content:space-between;padding:13px 14px;border:1px solid rgba(150,165,190,.22);border-radius:12px;background:rgba(255,255,255,.035)}
+.cgimg2-row-main{min-width:0;flex:1}.cgimg2-row-head{display:flex;gap:10px;align-items:center;margin-bottom:5px}.cgimg2-row-question{font-weight:700;line-height:1.35}.cgimg2-row-path{font-size:.85rem;opacity:.7;margin-top:4px}.cgimg2-pill{font-size:.72rem;padding:3px 7px;border-radius:999px;background:rgba(255,255,255,.08)}.cgimg2-pill-ok{color:#8ee6b1}.cgimg2-pill-warn{color:#ffd17a}.cgimg2-pill-bad{color:#ff9aa0}.cgimg2-pill-muted{opacity:.65}
+.cgimg2-empty{padding:18px;text-align:center;opacity:.65}
+.cgimg2-editor{margin-top:22px;padding-top:20px;border-top:1px solid rgba(150,165,190,.24)}.cgimg2-hidden{display:none!important}.cgimg2-editor-head{display:flex;gap:14px;justify-content:space-between;align-items:flex-start}.cgimg2-editor-head h3{margin:5px 0 3px;line-height:1.35}.cgimg2-path{font-size:.88rem;opacity:.72}
+.cgimg2-editor-grid{display:grid;grid-template-columns:minmax(300px,1fr) minmax(320px,1fr);gap:22px;margin-top:16px}.cgimg2-preview{min-height:240px;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px dashed rgba(150,165,190,.4);border-radius:14px;background:rgba(0,0,0,.16);text-align:center;padding:10px}.cgimg2-preview img{display:block;max-width:100%;max-height:520px;object-fit:contain;border-radius:8px}
+.cgimg2-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.cgimg2-meta>div{padding:8px 9px;border-radius:9px;background:rgba(255,255,255,.045);min-width:0}.cgimg2-meta span{display:block;font-size:.7rem;opacity:.62;margin-bottom:2px}.cgimg2-meta strong{display:block;font-size:.82rem;overflow-wrap:anywhere}.cgimg2-meta-wide{grid-column:1/-1}
+.cgimg2-form{display:grid;align-content:start;gap:12px}.cgimg2-form label{display:grid;gap:6px;font-size:.85rem;font-weight:650}.cgimg2-inline-actions{display:flex;flex-wrap:wrap;gap:8px}.cgimg2-editor-state{min-height:20px;margin:2px 0 0}
+@media(max-width:880px){.cgimg2-panel{margin:18px 10px;padding:16px}.cgimg2-toolbar{grid-template-columns:1fr 1fr}.cgimg2-toolbar input{grid-column:1/-1}.cgimg2-editor-grid{grid-template-columns:1fr}.cgimg2-preview{min-height:190px}}
+@media(max-width:560px){.cgimg2-toolbar{grid-template-columns:1fr}.cgimg2-toolbar input{grid-column:auto}.cgimg2-row{align-items:flex-start;flex-direction:column}.cgimg2-open{width:100%}.cgimg2-editor-head{flex-direction:column}.cgimg2-meta{grid-template-columns:1fr}.cgimg2-meta-wide{grid-column:auto}.cgimg2-inline-actions>.cgimg2-btn{flex:1 1 150px}}

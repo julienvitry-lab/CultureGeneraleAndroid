@@ -44,13 +44,17 @@ jobs:
           test -f web/storage.rules
           test -f web/public/cgimage001.js
           test -f web/public/cgimage001.css
+          test -f web/public/cgimage002.js
+          test -f web/public/cgimage002.css
           grep -Fq 'CGIMPORT002' web/public/index.html
           grep -Fq 'cgimport002Quizypedia' web/functions/index.js
           grep -Fq '"/api/quizypedia"' web/firebase.json
           grep -Fq 'cgimage001.js?v=CGIMAGE001_1' web/public/index.html
+          grep -Fq 'cgimage002.js?v=CGIMAGE002_1' web/public/index.html
           grep -Fq 'question-images' web/storage.rules
           node --check web/public/cgimport002.js
           node --check web/public/cgimage001.js
+          node --check web/public/cgimage002.js
           node --check web/functions/index.js
           echo "CGIMPORT002 + CGIMAGE001 : fichiers et syntaxe OK"
 
@@ -85,4 +89,5 @@ jobs:
             -o /tmp/cgimport002-live.html
           grep -Fq 'CGIMPORT002' /tmp/cgimport002-live.html
           grep -Fq 'cgimage001.js?v=CGIMAGE001_1' /tmp/cgimport002-live.html
+          grep -Fq 'cgimage002.js?v=CGIMAGE002_1' /tmp/cgimport002-live.html
           echo "✅ CGIMPORT002 + CGIMAGE001 sont servis par culturegeneralesync.web.app"
