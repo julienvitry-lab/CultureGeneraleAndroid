@@ -2446,24 +2446,21 @@ final String currentHash =
     }
 
     private void addRevisionImage(String imageFileName) {
+        // CGIMAGE003 : Révision utilise désormais
+        // le moteur Firebase Storage + cache CGIMAGE001.
         FrameLayout area = new FrameLayout(this);
         area.setBackgroundColor(Color.BLACK);
-        File file = imageFile(imageFileName);
-        Bitmap bitmap = file != null && file.exists() ? decode(file) : null;
 
-        if (bitmap == null) {
-            TextView missing = tv("Image introuvable",
-                    20, Color.WHITE, Gravity.CENTER, true);
-            area.addView(missing,
-                    new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
-        } else {
-            ImageView image = new ImageView(this);
-            image.setImageBitmap(bitmap);
-            image.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            area.addView(image,
-                    new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
-        }
-        root.addView(area, new LinearLayout.LayoutParams(-1, 0, 1));
+        root.addView(
+                area,
+                new LinearLayout.LayoutParams(-1, 0, 1)
+        );
+
+        renderQuestionImage(
+                area,
+                imageFileName,
+                20
+        );
     }
 
     private void addRevisionAnswer(Question q) {
@@ -3590,31 +3587,48 @@ final String currentHash =
     }
 
     private void addFixedTrioImage(String imageFileName) {
+        // CGIMAGE003 : Trio utilise désormais
+        // le moteur Firebase Storage + cache CGIMAGE001.
         FrameLayout area = new FrameLayout(this);
-        area.setBackgroundColor(Color.BLACK);
-        area.setPadding(compactBandPaddingPx(), compactBandPaddingPx(),
-                compactBandPaddingPx(), compactBandPaddingPx());
-        setRoundedBackgroundWithStroke(area, DARK, 14, Color.WHITE, 1);
 
-        File f = imageFile(imageFileName);
-        Bitmap bm = f != null && f.exists() ? decode(f) : null;
-        if (bm == null) {
-            TextView missing = tv("Image introuvable : " + safe(imageFileName),
-                    18, Color.WHITE, Gravity.CENTER, true);
-            area.addView(missing, new FrameLayout.LayoutParams(
-                    -1, -1, Gravity.CENTER));
-        } else {
-            ImageView image = new ImageView(this);
-            image.setImageBitmap(bm);
-            image.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            area.addView(image, new FrameLayout.LayoutParams(
-                    -1, -1, Gravity.CENTER));
-        }
+        area.setBackgroundColor(Color.BLACK);
+
+        area.setPadding(
+                compactBandPaddingPx(),
+                compactBandPaddingPx(),
+                compactBandPaddingPx(),
+                compactBandPaddingPx()
+        );
+
+        setRoundedBackgroundWithStroke(
+                area,
+                DARK,
+                14,
+                Color.WHITE,
+                1
+        );
 
         LinearLayout.LayoutParams lp =
-                new LinearLayout.LayoutParams(-1, 0, 1);
-        lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+                new LinearLayout.LayoutParams(
+                        -1,
+                        0,
+                        1
+                );
+
+        lp.setMargins(
+                0,
+                halfBandGapPx(),
+                0,
+                halfBandGapPx()
+        );
+
         root.addView(area, lp);
+
+        renderQuestionImage(
+                area,
+                imageFileName,
+                18
+        );
     }
 
     private void addTrioTimeTwoStage(Question q, boolean visible) {
