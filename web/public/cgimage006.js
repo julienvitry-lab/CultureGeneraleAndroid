@@ -181,12 +181,60 @@ async function cg6Install() {
       const summary = document.createElement("div");
       summary.id = "cgimg6Summary";
       summary.innerHTML = `<style>
-        #cgimg6Summary{margin:12px 0;padding:14px;border:1px solid #dbeafe;border-radius:14px;background:#eff6ff}
-        .cgimg6-title{font-weight:800;margin-bottom:10px;color:#1e3a8a}
-        .cgimg6-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}
-        .cgimg6-metrics>div{background:#fff;border:1px solid #dbeafe;border-radius:10px;padding:8px 10px}
-        .cgimg6-metrics span{display:block;font-size:11px;color:#64748b}.cgimg6-metrics strong{font-size:17px}
-        .cgimg6-cursor{margin-top:10px;font-size:12px;color:#475569}
+        #cgimg6Summary{
+          margin:12px 0 !important;
+          padding:14px !important;
+          border:2px solid #60a5fa !important;
+          border-radius:14px !important;
+          background:#dbeafe !important;
+          color:#0f172a !important;
+          opacity:1 !important;
+        }
+        #cgimg6Summary *{
+          opacity:1 !important;
+          text-shadow:none !important;
+        }
+        #cgimg6Summary .cgimg6-title{
+          font-weight:800 !important;
+          margin-bottom:10px !important;
+          color:#1e3a8a !important;
+          font-size:18px !important;
+        }
+        #cgimg6Summary .cgimg6-metrics{
+          display:grid !important;
+          grid-template-columns:repeat(auto-fit,minmax(120px,1fr)) !important;
+          gap:8px !important;
+        }
+        #cgimg6Summary .cgimg6-metrics>div{
+          background:#ffffff !important;
+          border:1px solid #93c5fd !important;
+          border-radius:10px !important;
+          padding:8px 10px !important;
+        }
+        #cgimg6Summary .cgimg6-metrics span{
+          display:block !important;
+          font-size:12px !important;
+          color:#475569 !important;
+        }
+        #cgimg6Summary .cgimg6-metrics strong{
+          display:block !important;
+          margin-top:2px !important;
+          font-size:20px !important;
+          color:#0f172a !important;
+        }
+        #cgimg6Summary .cgimg6-cursor{
+          margin-top:10px !important;
+          font-size:13px !important;
+          color:#334155 !important;
+        }
+        #cgimg6Summary .cgimg6-cursor code{
+          color:#0f172a !important;
+          background:#ffffff !important;
+          border:1px solid #93c5fd !important;
+          border-radius:6px !important;
+          padding:2px 6px !important;
+        }
+
       </style>`;
       cg6$("cgimg5Status")?.insertAdjacentElement("beforebegin", summary);
       cg6RenderTotals();
