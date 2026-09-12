@@ -97,14 +97,35 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          STAMP="$(date +%s)"
-          curl --fail --silent --show-error --location \
-            "https://culturegeneralesync.web.app/?cgimport002=${STAMP}" \
-            -o /tmp/cgimport002-live.html
-          grep -Fq 'CGIMPORT002' /tmp/cgimport002-live.html
-          grep -Fq 'cgimage001.js?v=CGIMAGE001_1' /tmp/cgimport002-live.html
-          grep -Fq 'cgimage005.js?v=CGIMAGE005_1' /tmp/cgimport002-live.html
-          grep -Fq 'cgimage006.js?v=CGIMAGE006_1' /tmp/cgimport002-live.html
-          grep -Fq 'cgimage007.js?v=CGIMAGE007_1' /tmp/cgimport002-live.html
-          grep -Fq 'cgimage002.js?v=CGIMAGE002_1' /tmp/cgimport002-live.html
-          echo "✅ CGIMPORT002 + CGIMAGE001 sont servis par culturegeneralesync.web.app"
+
+          ok=0
+
+          for attempt in 1 2 3 4 5 6; do
+            STAMP="$(date +%s)-${attempt}"
+
+            echo "Contrôle Hosting tentative ${attempt}/6..."
+
+            curl --fail --silent --show-error --location               --header 'Cache-Control: no-cache'               "https://culturegeneralesync.web.app/?cgdeploy=${STAMP}"               -o /tmp/cg-live.html || true
+
+            if test -s /tmp/cg-live.html               && grep -Fq 'CGIMPORT002' /tmp/cg-live.html               && grep -Fq 'cgimage001.js?v=CGIMAGE001_1' /tmp/cg-live.html               && grep -Fq 'cgimage002.js?v=CGIMAGE002_1' /tmp/cg-live.html               && grep -Fq 'cgimage005.js?v=CGIMAGE005_1' /tmp/cg-live.html               && grep -Fq 'cgimage006.js?v=CGIMAGE006_1' /tmp/cg-live.html               && grep -Fq 'cgimage007.js?v=CGIMAGE007_1' /tmp/cg-live.html
+            then
+              if curl --fail --silent --show-error --location                 --header 'Cache-Control: no-cache'                 "https://culturegeneralesync.web.app/cgimage007.js?cgdeploy=${STAMP}"                 -o /tmp/cgimage007-live.js                 && grep -Fq 'CGIMAGE007_1' /tmp/cgimage007-live.js
+              then
+                ok=1
+                break
+              fi
+            fi
+
+            sleep 10
+          done
+
+          if [ "$ok" -ne 1 ]; then
+            echo "❌ Hosting non propagé après 6 tentatives."
+            echo "---- index reçu ----"
+            head -80 /tmp/cg-live.html || true
+            echo "---- cgimage007 reçu ----"
+            head -40 /tmp/cgimage007-live.js || true
+            exit 1
+          fi
+
+          echo "✅ CGIMPORT002 + CGIMAGE001/2/5/6/7 sont servis par culturegeneralesync.web.app"
