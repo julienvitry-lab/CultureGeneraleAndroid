@@ -1263,3 +1263,6 @@ exports.cgimport002Quizypedia=onRequest({
 
 // CGIMAGE005_EXPORT
 exports.cgimage005MigrateBatch = require('./cgimage005').cgimage005MigrateBatch;
+
+// CGIMAGE007_EXPORT
+exports.cgimage007RecoverFailed = require('./cgimage007').cgimage007RecoverFailed;
