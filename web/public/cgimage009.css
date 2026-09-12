@@ -1,0 +1,193 @@
+/* CGIMAGE009 · harmonisation visuelle des modules images */
+
+/* ==========================================================
+   PANNEAUX PRINCIPAUX : CGIMAGE002 + CGIMAGE005
+   Même largeur, même marge, même fond, même bordure.
+   ========================================================== */
+
+#cgimage002Panel.cgimg2-panel,
+#cgimage005Panel.cgimg5-panel {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: none !important;
+
+  margin: 24px 0 !important;
+  padding: 20px !important;
+
+  border: 1px solid rgba(128,145,170,.28) !important;
+  border-radius: 18px !important;
+
+  background: var(--panel,#0d2344) !important;
+  color: inherit !important;
+
+  box-shadow: 0 18px 50px rgba(0,0,0,.16) !important;
+}
+
+/* CGIMAGE002 ne doit plus se recentrer avec une largeur propre */
+#cgimage002Panel.cgimg2-panel {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+/* ==========================================================
+   TITRES / SOUS-TITRES
+   ========================================================== */
+
+#cgimage002Panel .cgimg2-kicker,
+#cgimage005Panel .cgimg5-kicker {
+  color: inherit !important;
+  opacity: .68 !important;
+  font-size: .78rem !important;
+  font-weight: 700 !important;
+  letter-spacing: .08em !important;
+  text-transform: uppercase !important;
+}
+
+#cgimage002Panel .cgimg2-title,
+#cgimage005Panel .cgimg5-title {
+  margin: 6px 0 4px !important;
+  color: inherit !important;
+  font-size: 1.5rem !important;
+  line-height: 1.25 !important;
+}
+
+#cgimage002Panel .cgimg2-sub,
+#cgimage005Panel .cgimg5-sub {
+  margin: 0 0 18px !important;
+  color: inherit !important;
+  opacity: .8 !important;
+}
+
+/* ==========================================================
+   CHAMPS
+   ========================================================== */
+
+#cgimage005Panel .cgimg5-grid label,
+#cgimage005Panel .cgimg5-checks label {
+  color: inherit !important;
+}
+
+#cgimage005Panel .cgimg5-grid input,
+#cgimage002Panel .cgimg2-toolbar input,
+#cgimage002Panel .cgimg2-toolbar select,
+#cgimage002Panel .cgimg2-form input {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-height: 42px !important;
+  padding: 9px 11px !important;
+
+  border: 1px solid rgba(150,165,190,.38) !important;
+  border-radius: 10px !important;
+
+  background: rgba(255,255,255,.06) !important;
+  color: inherit !important;
+
+  font: inherit !important;
+}
+
+/* Les checkbox gardent leur taille native */
+#cgimage005Panel .cgimg5-checks input[type="checkbox"] {
+  width: auto !important;
+  min-height: 0 !important;
+  accent-color: #2767d8;
+}
+
+/* ==========================================================
+   BOUTONS
+   ========================================================== */
+
+#cgimage002Panel .cgimg2-btn,
+#cgimage005Panel .cgimg5-btn {
+  min-height: 40px !important;
+  padding: 9px 13px !important;
+
+  border: 1px solid rgba(155,172,200,.4) !important;
+  border-radius: 10px !important;
+
+  background: rgba(255,255,255,.07) !important;
+  color: inherit !important;
+
+  font: inherit !important;
+  font-weight: 650 !important;
+  cursor: pointer !important;
+}
+
+#cgimage002Panel .cgimg2-btn:hover,
+#cgimage005Panel .cgimg5-btn:hover {
+  background: rgba(255,255,255,.12) !important;
+}
+
+#cgimage002Panel .cgimg2-primary,
+#cgimage005Panel .cgimg5-btn-primary {
+  background: #2767d8 !important;
+  border-color: #3978e8 !important;
+  color: #fff !important;
+}
+
+#cgimage002Panel .cgimg2-primary:hover,
+#cgimage005Panel .cgimg5-btn-primary:hover {
+  background: #2e70e6 !important;
+}
+
+#cgimage002Panel .cgimg2-danger,
+#cgimage005Panel .cgimg5-btn-danger {
+  background: rgba(184,97,104,.18) !important;
+  border-color: #b86168 !important;
+  color: inherit !important;
+}
+
+/* ==========================================================
+   STATUT / CARTES INTERNES CGIMAGE005
+   ========================================================== */
+
+#cgimage005Panel .cgimg5-status {
+  margin: 14px 0 !important;
+  padding: 10px 12px !important;
+  border-radius: 10px !important;
+
+  background: rgba(255,255,255,.05) !important;
+  color: inherit !important;
+}
+
+#cgimage005Panel .cgimg5-ok {
+  color: #88e0ab !important;
+}
+
+#cgimage005Panel .cgimg5-warn {
+  color: #ffd17a !important;
+}
+
+#cgimage005Panel .cgimg5-error {
+  color: #ff9aa0 !important;
+}
+
+#cgimage005Panel .cgimg5-metric,
+#cgimage005Panel .cgimg5-card {
+  border: 1px solid rgba(150,165,190,.22) !important;
+  background: rgba(255,255,255,.035) !important;
+  color: inherit !important;
+}
+
+#cgimage005Panel .cgimg5-metric span,
+#cgimage005Panel .cgimg5-card-sub {
+  color: inherit !important;
+  opacity: .68 !important;
+}
+
+#cgimage005Panel .cgimg5-metric strong,
+#cgimage005Panel .cgimg5-card-title {
+  color: inherit !important;
+}
+
+/* ==========================================================
+   ESPACEMENTS RESPONSIVE
+   Même comportement pour les deux panneaux.
+   ========================================================== */
+
+@media (max-width: 880px) {
+  #cgimage002Panel.cgimg2-panel,
+  #cgimage005Panel.cgimg5-panel {
+    margin: 18px 0 !important;
+    padding: 16px !important;
+  }
+}

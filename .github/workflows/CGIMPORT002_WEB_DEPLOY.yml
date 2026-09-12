@@ -44,6 +44,7 @@ jobs:
           test -f web/storage.rules
           test -f web/public/cgimage001.js
           test -f web/public/cgimage001.css
+          test -f web/public/cgimage009.css
           test -f web/public/cgimage005.js
           test -f web/public/cgimage006.js
           test -f web/public/cgimage007.js
@@ -57,6 +58,7 @@ jobs:
           grep -Fq 'cgimport002Quizypedia' web/functions/index.js
           grep -Fq '"/api/quizypedia"' web/firebase.json
           grep -Fq 'cgimage001.js?v=CGIMAGE001_1' web/public/index.html
+          grep -Fq 'cgimage009.css?v=CGIMAGE009_1' web/public/index.html
           grep -Fq 'cgimage005.js?v=CGIMAGE005_1' web/public/index.html
           grep -Fq 'cgimage006.js?v=CGIMAGE006_1' web/public/index.html
           grep -Fq 'cgimage007.js?v=CGIMAGE007_1' web/public/index.html
