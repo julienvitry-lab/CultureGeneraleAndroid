@@ -1266,3 +1266,7 @@ exports.cgimage005MigrateBatch = require('./cgimage005').cgimage005MigrateBatch;
 
 // CGIMAGE007_EXPORT
 exports.cgimage007RecoverFailed = require('./cgimage007').cgimage007RecoverFailed;
+
+// CGIMAGE008_EXPORT
+exports.cgimage008SuggestCandidates = require('./cgimage008').cgimage008SuggestCandidates;
+exports.cgimage008ApplyCandidate = require('./cgimage008').cgimage008ApplyCandidate;
