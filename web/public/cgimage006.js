@@ -1,4 +1,4 @@
-const CGIMAGE006_VERSION = "CGIMAGE006_FIX2";
+const CGIMAGE006_VERSION = "CGIMAGE006_FIX3";
 const CGIMAGE006_ENDPOINT =
   "https://europe-west1-culturegeneralesync.cloudfunctions.net/cgimage005MigrateBatch";
 
@@ -296,14 +296,6 @@ async function cg6AutoRun() {
         break;
       }
 
-      if (nextCursor && cursor && nextCursor === cursor) {
-        cg6SetStatus(
-          `⛔ Migration arrêtée : le curseur n’avance plus (${nextCursor}).`,
-          "error"
-        );
-        break;
-      }
-
       const scanned = Number(s.scanned || 0);
       const candidates = Number(s.candidates || 0);
       const failed = Number(s.failed || 0);
@@ -316,6 +308,13 @@ async function cg6AutoRun() {
           `${cg6Number(cg6Totals.failed)} échec(s) · ` +
           `${cg6Number(cg6Totals.lots)} lot(s).`,
           "ok"
+        );
+        break;
+      }
+      if (nextCursor && cursor && nextCursor === cursor) {
+        cg6SetStatus(
+          `⛔ Migration arrêtée : le curseur n’avance plus (${nextCursor}).`,
+          "error"
         );
         break;
       }
