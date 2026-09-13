@@ -7,13 +7,17 @@
   const $ = (id) => document.getElementById(id);
   const SESSION_PAGE = "cgweb016_page";
   const SESSION_PLUS = "cgweb016_plus";
+  const SESSION_IMPORT = "cgweb016_import";
   const PAGES = new Set(["directory", "create", "import", "more"]);
   const PLUS_PAGES = new Set(["dedup", "quality", "bulk", "fulltext", "sync", "diagnostic"]);
+  const IMPORT_PAGES = new Set(["url", "images", "migration", "recovery404", "semantic"]);
 
   let currentPage = sessionStorage.getItem(SESSION_PAGE) || "directory";
   let currentPlus = sessionStorage.getItem(SESSION_PLUS) || "dedup";
+  let currentImport = sessionStorage.getItem(SESSION_IMPORT) || "url";
   if (!PAGES.has(currentPage)) currentPage = "directory";
   if (!PLUS_PAGES.has(currentPlus)) currentPlus = "dedup";
+  if (!IMPORT_PAGES.has(currentImport)) currentImport = "url";
 
   function esc(value) {
     return String(value ?? "")
@@ -34,7 +38,7 @@
     shell.id = "cgweb016Shell";
     shell.className = "cg16-shell";
     shell.innerHTML = `
-      <div class="cg16-version-proof" id="cg16VersionProof">CGWEB016 FIX2 ACTIF</div>
+      <div class="cg16-version-proof" id="cg16VersionProof">CGIMPORT010 FIX1 ACTIF</div>
       <nav class="cg16-primary-nav" aria-label="Navigation Culture Générale">
         <button type="button" data-cg16-page="directory">Répertoire de questions</button>
         <button type="button" data-cg16-page="create">Création de question</button>
@@ -139,7 +143,29 @@
         </section>
 
         <section id="cg16PageImport" class="cg16-page" data-cg16-page-panel="import">
-          <div id="cg16ImportMount" class="cg16-mount"></div>
+          <nav id="cg16ImportNav" class="cg16-import-nav" aria-label="Sous-navigation Import Quizypedia">
+            <button type="button" data-cg16-import="url">Import Quizypedia par URL</button>
+            <button type="button" data-cg16-import="images">Gestion avancée des images</button>
+            <button type="button" data-cg16-import="migration">Migration massive des images historiques</button>
+            <button type="button" data-cg16-import="recovery404">Récupération ciblée des 404</button>
+            <button type="button" data-cg16-import="semantic">Récupération sémantique des images restantes</button>
+          </nav>
+
+          <section class="cg16-import-page" data-cg16-import-panel="url">
+            <div id="cg16ImportUrlMount" class="cg16-mount"></div>
+          </section>
+          <section class="cg16-import-page" data-cg16-import-panel="images">
+            <div id="cg16ImportImagesMount" class="cg16-mount"></div>
+          </section>
+          <section class="cg16-import-page" data-cg16-import-panel="migration">
+            <div id="cg16ImportMigrationMount" class="cg16-mount"></div>
+          </section>
+          <section class="cg16-import-page" data-cg16-import-panel="recovery404">
+            <div id="cg16Import404Mount" class="cg16-mount"></div>
+          </section>
+          <section class="cg16-import-page" data-cg16-import-panel="semantic">
+            <div id="cg16ImportSemanticMount" class="cg16-mount"></div>
+          </section>
         </section>
 
         <section id="cg16PageMore" class="cg16-page" data-cg16-page-panel="more">
@@ -165,6 +191,9 @@
     document.querySelectorAll("[data-cg16-plus]").forEach(button => {
       button.addEventListener("click", () => navigatePlus(button.dataset.cg16Plus));
     });
+    document.querySelectorAll("[data-cg16-import]").forEach(button => {
+      button.addEventListener("click", () => navigateImport(button.dataset.cg16Import));
+    });
 
     wireCreateForm();
     document.body.classList.add("cg16-installed");
@@ -185,6 +214,16 @@
     currentPlus = subpage;
     sessionStorage.setItem(SESSION_PLUS, subpage);
     if (currentPage !== "more") currentPage = "more";
+    sessionStorage.setItem(SESSION_PAGE, currentPage);
+    renderNavigation();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function navigateImport(subpage) {
+    if (!IMPORT_PAGES.has(subpage)) subpage = "url";
+    currentImport = subpage;
+    sessionStorage.setItem(SESSION_IMPORT, subpage);
+    if (currentPage !== "import") currentPage = "import";
     sessionStorage.setItem(SESSION_PAGE, currentPage);
     renderNavigation();
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -213,6 +252,16 @@
     document.querySelectorAll("[data-cg16-plus-panel]").forEach(panel => {
       panel.hidden = panel.dataset.cg16PlusPanel !== currentPlus;
     });
+    document.querySelectorAll("[data-cg16-import]").forEach(button => {
+      const active = button.dataset.cg16Import === currentImport;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-current", active ? "page" : "false");
+    });
+
+    document.querySelectorAll("[data-cg16-import-panel]").forEach(panel => {
+      panel.hidden = panel.dataset.cg16ImportPanel !== currentImport;
+    });
+
 
     const shell = $("cgweb016Shell");
     if (shell) shell.classList.toggle("cg16-auth-hidden", !loggedIn);
@@ -256,7 +305,11 @@
     hideLegacy();
 
     move("cgweb006Panel", "cg16DirectoryMount");
-    move("cgimport002Panel", "cg16ImportMount");
+    move("cgimport002Panel", "cg16ImportUrlMount");
+    move("cgimage002Panel", "cg16ImportImagesMount");
+    move("cgimage005Panel", "cg16ImportMigrationMount");
+    move("cgimage007Panel", "cg16Import404Mount");
+    move("cgimage008Panel", "cg16ImportSemanticMount");
 
     move("cgdedup001Panel", "cg16DedupMount");
     move("cgweb013Panel", "cg16QualityMount");

@@ -430,3 +430,66 @@ body.cg16-installed .cgs5-kicker{
     flex:1 0 100%;
   }
 }
+
+
+/* CGIMPORT010 FIX1 · SOUS-ONGLETS IMPORT QUIZYPEDIA */
+.cg16-import-nav{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:6px;
+  margin:0 0 10px;
+  padding:6px;
+  border:1px solid var(--cg16-line);
+  border-radius:14px;
+  background:rgba(5,25,47,.86);
+}
+
+.cg16-import-nav button{
+  min-width:0;
+  min-height:50px;
+  padding:8px 10px;
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:10px;
+  background:#082943;
+  color:#d8e9f5;
+  font:inherit;
+  font-size:.76rem;
+  font-weight:800;
+  line-height:1.2;
+  cursor:pointer;
+}
+
+.cg16-import-nav button:hover{background:#0a3859}
+.cg16-import-nav button.active{
+  background:#0e638e;
+  border-color:rgba(111,214,255,.38);
+  color:#fff;
+}
+
+.cg16-import-page,
+.cg16-import-page > .cg16-mount{
+  width:100%;
+  max-width:none;
+}
+
+.cg16-import-page[hidden]{display:none!important}
+
+body.cg16-installed #cg16PageImport .cg16-import-page > .cg16-mount > #cgimport002Panel,
+body.cg16-installed #cg16PageImport .cg16-import-page > .cg16-mount > #cgimage002Panel,
+body.cg16-installed #cg16PageImport .cg16-import-page > .cg16-mount > #cgimage005Panel,
+body.cg16-installed #cg16PageImport .cg16-import-page > .cg16-mount > #cgimage007Panel,
+body.cg16-installed #cg16PageImport .cg16-import-page > .cg16-mount > #cgimage008Panel{
+  width:100%!important;
+  max-width:none!important;
+  box-sizing:border-box!important;
+  margin:0!important;
+}
+
+@media(max-width:1050px){
+  .cg16-import-nav{
+    display:flex;
+    overflow-x:auto;
+    scrollbar-width:thin;
+  }
+  .cg16-import-nav button{flex:0 0 220px}
+}
