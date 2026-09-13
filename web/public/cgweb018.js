@@ -1,4 +1,4 @@
-const CGWEB018_VERSION="CGWEB018_DIRECTORY002";
+const CGWEB018_VERSION="CGWEB018_FIX2";
 const cg18$=id=>document.getElementById(id);
 const cg18Esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
 const cg18Fmt=v=>new Intl.NumberFormat("fr-FR").format(Number(v||0));
@@ -7,7 +7,7 @@ const CG18_COLUMNS="CGWEB018_COLUMNS";
 
 const CG18_COLS={
   id:"ID", mega:"Mégathème", theme:"Thème", question:"Question",
-  image:"Image", missing:"Introuvable", status:"Statut", revision:"Révision", updated:"Mise à jour"
+  image:"Image", missing:"Recherche image", status:"Statut", revision:"Révision", updated:"Mise à jour"
 };
 const CG18_DEFAULT=["id","mega","theme","question","image","missing","status","revision"];
 const CG18={stack:[null],page:0,next:null,rows:[],total:0,selected:new Set(),columns:new Set(CG18_DEFAULT),classic:false};
@@ -22,8 +22,12 @@ function cg18Status(text,type=""){const e=cg18$("cg18Status");if(e){e.textConten
 function cg18Date(v){if(!v)return"—";try{const d=typeof v?.toDate==="function"?v.toDate():v?.seconds?new Date(v.seconds*1000):new Date(v);return Number.isNaN(d.getTime())?"—":d.toLocaleDateString("fr-FR")}catch(_){return"—"}}
 function cg18ImageLabel(r){const p=String(r.image_file||"").trim();if(!p)return"—";return String(r.image_origin||"")==="firebase_storage"||p.startsWith("users/")?"Cloud":"Historique"}
 function cg18Filters(){return{
-  megatheme:cg18$("cg18Mega").value.trim(),theme:cg18$("cg18Theme").value.trim(),status:cg18$("cg18StatusFilter").value,
-  questionPrefix:cg18$("cg18Prefix").value.trim(),imageState:cg18$("cg18Image").value,nonTrouve:cg18$("cg18Missing").value
+  megatheme:cg18$("cg18Mega").value.trim(),
+  themeContains:cg18$("cg18Theme").value.trim(),
+  status:cg18$("cg18StatusFilter").value,
+  questionPrefix:cg18$("cg18Prefix").value.trim(),
+  imageState:cg18$("cg18Image").value,
+  nonTrouve:cg18$("cg18Missing").value
 }}
 function cg18UpdateSelection(){cg18$("cg18Selected").textContent=`${cg18Fmt(CG18.selected.size)} sélectionnée(s)`;cg18SaveSelection()}
 
@@ -66,13 +70,28 @@ async function cg18Load(reset=false){
   if(reset){CG18.stack=[null];CG18.page=0}
   cg18Status("Lecture Firestore…");
   try{
-    const api=window.CGWEB001;if(!api?.queryQuestionsPage)throw new Error("API Répertoire indisponible.");
-    const res=await api.queryQuestionsPage({
-      cursor:CG18.stack[CG18.page]||null,pageSize:Number(cg18$("cg18PageSize").value)||50,filters:cg18Filters(),
-      sortField:cg18$("cg18Sort").value,sortDirection:cg18$("cg18Direction").value
-    });
+    const api=window.CGWEB001;
+    if(!api?.queryQuestionsPage)throw new Error("API Répertoire indisponible.");
+    const filters=cg18Filters();
+    const params={
+      cursor:CG18.stack[CG18.page]||null,
+      pageSize:Number(cg18$("cg18PageSize").value)||50,
+      filters,
+      sortField:cg18$("cg18Sort").value,
+      sortDirection:cg18$("cg18Direction").value
+    };
+    const res=filters.themeContains
+      ? await api.queryQuestionsThemeContains({
+          ...params,
+          term:filters.themeContains
+        })
+      : await api.queryQuestionsPage(params);
     CG18.rows=res.items||[];CG18.total=res.total||0;CG18.next=res.nextCursor||null;
-    cg18Render();cg18Status(`${cg18Fmt(CG18.rows.length)} question(s) chargée(s)`,"ok");
+    cg18Render();
+    const cap=res.searchIndexCapped
+      ?" · index limité aux 5 000 premiers candidats"
+      :"";
+    cg18Status(`${cg18Fmt(CG18.rows.length)} question(s) chargée(s)${cap}`,"ok");
   }catch(error){CG18.rows=[];CG18.total=0;CG18.next=null;cg18Render();cg18Status(error?.message||String(error),"error")}
 }
 
@@ -89,14 +108,18 @@ function cg18Init(){
     <div class="cg18-head"><div><div class="cg18-kicker">CGWEB018 · DIRECTORY002</div><h2>Répertoire avancé</h2><p>Filtres combinés, tri, colonnes configurables et sélection persistante.</p></div><button id="cg18Classic" class="cg18-btn">Vue classique</button></div>
     <div class="cg18-filters">
       <label>Mégathème<select id="cg18Mega"><option value="">Tous</option><option>Animaux et Plantes</option><option>Culture Classique</option><option>Culture Générale</option><option>Culture Moderne</option><option>Géographie</option><option>Histoire</option><option>Sciences et Techniques</option><option>Sport</option></select></label>
-      <label>Thème<input id="cg18Theme" placeholder="Thème exact"></label>
+      <label>Thème contient<input id="cg18Theme" placeholder="Ex. capitales" title="Retrouve tous les thèmes dont l’intitulé contient ce terme."></label>
       <label>Statut<input id="cg18StatusFilter" placeholder="Tous"></label>
       <label>Début de question<input id="cg18Prefix" placeholder="Préfixe"></label>
       <label>Image<select id="cg18Image"><option value="">Toutes</option><option value="1">Avec image</option><option value="0">Sans image</option></select></label>
-      <label>Introuvable<select id="cg18Missing"><option value="">Tous</option><option value="1">Oui</option><option value="0">Non</option></select></label>
+      <label>Recherche image<select id="cg18Missing" title="Ce filtre correspond au champ non_trouve : il signale l’échec d’une recherche d’image, pas une question introuvable."><option value="">Tous les états</option><option value="1">Image signalée introuvable</option><option value="0">Non signalée introuvable</option></select></label>
       <label>Tri<select id="cg18Sort"><option value="id">ID</option><option value="question">Question</option><option value="megatheme">Mégathème</option><option value="theme">Thème</option><option value="status">Statut</option></select></label>
       <label>Sens<select id="cg18Direction"><option value="asc">Croissant</option><option value="desc">Décroissant</option></select></label>
       <label>Par page<select id="cg18PageSize"><option>20</option><option selected>50</option><option>100</option></select></label>
+    </div>
+    <div class="cg18-filter-help">
+      <b>Recherche image :</b> « Image signalée introuvable » signifie qu’une tentative de récupération d’image a échoué.
+      Cela ne signifie pas que la question elle-même est introuvable.
     </div>
     <div class="cg18-actions"><button id="cg18Apply" class="cg18-btn cg18-primary">Appliquer</button><button id="cg18Reset" class="cg18-btn">Réinitialiser</button><button id="cg18Columns" class="cg18-btn">Colonnes</button><span id="cg18Meta"></span></div>
     <div id="cg18ColumnList" class="cg18-columns cg18-hidden"></div>

@@ -28,6 +28,144 @@ const db = getFirestore(app);
 
 // CGCLOUD002_SHARED_CONTEXT_BRIDGE_START
 // Contexte Firebase unique partagé par CGWEB001 / CGCLOUD002 / CGWEB004 / CGWEB005.
+
+// CGWEB018_FIX2_THEME_CONTAINS_START
+async function cgweb018QueryThemeContains({
+  term = "",
+  cursor = null,
+  pageSize = 50,
+  filters = {},
+  sortField = "id",
+  sortDirection = "asc"
+} = {}) {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Utilisateur Firebase non connecté.");
+
+  const rawTerm = String(term || "").trim();
+  const needle = cgindex001Normalize(rawTerm);
+  if (!needle) throw new Error("Saisis un terme dans « Thème contient ».");
+
+  const tokens = [...new Set(
+    needle
+      .split(/\s+/)
+      .filter(token => token.length >= 2 && !CGINDEX001_STOP.has(token))
+  )];
+
+  if (!tokens.length) {
+    throw new Error("Le terme saisi est trop générique pour la recherche.");
+  }
+
+  // On utilise l'index texte uniquement pour réduire le nombre de documents
+  // à lire. Le test final porte STRICTEMENT sur le champ theme.
+  const deltaRef = collection(db, "users", user.uid, "question_search_delta");
+  const deltaSnap = await getDocs(
+    query(
+      deltaRef,
+      where("tokens", "array-contains", tokens[0]),
+      limit(5000)
+    )
+  );
+
+  const ids = deltaSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(row =>
+      !row.deleted
+      && tokens.every(token =>
+        Array.isArray(row.tokens) && row.tokens.includes(token)
+      )
+    )
+    .map(row => String(row.question_id || row.id));
+
+  const rows = [];
+  const chunkSize = 40;
+
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    const snaps = await Promise.all(
+      chunk.map(id =>
+        getDoc(doc(db, "users", user.uid, "questions", id))
+      )
+    );
+
+    for (const snap of snaps) {
+      if (snap.exists()) rows.push({ id: snap.id, ...snap.data() });
+    }
+  }
+
+  const norm = value => cgindex001Normalize(String(value || ""));
+  const megatheme = String(filters.megatheme || "").trim();
+  const statusFilter = String(filters.status || "");
+  const questionPrefix = norm(filters.questionPrefix || "");
+  const imageState = String(filters.imageState || "");
+  const nonTrouve = String(filters.nonTrouve || "");
+
+  let filtered = rows.filter(row => {
+    // C'est ici que l'on garantit "thème contient".
+    if (!norm(row.theme).includes(needle)) return false;
+
+    if (megatheme && String(row.megatheme || "") !== megatheme) return false;
+
+    if (statusFilter) {
+      const expected = statusFilter === "__EMPTY__" ? "" : statusFilter;
+      if (String(row.status ?? "") !== expected) return false;
+    }
+
+    if (questionPrefix && !norm(row.question).startsWith(questionPrefix)) {
+      return false;
+    }
+
+    const hasImage =
+      Number(row.is_image || 0) === 1
+      || Boolean(String(row.image_file || "").trim());
+
+    if (imageState === "1" && !hasImage) return false;
+    if (imageState === "0" && hasImage) return false;
+
+    const missing = Number(row.non_trouve || 0) === 1;
+    if (nonTrouve === "1" && !missing) return false;
+    if (nonTrouve === "0" && missing) return false;
+
+    return true;
+  });
+
+  const direction = sortDirection === "desc" ? -1 : 1;
+  const collator = new Intl.Collator("fr", {
+    numeric: true,
+    sensitivity: "base"
+  });
+
+  const fieldValue = row => {
+    if (sortField === "question") return String(row.question || "");
+    if (sortField === "megatheme") return String(row.megatheme || "");
+    if (sortField === "theme") return String(row.theme || "");
+    if (sortField === "status") return String(row.status ?? "");
+    return String(row.id || "");
+  };
+
+  filtered.sort((a, b) => {
+    const primary = collator.compare(fieldValue(a), fieldValue(b));
+    if (primary !== 0) return primary * direction;
+    return collator.compare(String(a.id), String(b.id)) * direction;
+  });
+
+  const size = Math.max(1, Math.min(Number(pageSize) || 50, 100));
+  const offset = Math.max(0, Number(cursor?.offset || 0));
+  const items = filtered.slice(offset, offset + size);
+  const nextOffset = offset + items.length;
+
+  return {
+    items,
+    total: filtered.length,
+    nextCursor: nextOffset < filtered.length ? { offset: nextOffset } : null,
+    effectiveSort: sortField || "id",
+    size: items.length,
+    themeContains: rawTerm,
+    searchIndexCandidates: ids.length,
+    searchIndexCapped: deltaSnap.size >= 5000
+  };
+}
+// CGWEB018_FIX2_THEME_CONTAINS_END
+
 window.CGWEB001 = {
   getUser: () => auth.currentUser,
 
@@ -78,6 +216,7 @@ window.CGWEB001 = {
     };
   },
 
+  queryQuestionsThemeContains: cgweb018QueryThemeContains,
   getQuestion: async (questionId) => {
     const user = auth.currentUser;
     if (!user) throw new Error("Utilisateur Firebase non connecté.");
