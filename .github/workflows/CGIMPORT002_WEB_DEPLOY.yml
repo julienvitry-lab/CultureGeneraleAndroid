@@ -61,6 +61,14 @@ jobs:
           test -f web/public/cgweb018.css
           test -f web/public/cgweb019.js
           test -f web/public/cgweb019.css
+          test -f web/public/cgweb020.js
+          test -f web/public/cgweb020.css
+          test -f web/functions/cgweb020.js
+          test -f web/public/cgweb021.js
+          test -f web/public/cgweb021.css
+          test -f web/functions/cgweb021.js
+          test -f web/public/cgweb023.js
+          test -f web/public/cgweb023.css
           grep -Fq 'CGIMPORT002' web/public/index.html
           grep -Fq 'cgimport002Quizypedia' web/functions/index.js
           grep -Fq '"/api/quizypedia"' web/firebase.json
@@ -77,6 +85,10 @@ jobs:
           grep -Fq 'cgweb016fix2.css?v=CGWEB018_FIX3' web/public/index.html
           grep -Fq 'cgweb018.css?v=CGWEB018_FIX3' web/public/index.html
           grep -Fq 'cgweb019.js?v=CGWEB019_1' web/public/index.html
+          grep -Fq 'cgweb020.js?v=CGWEB020_1' web/public/index.html
+          grep -Fq 'cgweb021.js?v=CGWEB021_1' web/public/index.html
+          grep -Fq 'cgweb023.js?v=CGWEB023_1' web/public/index.html
+          grep -Fq 'cgweb016fix2.js?v=CGWEB020_021_023_1' web/public/index.html
           grep -Fq 'question-images' web/storage.rules
           grep -Fq 'exports.cgimage005MigrateBatch' web/functions/index.js
           node --check web/public/cgimport002.js
@@ -93,6 +105,11 @@ jobs:
           node --check web/public/cgweb017.js
           node --check web/public/cgweb018.js
           node --check web/public/cgweb019.js
+          node --check web/public/cgweb020.js
+          node --check web/functions/cgweb020.js
+          node --check web/public/cgweb021.js
+          node --check web/functions/cgweb021.js
+          node --check web/public/cgweb023.js
           node --check web/public/cgweb016fix2.js
           node --check web/public/app.js
           node --check web/functions/index.js
@@ -114,7 +131,7 @@ jobs:
         run: |
           set -euo pipefail
           npx --yes firebase-tools@15.28.2 deploy \
-            --only hosting,functions:cgimport002Quizypedia,functions:cgimage005MigrateBatch,functions:cgimage007RecoverFailed,functions:cgimage008SuggestCandidates,functions:cgimage008ApplyCandidate,functions:cgweb018ThemeContains,storage \
+            --only hosting,functions:cgimport002Quizypedia,functions:cgimage005MigrateBatch,functions:cgimage007RecoverFailed,functions:cgimage008SuggestCandidates,functions:cgimage008ApplyCandidate,functions:cgweb018ThemeContains,functions:cgweb020QualityScan,functions:cgweb021Bulk,storage \
             --project culturegeneralesync \
             --non-interactive \
             --force

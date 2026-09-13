@@ -1273,3 +1273,9 @@ exports.cgimage008ApplyCandidate = require('./cgimage008').cgimage008ApplyCandid
 
 // CGWEB018_FIX4_EXPORT
 exports.cgweb018ThemeContains = require('./cgweb018').cgweb018ThemeContains;
+
+// CGWEB020_EXPORT
+exports.cgweb020QualityScan = require('./cgweb020').cgweb020QualityScan;
+
+// CGWEB021_EXPORT
+exports.cgweb021Bulk = require('./cgweb021').cgweb021Bulk;

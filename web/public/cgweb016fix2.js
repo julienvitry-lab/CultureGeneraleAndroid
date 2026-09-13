@@ -38,7 +38,7 @@
     shell.id = "cgweb016Shell";
     shell.className = "cg16-shell";
     shell.innerHTML = `
-      <div class="cg16-version-proof" id="cg16VersionProof">CGIMPORT010 FIX1 ACTIF</div>
+      <div class="cg16-version-proof" id="cg16VersionProof">CGWEB020 · CGWEB021 · CGWEB023 ACTIFS</div>
       <nav class="cg16-primary-nav" aria-label="Navigation Culture Générale">
         <button type="button" data-cg16-page="dashboard">Tableau de bord</button>
         <button type="button" data-cg16-page="directory">Répertoire de questions</button>
@@ -49,10 +49,10 @@
 
       <nav id="cg16SecondaryNav" class="cg16-secondary-nav" aria-label="Sous-navigation Plus">
         <button type="button" data-cg16-plus="dedup">Doublons</button>
-        <button type="button" data-cg16-plus="quality">Qualité</button>
-        <button type="button" data-cg16-plus="bulk">Opérations en masse</button>
+        <button type="button" data-cg16-plus="quality">Contrôle qualité</button>
+        <button type="button" data-cg16-plus="bulk">Modifications massives</button>
         <button type="button" data-cg16-plus="fulltext">Plein texte</button>
-        <button type="button" data-cg16-plus="sync">Synchronisation</button>
+        <button type="button" data-cg16-plus="sync">Santé synchro</button>
         <button type="button" data-cg16-plus="diagnostic">Diagnostic</button>
       </nav>
 
@@ -322,10 +322,13 @@
     move("cgimage008Panel", "cg16ImportSemanticMount");
 
     move("cgdedup001Panel", "cg16DedupMount");
-    move("cgweb013Panel", "cg16QualityMount");
-    move("cgweb014Panel", "cg16BulkMount");
+    move("cgweb020Panel", "cg16QualityMount");
+    move("cgweb021Panel", "cg16BulkMount");
     move("cgweb015Panel", "cg16FulltextMount");
-    move("cgsync005Panel", "cg16SyncMount");
+    move("cgweb023Panel", "cg16SyncMount");
+    if ($("cgweb013Panel")) $("cgweb013Panel").hidden = true;
+    if ($("cgweb014Panel")) $("cgweb014Panel").hidden = true;
+    if ($("cgsync005Panel")) $("cgsync005Panel").hidden = true;
 
     // Diagnostic historique : conservé, mais retiré de la page principale.
     const technical = $("dashboardView")?.querySelector(".technical");
