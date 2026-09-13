@@ -69,6 +69,15 @@ jobs:
           test -f web/functions/cgweb021.js
           test -f web/public/cgweb023.js
           test -f web/public/cgweb023.css
+          test -f web/public/cgweb022.js
+          test -f web/public/cgweb022.css
+          test -f web/functions/cgweb022.js
+          test -f web/public/cgweb024.js
+          test -f web/public/cgweb024.css
+          test -f web/functions/cgweb024.js
+          test -f web/public/cgweb025.js
+          test -f web/public/cgweb025.css
+          test -f web/functions/cgweb025.js
           grep -Fq 'CGIMPORT002' web/public/index.html
           grep -Fq 'cgimport002Quizypedia' web/functions/index.js
           grep -Fq '"/api/quizypedia"' web/firebase.json
@@ -88,6 +97,10 @@ jobs:
           grep -Fq 'cgweb020.js?v=CGWEB020_1' web/public/index.html
           grep -Fq 'cgweb021.js?v=CGWEB021_1' web/public/index.html
           grep -Fq 'cgweb023.js?v=CGWEB023_1' web/public/index.html
+          grep -Fq 'cgweb022.js?v=CGWEB022_1' web/public/index.html
+          grep -Fq 'cgweb024.js?v=CGWEB024_1' web/public/index.html
+          grep -Fq 'cgweb025.js?v=CGWEB025_1' web/public/index.html
+          grep -Fq 'cgweb016fix2.js?v=CGWEB022_024_025_1' web/public/index.html
           grep -Fq 'cgweb016fix2.js?v=CGWEB020_021_023_1' web/public/index.html
           grep -Fq 'question-images' web/storage.rules
           grep -Fq 'exports.cgimage005MigrateBatch' web/functions/index.js
@@ -110,6 +123,12 @@ jobs:
           node --check web/public/cgweb021.js
           node --check web/functions/cgweb021.js
           node --check web/public/cgweb023.js
+          node --check web/public/cgweb022.js
+          node --check web/functions/cgweb022.js
+          node --check web/public/cgweb024.js
+          node --check web/functions/cgweb024.js
+          node --check web/public/cgweb025.js
+          node --check web/functions/cgweb025.js
           node --check web/public/cgweb016fix2.js
           node --check web/public/app.js
           node --check web/functions/index.js
@@ -131,7 +150,7 @@ jobs:
         run: |
           set -euo pipefail
           npx --yes firebase-tools@15.28.2 deploy \
-            --only hosting,functions:cgimport002Quizypedia,functions:cgimage005MigrateBatch,functions:cgimage007RecoverFailed,functions:cgimage008SuggestCandidates,functions:cgimage008ApplyCandidate,functions:cgweb018ThemeContains,functions:cgweb020QualityScan,functions:cgweb021Bulk,storage \
+            --only hosting,functions:cgimport002Quizypedia,functions:cgimage005MigrateBatch,functions:cgimage007RecoverFailed,functions:cgimage008SuggestCandidates,functions:cgimage008ApplyCandidate,functions:cgweb018ThemeContains,functions:cgweb020QualityScan,functions:cgweb021Bulk,functions:cgweb022History,functions:cgweb024ImportReview,functions:cgweb025Duplicates,storage \
             --project culturegeneralesync \
             --non-interactive \
             --force

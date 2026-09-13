@@ -585,6 +585,28 @@ async function importSelected(){
   const selected=drafts.filter(q=>q.selected);
   if(!selected.length){status('Aucune question sélectionnée.','err');return;}
 
+  // CGWEB024_STAGE_HOOK
+  if(window.CGWEB024_API?.stage){
+    if(!confirm(
+      `Placer ${selected.length} QCM dans la file de validation ?\n\n`+
+      `Aucune question définitive ne sera créée avant validation dans CGWEB024.`
+    ))return;
+    const btn=$('cgimp2Import');
+    btn.disabled=true;
+    btn.textContent='Mise en validation…';
+    try{
+      const result=await window.CGWEB024_API.stage(selected);
+      status(`✅ ${result.staged} question(s) placée(s) dans « Validation après import ».`, 'ok');
+      window.CGWEB024_API.refresh?.();
+    }catch(e){
+      status(`❌ Mise en validation impossible : ${e.message}`, 'err');
+    }finally{
+      btn.disabled=false;
+      btn.textContent='Envoyer en validation';
+    }
+    return;
+  }
+
   if(!confirm(
     `Importer ${selected.length} QCM Quizypedia 1:1 ?\n\n`+
     `Seuls les ID Culture Générale seront nouveaux.`

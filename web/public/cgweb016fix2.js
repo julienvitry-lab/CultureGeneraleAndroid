@@ -9,8 +9,8 @@
   const SESSION_PLUS = "cgweb016_plus";
   const SESSION_IMPORT = "cgweb016_import";
   const PAGES = new Set(["dashboard", "directory", "create", "import", "more"]);
-  const PLUS_PAGES = new Set(["dedup", "quality", "bulk", "fulltext", "sync", "diagnostic"]);
-  const IMPORT_PAGES = new Set(["url", "images", "migration", "recovery404", "semantic"]);
+  const PLUS_PAGES = new Set(["dedup", "quality", "bulk", "history", "fulltext", "sync", "diagnostic"]);
+  const IMPORT_PAGES = new Set(["url", "review", "images", "migration", "recovery404", "semantic"]);
 
   let currentPage = sessionStorage.getItem(SESSION_PAGE) || "dashboard";
   let currentPlus = sessionStorage.getItem(SESSION_PLUS) || "dedup";
@@ -38,7 +38,7 @@
     shell.id = "cgweb016Shell";
     shell.className = "cg16-shell";
     shell.innerHTML = `
-      <div class="cg16-version-proof" id="cg16VersionProof">CGWEB020 · CGWEB021 · CGWEB023 ACTIFS</div>
+      <div class="cg16-version-proof" id="cg16VersionProof">CGWEB022 · CGWEB024 · CGWEB025 ACTIFS</div>
       <nav class="cg16-primary-nav" aria-label="Navigation Culture Générale">
         <button type="button" data-cg16-page="dashboard">Tableau de bord</button>
         <button type="button" data-cg16-page="directory">Répertoire de questions</button>
@@ -48,9 +48,10 @@
       </nav>
 
       <nav id="cg16SecondaryNav" class="cg16-secondary-nav" aria-label="Sous-navigation Plus">
-        <button type="button" data-cg16-plus="dedup">Doublons</button>
+        <button type="button" data-cg16-plus="dedup">Doublons intelligents</button>
         <button type="button" data-cg16-plus="quality">Contrôle qualité</button>
         <button type="button" data-cg16-plus="bulk">Modifications massives</button>
+        <button type="button" data-cg16-plus="history">Historique</button>
         <button type="button" data-cg16-plus="fulltext">Plein texte</button>
         <button type="button" data-cg16-plus="sync">Santé synchro</button>
         <button type="button" data-cg16-plus="diagnostic">Diagnostic</button>
@@ -149,6 +150,7 @@
         <section id="cg16PageImport" class="cg16-page" data-cg16-page-panel="import">
           <nav id="cg16ImportNav" class="cg16-import-nav" aria-label="Sous-navigation Import Quizypedia">
             <button type="button" data-cg16-import="url">Import Quizypedia par URL</button>
+            <button type="button" data-cg16-import="review">Validation après import</button>
             <button type="button" data-cg16-import="images">Gestion avancée des images</button>
             <button type="button" data-cg16-import="migration">Migration massive des images historiques</button>
             <button type="button" data-cg16-import="recovery404">Récupération ciblée des 404</button>
@@ -157,6 +159,9 @@
 
           <section class="cg16-import-page" data-cg16-import-panel="url">
             <div id="cg16ImportUrlMount" class="cg16-mount"></div>
+          </section>
+          <section class="cg16-import-page" data-cg16-import-panel="review">
+            <div id="cg16ImportReviewMount" class="cg16-mount"></div>
           </section>
           <section class="cg16-import-page" data-cg16-import-panel="images">
             <div id="cg16ImportImagesMount" class="cg16-mount"></div>
@@ -176,6 +181,7 @@
           <section class="cg16-plus-page" data-cg16-plus-panel="dedup"><div id="cg16DedupMount" class="cg16-mount"></div></section>
           <section class="cg16-plus-page" data-cg16-plus-panel="quality"><div id="cg16QualityMount" class="cg16-mount"></div></section>
           <section class="cg16-plus-page" data-cg16-plus-panel="bulk"><div id="cg16BulkMount" class="cg16-mount"></div></section>
+          <section class="cg16-plus-page" data-cg16-plus-panel="history"><div id="cg16HistoryMount" class="cg16-mount"></div></section>
           <section class="cg16-plus-page" data-cg16-plus-panel="fulltext"><div id="cg16FulltextMount" class="cg16-mount"></div></section>
           <section class="cg16-plus-page" data-cg16-plus-panel="sync"><div id="cg16SyncMount" class="cg16-mount"></div></section>
           <section class="cg16-plus-page" data-cg16-plus-panel="diagnostic">
@@ -316,14 +322,17 @@
     move("cgweb018Panel", "cg16DirectoryMount");
     $("cgweb006Panel")?.classList.add("cg16-directory-legacy-hidden");
     move("cgimport002Panel", "cg16ImportUrlMount");
+    move("cgweb024Panel", "cg16ImportReviewMount");
     move("cgimage002Panel", "cg16ImportImagesMount");
     move("cgimage005Panel", "cg16ImportMigrationMount");
     move("cgimage007Panel", "cg16Import404Mount");
     move("cgimage008Panel", "cg16ImportSemanticMount");
 
-    move("cgdedup001Panel", "cg16DedupMount");
+    move("cgweb025Panel", "cg16DedupMount");
+    $("cgdedup001Panel")?.classList.add("cg16-legacy-hidden");
     move("cgweb020Panel", "cg16QualityMount");
     move("cgweb021Panel", "cg16BulkMount");
+    move("cgweb022Panel", "cg16HistoryMount");
     move("cgweb015Panel", "cg16FulltextMount");
     move("cgweb023Panel", "cg16SyncMount");
     if ($("cgweb013Panel")) $("cgweb013Panel").hidden = true;

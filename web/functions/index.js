@@ -1279,3 +1279,8 @@ exports.cgweb020QualityScan = require('./cgweb020').cgweb020QualityScan;
 
 // CGWEB021_EXPORT
 exports.cgweb021Bulk = require('./cgweb021').cgweb021Bulk;
+
+// CGWEB022_024_025_EXPORTS
+exports.cgweb022History = require('./cgweb022').cgweb022History;
+exports.cgweb024ImportReview = require('./cgweb024').cgweb024ImportReview;
+exports.cgweb025Duplicates = require('./cgweb025').cgweb025Duplicates;

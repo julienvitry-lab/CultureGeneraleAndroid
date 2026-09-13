@@ -556,6 +556,23 @@ function cgsync007ExpectedRevision(options, cloudRevision) {
   return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : cloudRevision;
 }
 
+function cgsync007HistorySnapshot(data = {}) {
+  const fields = [
+    "megatheme","theme","question","detail",
+    "proposition_a","proposition_b","proposition_c","proposition_d",
+    "correct_index","url_quizypedia","url_internet",
+    "image_file","image_thumb_file","image_source_url","image_mime",
+    "image_width","image_height","image_bytes","image_sha256",
+    "image_schema","image_origin","image_original_name","image_updated_ms",
+    "non_trouve","status","is_image"
+  ];
+  const out = {};
+  for (const field of fields) {
+    if (data[field] !== undefined) out[field] = data[field];
+  }
+  return out;
+}
+
 async function cgsync007WriteQuestion(questionId, patch, options = {}) {
   const u = auth.currentUser;
   if (!u) throw new Error("Utilisateur Firebase non connecté.");
@@ -624,6 +641,8 @@ async function cgsync007WriteQuestion(questionId, patch, options = {}) {
       revision_before: cloudRevision,
       revision_after: nextRevision,
       patch: clean,
+      before_snapshot: cgsync007HistorySnapshot(cloud),
+      after_snapshot: cgsync007HistorySnapshot({ ...cloud, ...clean }),
       writer_id: writer.cg_writer_id,
       writer_label: writer.cg_writer_label,
       source: writer.cg_update_source,
@@ -732,6 +751,8 @@ async function cgsync007DeleteQuestion(questionId, options = {}) {
       revision_before: cloudRevision,
       revision_after: cloudRevision,
       patch: {},
+      before_snapshot: cgsync007HistorySnapshot(cloud),
+      after_snapshot: {},
       writer_id: writer.cg_writer_id,
       writer_label: writer.cg_writer_label,
       source: writer.cg_update_source,
