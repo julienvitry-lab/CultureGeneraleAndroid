@@ -8,14 +8,14 @@
   const SESSION_PAGE = "cgweb016_page";
   const SESSION_PLUS = "cgweb016_plus";
   const SESSION_IMPORT = "cgweb016_import";
-  const PAGES = new Set(["directory", "create", "import", "more"]);
+  const PAGES = new Set(["dashboard", "directory", "create", "import", "more"]);
   const PLUS_PAGES = new Set(["dedup", "quality", "bulk", "fulltext", "sync", "diagnostic"]);
   const IMPORT_PAGES = new Set(["url", "images", "migration", "recovery404", "semantic"]);
 
-  let currentPage = sessionStorage.getItem(SESSION_PAGE) || "directory";
+  let currentPage = sessionStorage.getItem(SESSION_PAGE) || "dashboard";
   let currentPlus = sessionStorage.getItem(SESSION_PLUS) || "dedup";
   let currentImport = sessionStorage.getItem(SESSION_IMPORT) || "url";
-  if (!PAGES.has(currentPage)) currentPage = "directory";
+  if (!PAGES.has(currentPage)) currentPage = "dashboard";
   if (!PLUS_PAGES.has(currentPlus)) currentPlus = "dedup";
   if (!IMPORT_PAGES.has(currentImport)) currentImport = "url";
 
@@ -40,6 +40,7 @@
     shell.innerHTML = `
       <div class="cg16-version-proof" id="cg16VersionProof">CGIMPORT010 FIX1 ACTIF</div>
       <nav class="cg16-primary-nav" aria-label="Navigation Culture Générale">
+        <button type="button" data-cg16-page="dashboard">Tableau de bord</button>
         <button type="button" data-cg16-page="directory">Répertoire de questions</button>
         <button type="button" data-cg16-page="create">Création de question</button>
         <button type="button" data-cg16-page="import">Import Quizypedia</button>
@@ -56,6 +57,9 @@
       </nav>
 
       <div class="cg16-workspace">
+        <section id="cg16PageDashboard" class="cg16-page" data-cg16-page-panel="dashboard">
+          <div id="cg16DashboardMount" class="cg16-mount"></div>
+        </section>
         <section id="cg16PageDirectory" class="cg16-page" data-cg16-page-panel="directory">
           <div id="cg16DirectoryMount" class="cg16-mount"></div>
         </section>
@@ -229,6 +233,8 @@
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  window.CGWEB016_API = { navigate, navigatePlus, navigateImport };
+
   function renderNavigation() {
     const loggedIn = Boolean(window.CGWEB001?.getUser?.());
 
@@ -304,6 +310,8 @@
     buildShell();
     hideLegacy();
 
+    move("cgweb017Panel", "cg16DashboardMount");
+    move("cgweb018Panel", "cg16DirectoryMount");
     move("cgweb006Panel", "cg16DirectoryMount");
     move("cgimport002Panel", "cg16ImportUrlMount");
     move("cgimage002Panel", "cg16ImportImagesMount");

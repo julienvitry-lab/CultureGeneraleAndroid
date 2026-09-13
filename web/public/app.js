@@ -106,6 +106,12 @@ window.CGWEB001 = {
       const statusValue = filters.status === "__EMPTY__" ? "" : String(filters.status);
       whereParts.push(where("status", "==", statusValue));
     }
+    if (filters.imageState === "1" || filters.imageState === "0") {
+      whereParts.push(where("is_image", "==", Number(filters.imageState)));
+    }
+    if (filters.nonTrouve === "1" || filters.nonTrouve === "0") {
+      whereParts.push(where("non_trouve", "==", Number(filters.nonTrouve)));
+    }
 
     const prefix = String(filters.questionPrefix || "").trim();
     if (prefix) {
@@ -527,6 +533,7 @@ async function cgsync007WriteQuestion(questionId, patch, options = {}) {
 
   const questionRef = doc(db, "users", u.uid, "questions", id);
   const conflictRef = doc(collection(db, "users", u.uid, "question_conflicts"));
+  const historyRef = doc(collection(db, "users", u.uid, "question_history"));
   const writer = cgsync007WriterMeta(options.source || "CGSYNC007");
 
   const result = await runTransaction(db, async transaction => {
@@ -574,6 +581,18 @@ async function cgsync007WriteQuestion(questionId, patch, options = {}) {
       cg_revision: nextRevision,
       cg_base_revision: cloudRevision,
       cg_updated_at: serverTimestamp()
+    });
+    // CGWEB019_HISTORY_UPDATE
+    transaction.set(historyRef, {
+      question_id: id,
+      operation: "update",
+      revision_before: cloudRevision,
+      revision_after: nextRevision,
+      patch: clean,
+      writer_id: writer.cg_writer_id,
+      writer_label: writer.cg_writer_label,
+      source: writer.cg_update_source,
+      created_at: serverTimestamp()
     });
 
     if (options.conflictId) {
@@ -623,6 +642,7 @@ async function cgsync007DeleteQuestion(questionId, options = {}) {
   const questionRef = doc(db, "users", u.uid, "questions", id);
   const tombstoneRef = doc(db, "users", u.uid, "question_tombstones", id);
   const conflictRef = doc(collection(db, "users", u.uid, "question_conflicts"));
+  const historyRef = doc(collection(db, "users", u.uid, "question_history"));
   const writer = cgsync007WriterMeta(options.source || "CGSYNC007_DELETE");
 
   const result = await runTransaction(db, async transaction => {
@@ -669,6 +689,18 @@ async function cgsync007DeleteQuestion(questionId, options = {}) {
       source: "CGSYNC007",
       deleted_revision: cloudRevision,
       ...writer
+    });
+    // CGWEB019_HISTORY_DELETE
+    transaction.set(historyRef, {
+      question_id: id,
+      operation: "delete",
+      revision_before: cloudRevision,
+      revision_after: cloudRevision,
+      patch: {},
+      writer_id: writer.cg_writer_id,
+      writer_label: writer.cg_writer_label,
+      source: writer.cg_update_source,
+      created_at: serverTimestamp()
     });
     transaction.delete(questionRef);
 
@@ -918,6 +950,51 @@ window.CGDEDUP001_API = {
 };
 // CGDEDUP001_API_END
 
+// CGWEB017_019_API_START
+window.CGWEB017_API = {
+  stats: async () => {
+    const u = auth.currentUser;
+    if (!u) throw new Error("Utilisateur Firebase non connecté.");
+    const ref = collection(db, "users", u.uid, "questions");
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const [total, withImage, cloudImages, nonTrouve, updated7d, recent] = await Promise.all([
+      getCountFromServer(ref),
+      getCountFromServer(query(ref, where("is_image", "==", 1))),
+      getCountFromServer(query(ref, where("image_origin", "==", "firebase_storage"))),
+      getCountFromServer(query(ref, where("non_trouve", "==", 1))),
+      getCountFromServer(query(ref, where("cg_updated_at", ">=", since))).catch(() => ({data:()=>({count:0})})),
+      getDocs(query(ref, orderBy("cg_updated_at", "desc"), limit(8))).catch(() => ({docs:[]}))
+    ]);
+    return {
+      total: total.data().count,
+      with_image: withImage.data().count,
+      cloud_images: cloudImages.data().count,
+      non_trouve: nonTrouve.data().count,
+      updated_7d: updated7d.data().count,
+      recent: recent.docs.map(d => ({id:d.id, ...d.data()}))
+    };
+  }
+};
+window.CGWEB019_DATA_API = {
+  history: async (questionId, maxResults = 30) => {
+    const u = auth.currentUser;
+    if (!u) throw new Error("Utilisateur Firebase non connecté.");
+    const id = String(questionId || "").trim();
+    if (!id) return [];
+    const ref = collection(db, "users", u.uid, "question_history");
+    const snap = await getDocs(query(ref, where("question_id", "==", id), limit(Math.min(Math.max(Number(maxResults) || 30, 1), 100))));
+    const rows = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    const millis = v => {
+      if (!v) return 0;
+      if (typeof v.toMillis === "function") return v.toMillis();
+      if (v.seconds) return Number(v.seconds) * 1000;
+      const n = new Date(v).getTime();
+      return Number.isFinite(n) ? n : 0;
+    };
+    return rows.sort((a,b) => millis(b.created_at) - millis(a.created_at));
+  }
+};
+// CGWEB017_019_API_END
 // CGWEB006_BRIDGE_START
 window.CGWEB006_API = {
   currentUser: () => {
