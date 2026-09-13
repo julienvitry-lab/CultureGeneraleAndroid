@@ -40,6 +40,9 @@
     shell.innerHTML = `
       <div class="cg16-version-proof" id="cg16VersionProof">CGWEB022 · CGWEB024 · CGWEB025 ACTIFS</div>
       <nav class="cg16-primary-nav" aria-label="Navigation Culture Générale">
+        <button type="button" data-cg16-page="home2">Accueil</button>
+        <button type="button" data-cg16-page="search">Recherche</button>
+        <button type="button" data-cg16-page="funlists">Listes fun</button>
         <button type="button" data-cg16-page="dashboard">Tableau de bord</button>
         <button type="button" data-cg16-page="directory">Répertoire de questions</button>
         <button type="button" data-cg16-page="create">Création de question</button>
@@ -62,6 +65,9 @@
       </nav>
 
       <div class="cg16-workspace">
+        <section id="cg16PageHome2" class="cg16-page" data-cg16-page-panel="home2"><div id="cg16Home2Mount" class="cg16-mount"></div></section>
+        <section id="cg16PageSearch" class="cg16-page" data-cg16-page-panel="search"><div id="cg16SearchMount" class="cg16-mount"></div></section>
+        <section id="cg16PageFunlists" class="cg16-page" data-cg16-page-panel="funlists"><div id="cg16FunlistsMount" class="cg16-mount"></div></section>
         <section id="cg16PageDashboard" class="cg16-page" data-cg16-page-panel="dashboard">
           <div id="cg16DashboardMount" class="cg16-mount"></div>
         </section>
@@ -324,6 +330,9 @@
     buildShell();
     hideLegacy();
 
+    move("cgweb031Panel", "cg16Home2Mount");
+    move("cgweb032Panel", "cg16SearchMount");
+    move("cgweb030Panel", "cg16FunlistsMount");
     move("cgweb017Panel", "cg16DashboardMount");
     // CGWEB018 FIX3 : le Répertoire avancé est désormais l'unique
     // vue principale de l'onglet Répertoire de questions.

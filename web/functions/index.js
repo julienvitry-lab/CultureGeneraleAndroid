@@ -1288,3 +1288,9 @@ exports.cgweb025Duplicates = require('./cgweb025').cgweb025Duplicates;
 exports.cgweb026ImageCenter = require('./cgweb026').cgweb026ImageCenter;
 exports.cgweb028Analytics = require('./cgweb028').cgweb028Analytics;
 exports.cgweb029Restore = require('./cgweb029').cgweb029Restore;
+// CGWEB030_EXPORT
+exports.cgweb030Lists = require('./cgweb030').cgweb030Lists;
+// CGWEB031_EXPORT
+exports.cgweb031Home = require('./cgweb031').cgweb031Home;
+// CGWEB032_EXPORT
+exports.cgweb032Search = require('./cgweb032').cgweb032Search;

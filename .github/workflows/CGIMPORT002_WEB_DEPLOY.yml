@@ -87,6 +87,19 @@ jobs:
           test -f web/functions/cgweb028.js
           test -f web/public/cgweb029.js
           test -f web/public/cgweb029.css
+          test -f web/public/cgweb030.js
+          test -f web/public/cgweb030.css
+          test -f web/public/cgweb031.js
+          test -f web/public/cgweb031.css
+          test -f web/public/cgweb032.js
+          test -f web/public/cgweb032.css
+          test -f web/public/cgweb033.js
+          test -f web/public/cgweb033.css
+          test -f web/public/cgweb034.js
+          test -f web/public/cgweb034.css
+          test -f web/functions/cgweb030.js
+          test -f web/functions/cgweb031.js
+          test -f web/functions/cgweb032.js
           test -f web/functions/cgweb029.js
           test -f web/functions/cgweb025.js
           grep -Fq 'CGIMPORT002' web/public/index.html
@@ -115,6 +128,12 @@ jobs:
           grep -Fq 'cgweb027.js?v=CGWEB027_1' web/public/index.html
           grep -Fq 'cgweb028.js?v=CGWEB028_1' web/public/index.html
           grep -Fq 'cgweb029.js?v=CGWEB029_1' web/public/index.html
+          grep -Fq 'cgweb030.js?v=CGWEB030_1' web/public/index.html
+          grep -Fq 'cgweb031.js?v=CGWEB031_1' web/public/index.html
+          grep -Fq 'cgweb032.js?v=CGWEB032_1' web/public/index.html
+          grep -Fq 'cgweb033.js?v=CGWEB033_1' web/public/index.html
+          grep -Fq 'cgweb034.js?v=CGWEB034_1' web/public/index.html
+          grep -Fq 'cgweb016fix2.js?v=CGWEB030_034_1' web/public/index.html
           grep -Fq 'cgweb016fix2.js?v=CGWEB026_029_1' web/public/index.html
           grep -Fq 'cgweb016fix2.js?v=CGWEB022_024_025_1' web/public/index.html
           grep -Fq 'cgweb016fix2.js?v=CGWEB020_021_023_1' web/public/index.html
@@ -151,6 +170,14 @@ jobs:
           node --check web/public/cgweb028.js
           node --check web/functions/cgweb028.js
           node --check web/public/cgweb029.js
+          node --check web/public/cgweb030.js
+          node --check web/public/cgweb031.js
+          node --check web/public/cgweb032.js
+          node --check web/public/cgweb033.js
+          node --check web/public/cgweb034.js
+          node --check web/functions/cgweb030.js
+          node --check web/functions/cgweb031.js
+          node --check web/functions/cgweb032.js
           node --check web/functions/cgweb029.js
           node --check web/public/cgweb016fix2.js
           node --check web/public/app.js
@@ -173,7 +200,7 @@ jobs:
         run: |
           set -euo pipefail
           npx --yes firebase-tools@15.28.2 deploy \
-            --only hosting,functions:cgimport002Quizypedia,functions:cgimage005MigrateBatch,functions:cgimage007RecoverFailed,functions:cgimage008SuggestCandidates,functions:cgimage008ApplyCandidate,functions:cgweb018ThemeContains,functions:cgweb020QualityScan,functions:cgweb021Bulk,functions:cgweb022History,functions:cgweb024ImportReview,functions:cgweb025Duplicates,functions:cgweb026ImageCenter,functions:cgweb028Analytics,functions:cgweb029Restore,storage \
+            --only hosting,functions:cgimport002Quizypedia,functions:cgimage005MigrateBatch,functions:cgimage007RecoverFailed,functions:cgimage008SuggestCandidates,functions:cgimage008ApplyCandidate,functions:cgweb018ThemeContains,functions:cgweb020QualityScan,functions:cgweb021Bulk,functions:cgweb022History,functions:cgweb024ImportReview,functions:cgweb025Duplicates,functions:cgweb026ImageCenter,functions:cgweb028Analytics,functions:cgweb029Restore,functions:cgweb030Lists,functions:cgweb031Home,functions:cgweb032Search,storage \
             --project culturegeneralesync \
             --non-interactive \
             --force

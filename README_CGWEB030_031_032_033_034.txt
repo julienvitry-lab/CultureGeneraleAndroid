@@ -1,0 +1,31 @@
+CGWEB030 · LISTESFUN001
+- listes personnalisées stockées sous users/<uid>/fun_lists
+- titre + emoji + jusqu’à 500 IDs
+- mélange local et ouverture question / aperçu Android
+- aucune modification du contenu des questions
+
+CGWEB031 · HOME002
+- nouvelle page Accueil dans la navigation principale
+- compteurs questions / images / images à rechercher
+- raccourcis Recherche / Listes fun / Répertoire / Tableau de bord
+- question surprise parmi un petit échantillon
+- listes fun récentes
+
+CGWEB032 · SEARCH001
+- recherche globale question + détail + thème + mégathème
+- insensible à la casse et aux accents
+- filtres mégathème / thème / présence d’image
+- catalogue complet serveur mis en cache 10 minutes
+- ne dépend pas de question_search_delta, volontairement incomplet historiquement
+- limite d’affichage 50 / 100 / 200 / 300
+
+CGWEB033 · LOGIN002
+- refonte du login CGWEB001 sans changer ses IDs ni ses listeners
+- présentation centrée et raccourci vers inscription
+
+CGWEB034 · REGISTER001
+- création de compte Firebase Email/Mot de passe
+- confirmation du mot de passe
+- nom affiché facultatif
+- aucune règle Firestore n’est assouplie par ce lot
+- si le provider Email/Mot de passe est désactivé dans Firebase, un message explicite est affiché
