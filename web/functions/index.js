@@ -1284,3 +1284,7 @@ exports.cgweb021Bulk = require('./cgweb021').cgweb021Bulk;
 exports.cgweb022History = require('./cgweb022').cgweb022History;
 exports.cgweb024ImportReview = require('./cgweb024').cgweb024ImportReview;
 exports.cgweb025Duplicates = require('./cgweb025').cgweb025Duplicates;
+
+exports.cgweb026ImageCenter = require('./cgweb026').cgweb026ImageCenter;
+exports.cgweb028Analytics = require('./cgweb028').cgweb028Analytics;
+exports.cgweb029Restore = require('./cgweb029').cgweb029Restore;

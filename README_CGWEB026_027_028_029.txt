@@ -1,0 +1,34 @@
+CGWEB026 · IMAGECENTER001
+- inventaire Firebase Storage sous users/<uid>/question-images/
+- nombre de fichiers, poids total, poids moyen
+- usages Firestore par question et thème
+- orphelines
+- groupes de doublons via SHA-256 / digest de nom
+- aperçu Storage côté navigateur
+- suppression orpheline uniquement, refus serveur si encore référencée
+- renvoi vers CGIMAGE002 pour remplacer/supprimer une image associée
+
+CGWEB027 · ANDROIDPREVIEW002
+- simulateur séparé dans Plus
+- téléphone / tablette
+- Standard / Révision / Défi
+- police Comfortaa si disponible
+- image Firebase Storage réelle
+- propositions + correction
+
+CGWEB028 · ANALYTICS001
+- total questions
+- questions avec image et pourcentage
+- répartition par mégathème
+- thèmes les plus représentés
+- progression annuelle à partir des créations historisées
+- source estimée Quizypedia / Autre
+- aucune donnée historique antérieure n'est inventée
+
+CGWEB029 · BACKUP001
+- export JSON complet côté navigateur
+- export CSV
+- inventaire Storage via CGWEB026
+- restauration sélective JSON par ID, maximum 200 par lot
+- confirmation explicite et aucun écrasement global en un clic
+- Google Drive réservé à BACKUP002 : format JSON déjà compatible avec une copie externe

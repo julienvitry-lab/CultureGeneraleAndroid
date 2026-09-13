@@ -9,7 +9,7 @@
   const SESSION_PLUS = "cgweb016_plus";
   const SESSION_IMPORT = "cgweb016_import";
   const PAGES = new Set(["dashboard", "directory", "create", "import", "more"]);
-  const PLUS_PAGES = new Set(["dedup", "quality", "bulk", "history", "fulltext", "sync", "diagnostic"]);
+  const PLUS_PAGES = new Set(["dedup", "quality", "bulk", "history", "fulltext", "sync", "diagnostic", "imagescenter", "androidpreview", "analytics", "backup"]);
   const IMPORT_PAGES = new Set(["url", "review", "images", "migration", "recovery404", "semantic"]);
 
   let currentPage = sessionStorage.getItem(SESSION_PAGE) || "dashboard";
@@ -52,6 +52,10 @@
         <button type="button" data-cg16-plus="quality">Contrôle qualité</button>
         <button type="button" data-cg16-plus="bulk">Modifications massives</button>
         <button type="button" data-cg16-plus="history">Historique</button>
+        <button type="button" data-cg16-plus="imagescenter">Bibliothèque d’images</button>
+        <button type="button" data-cg16-plus="androidpreview">Simulateur Android</button>
+        <button type="button" data-cg16-plus="analytics">Statistiques</button>
+        <button type="button" data-cg16-plus="backup">Sauvegardes</button>
         <button type="button" data-cg16-plus="fulltext">Plein texte</button>
         <button type="button" data-cg16-plus="sync">Santé synchro</button>
         <button type="button" data-cg16-plus="diagnostic">Diagnostic</button>
@@ -182,6 +186,10 @@
           <section class="cg16-plus-page" data-cg16-plus-panel="quality"><div id="cg16QualityMount" class="cg16-mount"></div></section>
           <section class="cg16-plus-page" data-cg16-plus-panel="bulk"><div id="cg16BulkMount" class="cg16-mount"></div></section>
           <section class="cg16-plus-page" data-cg16-plus-panel="history"><div id="cg16HistoryMount" class="cg16-mount"></div></section>
+          <section class="cg16-plus-page" data-cg16-plus-panel="imagescenter"><div id="cg16ImageCenterMount" class="cg16-mount"></div></section>
+          <section class="cg16-plus-page" data-cg16-plus-panel="androidpreview"><div id="cg16AndroidPreviewMount" class="cg16-mount"></div></section>
+          <section class="cg16-plus-page" data-cg16-plus-panel="analytics"><div id="cg16AnalyticsMount" class="cg16-mount"></div></section>
+          <section class="cg16-plus-page" data-cg16-plus-panel="backup"><div id="cg16BackupMount" class="cg16-mount"></div></section>
           <section class="cg16-plus-page" data-cg16-plus-panel="fulltext"><div id="cg16FulltextMount" class="cg16-mount"></div></section>
           <section class="cg16-plus-page" data-cg16-plus-panel="sync"><div id="cg16SyncMount" class="cg16-mount"></div></section>
           <section class="cg16-plus-page" data-cg16-plus-panel="diagnostic">
@@ -333,6 +341,10 @@
     move("cgweb020Panel", "cg16QualityMount");
     move("cgweb021Panel", "cg16BulkMount");
     move("cgweb022Panel", "cg16HistoryMount");
+    move("cgweb026Panel", "cg16ImageCenterMount");
+    move("cgweb027Panel", "cg16AndroidPreviewMount");
+    move("cgweb028Panel", "cg16AnalyticsMount");
+    move("cgweb029Panel", "cg16BackupMount");
     move("cgweb015Panel", "cg16FulltextMount");
     move("cgweb023Panel", "cg16SyncMount");
     if ($("cgweb013Panel")) $("cgweb013Panel").hidden = true;

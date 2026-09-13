@@ -77,6 +77,17 @@ jobs:
           test -f web/functions/cgweb024.js
           test -f web/public/cgweb025.js
           test -f web/public/cgweb025.css
+          test -f web/public/cgweb026.js
+          test -f web/public/cgweb026.css
+          test -f web/functions/cgweb026.js
+          test -f web/public/cgweb027.js
+          test -f web/public/cgweb027.css
+          test -f web/public/cgweb028.js
+          test -f web/public/cgweb028.css
+          test -f web/functions/cgweb028.js
+          test -f web/public/cgweb029.js
+          test -f web/public/cgweb029.css
+          test -f web/functions/cgweb029.js
           test -f web/functions/cgweb025.js
           grep -Fq 'CGIMPORT002' web/public/index.html
           grep -Fq 'cgimport002Quizypedia' web/functions/index.js
@@ -100,6 +111,11 @@ jobs:
           grep -Fq 'cgweb022.js?v=CGWEB022_1' web/public/index.html
           grep -Fq 'cgweb024.js?v=CGWEB024_1' web/public/index.html
           grep -Fq 'cgweb025.js?v=CGWEB025_1' web/public/index.html
+          grep -Fq 'cgweb026.js?v=CGWEB026_1' web/public/index.html
+          grep -Fq 'cgweb027.js?v=CGWEB027_1' web/public/index.html
+          grep -Fq 'cgweb028.js?v=CGWEB028_1' web/public/index.html
+          grep -Fq 'cgweb029.js?v=CGWEB029_1' web/public/index.html
+          grep -Fq 'cgweb016fix2.js?v=CGWEB026_029_1' web/public/index.html
           grep -Fq 'cgweb016fix2.js?v=CGWEB022_024_025_1' web/public/index.html
           grep -Fq 'cgweb016fix2.js?v=CGWEB020_021_023_1' web/public/index.html
           grep -Fq 'question-images' web/storage.rules
@@ -129,6 +145,13 @@ jobs:
           node --check web/functions/cgweb024.js
           node --check web/public/cgweb025.js
           node --check web/functions/cgweb025.js
+          node --check web/public/cgweb026.js
+          node --check web/functions/cgweb026.js
+          node --check web/public/cgweb027.js
+          node --check web/public/cgweb028.js
+          node --check web/functions/cgweb028.js
+          node --check web/public/cgweb029.js
+          node --check web/functions/cgweb029.js
           node --check web/public/cgweb016fix2.js
           node --check web/public/app.js
           node --check web/functions/index.js
@@ -150,7 +173,7 @@ jobs:
         run: |
           set -euo pipefail
           npx --yes firebase-tools@15.28.2 deploy \
-            --only hosting,functions:cgimport002Quizypedia,functions:cgimage005MigrateBatch,functions:cgimage007RecoverFailed,functions:cgimage008SuggestCandidates,functions:cgimage008ApplyCandidate,functions:cgweb018ThemeContains,functions:cgweb020QualityScan,functions:cgweb021Bulk,functions:cgweb022History,functions:cgweb024ImportReview,functions:cgweb025Duplicates,storage \
+            --only hosting,functions:cgimport002Quizypedia,functions:cgimage005MigrateBatch,functions:cgimage007RecoverFailed,functions:cgimage008SuggestCandidates,functions:cgimage008ApplyCandidate,functions:cgweb018ThemeContains,functions:cgweb020QualityScan,functions:cgweb021Bulk,functions:cgweb022History,functions:cgweb024ImportReview,functions:cgweb025Duplicates,functions:cgweb026ImageCenter,functions:cgweb028Analytics,functions:cgweb029Restore,storage \
             --project culturegeneralesync \
             --non-interactive \
             --force
