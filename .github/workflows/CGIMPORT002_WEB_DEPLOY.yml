@@ -72,7 +72,7 @@ jobs:
           grep -Fq 'cgimage008.js?v=CGIMAGE008_1' web/public/index.html
           grep -Fq 'cgimage002.js?v=CGIMAGE002_1' web/public/index.html
           grep -Fq 'cgweb017.js?v=CGWEB017_1' web/public/index.html
-          grep -Fq 'cgweb018.js?v=CGWEB018_FIX4' web/public/index.html
+          grep -Fq 'cgweb018.js?v=CGWEB018_FIX5' web/public/index.html
           grep -Fq 'cgweb016fix2.js?v=CGWEB018_FIX3' web/public/index.html
           grep -Fq 'cgweb016fix2.css?v=CGWEB018_FIX3' web/public/index.html
           grep -Fq 'cgweb018.css?v=CGWEB018_FIX3' web/public/index.html

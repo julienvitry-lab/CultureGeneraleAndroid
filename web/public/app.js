@@ -29,7 +29,7 @@ const db = getFirestore(app);
 // CGCLOUD002_SHARED_CONTEXT_BRIDGE_START
 // Contexte Firebase unique partagé par CGWEB001 / CGCLOUD002 / CGWEB004 / CGWEB005.
 
-// CGWEB018_FIX4_THEME_CONTAINS_START
+// CGWEB018_FIX5_THEME_CONTAINS_START
 async function cgweb018QueryThemeContains(options = {}) {
   const user = auth.currentUser;
   if (!user) throw new Error("Utilisateur Firebase non connecté.");
@@ -60,7 +60,7 @@ async function cgweb018QueryThemeContains(options = {}) {
   }
   return result;
 }
-// CGWEB018_FIX4_THEME_CONTAINS_END
+// CGWEB018_FIX5_THEME_CONTAINS_END
 
 window.CGWEB001 = {
   getUser: () => auth.currentUser,

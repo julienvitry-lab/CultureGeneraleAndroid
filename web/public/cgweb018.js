@@ -1,9 +1,10 @@
-const CGWEB018_VERSION="CGWEB018_FIX4";
+const CGWEB018_VERSION="CGWEB018_FIX5";
 const cg18$=id=>document.getElementById(id);
 const cg18Esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
 const cg18Fmt=v=>new Intl.NumberFormat("fr-FR").format(Number(v||0));
 const CG18_SELECTION="CGWEB018_SELECTED";
 const CG18_COLUMNS="CGWEB018_COLUMNS";
+const CG18_THEME_CATALOG_SESSION="CGWEB018_THEME_CATALOG_V5";
 
 const CG18_COLS={
   id:"ID", mega:"Mégathème", theme:"Thème", question:"Question",
@@ -80,21 +81,44 @@ async function cg18Load(reset=false){
       sortField:cg18$("cg18Sort").value,
       sortDirection:cg18$("cg18Direction").value
     };
+    const forceThemeCatalog=filters.themeContains
+      ? sessionStorage.getItem(CG18_THEME_CATALOG_SESSION)!=="1"
+      : false;
     const res=filters.themeContains
       ? await api.queryQuestionsThemeContains({
           ...params,
-          term:filters.themeContains
+          term:filters.themeContains,
+          forceCatalog:forceThemeCatalog
         })
       : await api.queryQuestionsPage(params);
+    if(filters.themeContains && res.catalogSchema===5){
+      sessionStorage.setItem(CG18_THEME_CATALOG_SESSION,"1");
+    }
     CG18.rows=res.items||[];CG18.total=res.total||0;CG18.next=res.nextCursor||null;
     cg18Render();
-    const themeInfo=Array.isArray(res.matchingThemes)
-      ? ` · ${cg18Fmt(res.matchingThemes.length)} thème(s) correspondant(s)`
+    const matching=Array.isArray(res.matchingThemes)?res.matchingThemes:[];
+    const themeInfo=filters.themeContains
+      ? ` · ${cg18Fmt(matching.length)} thème(s) correspondant(s)`
+      : "";
+    const catalogInfo=filters.themeContains && Number(res.themeCatalogSize||0)
+      ? ` · catalogue: ${cg18Fmt(res.themeCatalogSize)} thèmes / ${cg18Fmt(res.catalogQuestionCount)} questions`
       : "";
     const truncated=res.truncated
       ? " · ⚠️ résultats serveur plafonnés"
       : "";
-    cg18Status(`${cg18Fmt(CG18.rows.length)} question(s) chargée(s)${themeInfo}${truncated}`,"ok");
+    cg18Status(`${cg18Fmt(CG18.rows.length)} question(s) chargée(s)${themeInfo}${catalogInfo}${truncated}`,"ok");
+    const diag=cg18$("cg18ThemeMatches");
+    if(diag){
+      if(filters.themeContains){
+        diag.hidden=false;
+        diag.textContent=matching.length
+          ? `Thèmes détectés : ${matching.slice(0,30).join(" · ")}${matching.length>30?" · …":""}`
+          : `Aucun intitulé de thème contenant « ${filters.themeContains} » dans le catalogue reconstruit.`;
+      }else{
+        diag.hidden=true;
+        diag.textContent="";
+      }
+    }
   }catch(error){CG18.rows=[];CG18.total=0;CG18.next=null;cg18Render();cg18Status(error?.message||String(error),"error")}
 }
 
@@ -124,6 +148,7 @@ function cg18Init(){
       <b>Recherche image :</b> « Image signalée introuvable » signifie qu’une tentative de récupération d’image a échoué.
       Cela ne signifie pas que la question elle-même est introuvable.
     </div>
+    <div id="cg18ThemeMatches" class="cg18-theme-matches" hidden></div>
     <div class="cg18-actions"><button id="cg18Apply" class="cg18-btn cg18-primary">Appliquer</button><button id="cg18Reset" class="cg18-btn">Réinitialiser</button><button id="cg18Columns" class="cg18-btn">Colonnes</button><span id="cg18Meta"></span></div>
     <div id="cg18ColumnList" class="cg18-columns cg18-hidden"></div>
     <div class="cg18-selection"><strong id="cg18Selected">0 sélectionnée</strong><button id="cg18SelectVisible" class="cg18-btn">Tout visible</button><button id="cg18Clear" class="cg18-btn">Vider</button><button id="cg18Copy" class="cg18-btn">Copier les ID</button></div>
@@ -140,3 +165,23 @@ function cg18Init(){
   cg18Load(true);
 }
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",cg18Init);else cg18Init();
+
+// CGWEB018 FIX5 · style diagnostic thèmes injecté sans dépendre d'un fichier CSS supplémentaire.
+(() => {
+  if (document.getElementById("cg18Fix5Style")) return;
+  const style=document.createElement("style");
+  style.id="cg18Fix5Style";
+  style.textContent=`
+    .cg18-theme-matches{
+      margin:0 0 10px!important;
+      padding:9px 11px!important;
+      border:1px solid rgba(59,165,220,.28)!important;
+      border-radius:9px!important;
+      background:rgba(19,91,128,.13)!important;
+      color:#bfe9ff!important;
+      font-size:.8rem!important;
+      line-height:1.45!important;
+    }
+  `;
+  document.head.appendChild(style);
+})();

@@ -7,6 +7,8 @@ if (!getApps().length) initializeApp();
 
 const REGION = 'europe-west1';
 const CATALOG_TTL_MS = 6 * 60 * 60 * 1000;
+const CATALOG_SCHEMA = 5;
+const CATALOG_DOC = 'cgweb018_theme_catalog_v5';
 const MAX_RETURN_ROWS = 20000;
 
 function one(v) {
@@ -62,12 +64,13 @@ async function buildThemeCatalog(uid) {
   const collator = new Intl.Collator('fr', {sensitivity: 'base', numeric: true});
   const themes = [...set].sort(collator.compare);
 
-  const metaRef = db.collection('users').doc(uid).collection('meta').doc('cgweb018_theme_catalog');
+  const metaRef = db.collection('users').doc(uid).collection('meta').doc(CATALOG_DOC);
   try {
     await metaRef.set({
       themes,
       theme_count: themes.length,
       question_count_at_build: snap.size,
+      catalog_schema: CATALOG_SCHEMA,
       updated_ms: Date.now(),
       updated_at: FieldValue.serverTimestamp(),
       source: 'CGWEB018_FIX4'
@@ -83,7 +86,7 @@ async function buildThemeCatalog(uid) {
 
 async function getThemeCatalog(uid, force = false) {
   const db = getFirestore();
-  const metaRef = db.collection('users').doc(uid).collection('meta').doc('cgweb018_theme_catalog');
+  const metaRef = db.collection('users').doc(uid).collection('meta').doc(CATALOG_DOC);
 
   if (!force) {
     const snap = await metaRef.get();
@@ -91,7 +94,13 @@ async function getThemeCatalog(uid, force = false) {
       const data = snap.data() || {};
       const themes = Array.isArray(data.themes) ? data.themes.map(one).filter(Boolean) : [];
       const updatedMs = Number(data.updated_ms || 0);
-      if (themes.length && updatedMs && Date.now() - updatedMs < CATALOG_TTL_MS) {
+      const schema = Number(data.catalog_schema || 0);
+      if (
+        schema === CATALOG_SCHEMA
+        && themes.length
+        && updatedMs
+        && Date.now() - updatedMs < CATALOG_TTL_MS
+      ) {
         return {
           themes,
           refreshed: false,
@@ -181,7 +190,9 @@ async function search(uid, body, forceCatalog = false) {
       nextCursor: null,
       matchingThemes: [],
       themeCatalogSize: catalog.themes.length,
+      catalogQuestionCount: catalog.questionCount,
       catalogRefreshed: catalog.refreshed,
+      catalogSchema: CATALOG_SCHEMA,
       truncated: false
     };
   }
@@ -219,7 +230,9 @@ async function search(uid, body, forceCatalog = false) {
     effectiveSort: sortField,
     matchingThemes,
     themeCatalogSize: catalog.themes.length,
+    catalogQuestionCount: catalog.questionCount,
     catalogRefreshed: catalog.refreshed,
+    catalogSchema: CATALOG_SCHEMA,
     truncated
   };
 }
@@ -231,7 +244,11 @@ exports.cgweb018ThemeContains = onRequest(
     try {
       if (req.method !== 'POST') return json(res, 405, {ok: false, error: 'POST attendu.'});
       const user = await requireUser(req);
-      const result = await search(user.uid, req.body || {}, false);
+      const result = await search(
+        user.uid,
+        req.body || {},
+        Boolean(req.body?.forceCatalog)
+      );
       return json(res, 200, result);
     } catch (error) {
       return json(res, Number(error?.status) || 500, {
