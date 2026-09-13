@@ -35,7 +35,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          set -x
           test -f web/public/index.html
           test -f web/public/cgimport002.js
           test -f web/public/cgimport002.css

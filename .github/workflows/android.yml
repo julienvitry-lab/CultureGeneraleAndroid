@@ -32,7 +32,7 @@ jobs:
           test -s "$RUNNER_TEMP/culture-generale-release.jks"
 
       - name: Compiler l'APK debug
-        run: ./gradlew --no-daemon clean assembleDebug --stacktrace
+        run: ./gradlew --no-daemon clean assembleDebug
 
       - name: Signer l'APK avec SIGN001
         env:
