@@ -493,3 +493,9 @@ body.cg16-installed #cg16PageImport .cg16-import-page > .cg16-mount > #cgimage00
   }
   .cg16-import-nav button{flex:0 0 220px}
 }
+
+
+/* CGWEB018 FIX3 · HIDE LEGACY DIRECTORY */
+body.cg16-installed #cgweb006Panel.cg16-directory-legacy-hidden{
+  display:none!important;
+}

@@ -1,4 +1,4 @@
-const CGWEB018_VERSION="CGWEB018_FIX2";
+const CGWEB018_VERSION="CGWEB018_FIX3";
 const cg18$=id=>document.getElementById(id);
 const cg18Esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
 const cg18Fmt=v=>new Intl.NumberFormat("fr-FR").format(Number(v||0));
@@ -105,7 +105,7 @@ function cg18CopySelected(){navigator.clipboard?.writeText([...CG18.selected].jo
 function cg18Init(){
   if(cg18$("cgweb018Panel"))return;cg18LoadPrefs();
   const panel=document.createElement("section");panel.id="cgweb018Panel";panel.className="cg18-panel";panel.innerHTML=`
-    <div class="cg18-head"><div><div class="cg18-kicker">CGWEB018 · DIRECTORY002</div><h2>Répertoire avancé</h2><p>Filtres combinés, tri, colonnes configurables et sélection persistante.</p></div><button id="cg18Classic" class="cg18-btn">Vue classique</button></div>
+    <div class="cg18-head"><div><div class="cg18-kicker">CGWEB018 · DIRECTORY003</div><h2>Répertoire de questions</h2><p>Filtres combinés, recherche de thème par terme, tri, colonnes configurables et sélection persistante.</p></div></div>
     <div class="cg18-filters">
       <label>Mégathème<select id="cg18Mega"><option value="">Tous</option><option>Animaux et Plantes</option><option>Culture Classique</option><option>Culture Générale</option><option>Culture Moderne</option><option>Géographie</option><option>Histoire</option><option>Sciences et Techniques</option><option>Sport</option></select></label>
       <label>Thème contient<input id="cg18Theme" placeholder="Ex. capitales" title="Retrouve tous les thèmes dont l’intitulé contient ce terme."></label>
@@ -129,7 +129,7 @@ function cg18Init(){
     <div id="cg18Status" class="cg18-status">Initialisation…</div>`;
   (document.querySelector("main")||document.body).appendChild(panel);document.body.classList.add("cg18-managed");cg18BuildColumns();
   cg18$("cg18Apply").onclick=()=>cg18Load(true);cg18$("cg18Reset").onclick=()=>{for(const id of ["cg18Mega","cg18Theme","cg18StatusFilter","cg18Prefix","cg18Image","cg18Missing"]){const e=cg18$(id);if(e)e.value=""}cg18$("cg18Sort").value="id";cg18$("cg18Direction").value="asc";cg18Load(true)};
-  cg18$("cg18Columns").onclick=()=>cg18$("cg18ColumnList").classList.toggle("cg18-hidden");cg18$("cg18Classic").onclick=cg18ToggleClassic;
+  cg18$("cg18Columns").onclick=()=>cg18$("cg18ColumnList").classList.toggle("cg18-hidden");
   cg18$("cg18SelectVisible").onclick=()=>{for(const r of CG18.rows)CG18.selected.add(String(r.id));cg18Render()};cg18$("cg18Clear").onclick=()=>{CG18.selected.clear();cg18Render()};cg18$("cg18Copy").onclick=cg18CopySelected;
   cg18$("cg18Prev").onclick=()=>{if(CG18.page>0){CG18.page--;cg18Load(false)}};cg18$("cg18Next").onclick=()=>{if(CG18.next){CG18.stack[CG18.page+1]=CG18.next;CG18.page++;cg18Load(false)}};
   cg18$("cg18Prefix").onkeydown=e=>{if(e.key==="Enter")cg18Load(true)};cg18$("cg18Theme").onkeydown=e=>{if(e.key==="Enter")cg18Load(true)};

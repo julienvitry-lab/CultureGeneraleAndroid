@@ -311,8 +311,10 @@
     hideLegacy();
 
     move("cgweb017Panel", "cg16DashboardMount");
+    // CGWEB018 FIX3 : le Répertoire avancé est désormais l'unique
+    // vue principale de l'onglet Répertoire de questions.
     move("cgweb018Panel", "cg16DirectoryMount");
-    move("cgweb006Panel", "cg16DirectoryMount");
+    $("cgweb006Panel")?.classList.add("cg16-directory-legacy-hidden");
     move("cgimport002Panel", "cg16ImportUrlMount");
     move("cgimage002Panel", "cg16ImportImagesMount");
     move("cgimage005Panel", "cg16ImportMigrationMount");
