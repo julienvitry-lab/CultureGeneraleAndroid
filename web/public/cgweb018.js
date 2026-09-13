@@ -1,4 +1,4 @@
-const CGWEB018_VERSION="CGWEB018_FIX3";
+const CGWEB018_VERSION="CGWEB018_FIX4";
 const cg18$=id=>document.getElementById(id);
 const cg18Esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
 const cg18Fmt=v=>new Intl.NumberFormat("fr-FR").format(Number(v||0));
@@ -88,10 +88,13 @@ async function cg18Load(reset=false){
       : await api.queryQuestionsPage(params);
     CG18.rows=res.items||[];CG18.total=res.total||0;CG18.next=res.nextCursor||null;
     cg18Render();
-    const cap=res.searchIndexCapped
-      ?" · index limité aux 5 000 premiers candidats"
-      :"";
-    cg18Status(`${cg18Fmt(CG18.rows.length)} question(s) chargée(s)${cap}`,"ok");
+    const themeInfo=Array.isArray(res.matchingThemes)
+      ? ` · ${cg18Fmt(res.matchingThemes.length)} thème(s) correspondant(s)`
+      : "";
+    const truncated=res.truncated
+      ? " · ⚠️ résultats serveur plafonnés"
+      : "";
+    cg18Status(`${cg18Fmt(CG18.rows.length)} question(s) chargée(s)${themeInfo}${truncated}`,"ok");
   }catch(error){CG18.rows=[];CG18.total=0;CG18.next=null;cg18Render();cg18Status(error?.message||String(error),"error")}
 }
 

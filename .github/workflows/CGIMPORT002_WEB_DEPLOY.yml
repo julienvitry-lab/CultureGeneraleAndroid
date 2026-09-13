@@ -52,6 +52,7 @@ jobs:
           test -f web/functions/cgimage008.js
           test -f web/functions/cgimage007.js
           test -f web/functions/cgimage005.js
+          test -f web/functions/cgweb018.js
           test -f web/public/cgimage002.js
           test -f web/public/cgimage002.css
           test -f web/public/cgweb017.js
@@ -71,7 +72,7 @@ jobs:
           grep -Fq 'cgimage008.js?v=CGIMAGE008_1' web/public/index.html
           grep -Fq 'cgimage002.js?v=CGIMAGE002_1' web/public/index.html
           grep -Fq 'cgweb017.js?v=CGWEB017_1' web/public/index.html
-          grep -Fq 'cgweb018.js?v=CGWEB018_FIX3' web/public/index.html
+          grep -Fq 'cgweb018.js?v=CGWEB018_FIX4' web/public/index.html
           grep -Fq 'cgweb016fix2.js?v=CGWEB018_FIX3' web/public/index.html
           grep -Fq 'cgweb016fix2.css?v=CGWEB018_FIX3' web/public/index.html
           grep -Fq 'cgweb018.css?v=CGWEB018_FIX3' web/public/index.html
@@ -87,6 +88,7 @@ jobs:
           node --check web/functions/cgimage008.js
           node --check web/functions/cgimage007.js
           node --check web/functions/cgimage005.js
+          node --check web/functions/cgweb018.js
           node --check web/public/cgimage002.js
           node --check web/public/cgweb017.js
           node --check web/public/cgweb018.js
@@ -112,7 +114,7 @@ jobs:
         run: |
           set -euo pipefail
           npx --yes firebase-tools@15.28.2 deploy \
-            --only hosting,functions:cgimport002Quizypedia,functions:cgimage005MigrateBatch,functions:cgimage007RecoverFailed,functions:cgimage008SuggestCandidates,functions:cgimage008ApplyCandidate,storage \
+            --only hosting,functions:cgimport002Quizypedia,functions:cgimage005MigrateBatch,functions:cgimage007RecoverFailed,functions:cgimage008SuggestCandidates,functions:cgimage008ApplyCandidate,functions:cgweb018ThemeContains,storage \
             --project culturegeneralesync \
             --non-interactive \
             --force

@@ -1270,3 +1270,6 @@ exports.cgimage007RecoverFailed = require('./cgimage007').cgimage007RecoverFaile
 // CGIMAGE008_EXPORT
 exports.cgimage008SuggestCandidates = require('./cgimage008').cgimage008SuggestCandidates;
 exports.cgimage008ApplyCandidate = require('./cgimage008').cgimage008ApplyCandidate;
+
+// CGWEB018_FIX4_EXPORT
+exports.cgweb018ThemeContains = require('./cgweb018').cgweb018ThemeContains;
