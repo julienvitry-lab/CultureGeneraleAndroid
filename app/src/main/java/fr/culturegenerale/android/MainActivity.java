@@ -120,8 +120,18 @@ public class MainActivity extends Activity {
     // Le statut reste géré exclusivement par SYNCLOUD001.
     private ListenerRegistration cgSync002QuestionsRegistration;
     private String cgSync002QuestionsUid = "";
+    // CGDIAG001 FIX3 · worker de synchro volontairement en arrière-plan.
     private final ExecutorService cgSync002QuestionsExecutor =
-            Executors.newSingleThreadExecutor();
+            Executors.newSingleThreadExecutor(runnable -> {
+                Thread thread = new Thread(() -> {
+                    android.os.Process.setThreadPriority(
+                            android.os.Process.THREAD_PRIORITY_BACKGROUND
+                    );
+                    runnable.run();
+                }, "CGSYNC006-SQLite");
+                thread.setDaemon(true);
+                return thread;
+            });
 
     private final FirebaseAuth.AuthStateListener cgSync002AuthStateListener = firebaseAuth -> {
         FirebaseUser user = firebaseAuth.getCurrentUser();
@@ -136,6 +146,7 @@ public class MainActivity extends Activity {
     // CGSYNC006_FIELDS_START
     private static final String CGSYNC006_PREFS = "CGSYNC006";
     private static final int CGSYNC006_PAGE_SIZE = 250;
+    private static final long CGSYNC006_UI_YIELD_MS = 250L;
     private static final long CGSYNC006_RETRY_DELAY_MS = 15000L;
     private static final int CGSYNC006_JOURNAL_MAX_LINES = 80;
 
@@ -1952,6 +1963,7 @@ final String currentHash =
                             dbFile.getAbsolutePath(),
                             null,
                             SQLiteDatabase.OPEN_READWRITE
+                                    | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING
                     );
 
                     try {
@@ -5059,7 +5071,10 @@ private void flagAndNext(String status, String msg) {
                                         docs.size() + " reçu(s) · "
                                                 + finalApplied + " appliqué(s) · checkpoint "
                                                 + cgSync006PositionText("content"));
-                                fetchCgSync006ContentPage(user, ref);
+                                cgSync006Handler.postDelayed(
+                                        () -> fetchCgSync006ContentPage(user, ref),
+                                        CGSYNC006_UI_YIELD_MS
+                                );
                             });
 
                         } catch (Exception error) {
@@ -5365,7 +5380,10 @@ private void flagAndNext(String status, String msg) {
                                         docs.size() + " tombstone(s) · "
                                                 + finalDeletedRows
                                                 + " ligne(s) supprimée(s)");
-                                fetchCgSync006TombstonePage(user, ref);
+                                cgSync006Handler.postDelayed(
+                                        () -> fetchCgSync006TombstonePage(user, ref),
+                                        CGSYNC006_UI_YIELD_MS
+                                );
                             });
 
                         } catch (Exception error) {
