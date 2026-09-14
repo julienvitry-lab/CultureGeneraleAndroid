@@ -1,7 +1,7 @@
 import {getApp,getApps} from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js';
 import {getStorage,ref,getDownloadURL} from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-storage.js';
 
-const CGWEB026_VERSION='CGWEB026_DUPLICATE_SAVINGS001';
+const CGWEB026_VERSION='CGWEB026_DEDUP_PLAN001';
 const END='https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb026ImageCenter';
 
 const $=id=>document.getElementById(id);
@@ -198,6 +198,143 @@ function renderAudit(a){
 }
 
 
+
+let DEDUP_PLAN=null;
+
+function downloadJson(filename,data){
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+function renderDedupPlan(p){
+  const panel=$('cg26Plan');
+  if(!panel)return;
+
+  const verdict=p.safeToExecute
+    ? '✅ PLAN SANS ANOMALIE BLOQUANTE — aucune action n’a été exécutée.'
+    : '⚠️ PLAN À NE PAS EXÉCUTER — des anomalies ou groupes non confirmés subsistent.';
+
+  const samples=(p.samplePlan||[]).slice(0,20).map((x,i)=>`
+    <details class="cg26-audit-group" ${i<5?'open':''}>
+      <summary>
+        ${x.refCount} référence(s)
+        · ${x.sizeKnown?fmt(x.fileSize):'taille —'}
+        · ${esc(x.action)}
+      </summary>
+      <div style="padding:8px 0 12px 18px">
+        <div><b>Ancienne image :</b></div>
+        <code>${esc(x.fromPath)}</code>
+        <div style="margin-top:6px"><b>Image canonique :</b></div>
+        <code>${esc(x.toPath)}</code>
+        ${(x.refs||[]).length
+          ? `<div style="margin-top:8px"><b>Références Firestore :</b>${x.refs.slice(0,12).map(r=>`<div>#${esc(r.questionId)} · ${esc(r.field)}</div>`).join('')}</div>`
+          : '<div style="margin-top:8px">Aucune référence Firestore : copie supprimable sans réaffectation.</div>'}
+      </div>
+    </details>
+  `).join('');
+
+  const anomalies=p.anomalies||{};
+  const anomalyBlock=anomalies.total
+    ? `<div style="margin:10px 0"><b>⚠️ Anomalies : ${anomalies.total}</b>
+         · canonique manquant ${anomalies.missingCanonicalFiles||0}
+         · copie manquante ${anomalies.missingDuplicateFiles||0}
+         · références vers Storage manquant ${anomalies.duplicateRefsToMissingStorage||0}
+       </div>`
+    : '<div style="margin:10px 0"><b>✅ 0 anomalie détectée.</b></div>';
+
+  panel.innerHTML=`
+    <div style="margin-top:18px;padding:14px;border:1px solid rgba(200,150,40,.45);border-radius:12px">
+      <h3 style="margin:0 0 10px">Plan de déduplication — DRY RUN</h3>
+      <div class="cg26-stats" style="margin-bottom:10px">
+        <span>Fichiers à supprimer <b>${p.filesToDelete}</b></span>
+        <span>Documents à modifier <b>${p.documentsToUpdate}</b></span>
+        <span>Champs à réaffecter <b>${p.fieldUpdates}</b></span>
+        <span>Espace récupérable <b>${fmt(p.reclaimableBytes)}</b></span>
+      </div>
+      <div style="margin:8px 0">
+        Groupes candidats ${p.candidateGroups}
+        · confirmés ${p.confirmedGroups}
+        · conflits ${p.conflictGroups}
+        · à vérifier ${p.unverifiedGroups}
+      </div>
+      <div style="margin:8px 0">
+        Copies sans référence Firestore : <b>${p.deleteOnlyCopies}</b>
+        · canoniques actuellement sans référence : ${p.canonicalsWithoutRefs}
+        · tailles inconnues : ${p.unknownSizeCopies}
+      </div>
+      ${anomalyBlock}
+      <div style="margin:10px 0"><b>${esc(verdict)}</b></div>
+      <div style="opacity:.8;margin-bottom:10px">
+        ${p.questionCount} questions inspectées
+        · ${p.storageFileCount} fichiers Storage
+        · ${fmtMs(p.timing?.totalMs||0)}
+        · aucune écriture Firestore
+        · aucune suppression Storage
+      </div>
+      <button id="cg26DownloadPlan">Télécharger le plan JSON complet</button>
+      <h4 style="margin:14px 0 8px">Aperçu des 20 premières réaffectations</h4>
+      <div>${samples||'<div>Aucune réaffectation.</div>'}</div>
+    </div>
+  `;
+
+  const dl=$('cg26DownloadPlan');
+  if(dl){
+    dl.onclick=()=>{
+      downloadJson(
+        `CGWEB026_DEDUP_PLAN_${new Date().toISOString().replaceAll(':','-')}.json`,
+        p
+      );
+    };
+  }
+}
+
+async function buildDedupPlan(){
+  const btn=$('cg26PlanBtn');
+  const started=Date.now();
+  let timer=null;
+
+  if(btn)btn.disabled=true;
+  status('⏳ Construction du plan de déduplication…');
+
+  const update=()=>{
+    status(`⏳ Plan de déduplication… ${fmtMs(Date.now()-started)} écoulées`);
+  };
+  timer=setInterval(update,1000);
+
+  try{
+    const p=await api({mode:'dedupPlan'});
+    DEDUP_PLAN=p;
+    renderDedupPlan(p);
+
+    if(p.safeToExecute){
+      status(
+        `✅ Dry run terminé : ${p.filesToDelete} fichiers · ${p.documentsToUpdate} documents · ${p.fieldUpdates} champs à réaffecter · 0 anomalie.`,
+        'ok'
+      );
+    }else{
+      status(
+        `⚠️ Dry run terminé avec anomalies : ${p.anomalies?.total||0} · conflits ${p.conflictGroups} · à vérifier ${p.unverifiedGroups}.`,
+        'bad'
+      );
+    }
+
+    return p;
+  }catch(e){
+    status(`❌ Plan déduplication : ${e.message}`,'bad');
+    return null;
+  }finally{
+    if(timer)clearInterval(timer);
+    if(btn)btn.disabled=false;
+  }
+}
+
 function renderSavings(s){
   const panel=$('cg26Savings');
   if(!panel)return;
@@ -385,11 +522,11 @@ function init(){
   p.innerHTML=`
     <header>
       <div>
-        <div class="k">CGWEB026 · IMAGECENTER_SCALE001 · DUPLICATE_AUDIT001 · DUPLICATE_SAVINGS001</div>
+        <div class="k">CGWEB026 · IMAGECENTER_SCALE001 · DUPLICATE_AUDIT001 · DUPLICATE_SAVINGS001 · DEDUP_PLAN001</div>
         <h2>Bibliothèque d’images</h2>
         <p>Inventaire central Storage, usages Firestore, orphelines et doublons.</p>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><button id="cg26SavingsBtn">Calculer économies</button><button id="cg26AuditBtn">Auditer doublons</button><button id="cg26Scan" class="primary">Analyser</button></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button id="cg26PlanBtn">Plan déduplication</button><button id="cg26SavingsBtn">Calculer économies</button><button id="cg26AuditBtn">Auditer doublons</button><button id="cg26Scan" class="primary">Analyser</button></div>
     </header>
 
     <div class="cg26-stats">
@@ -413,6 +550,7 @@ function init(){
     </div>
 
     <div id="cg26Rows"></div>
+    <div id="cg26Plan"></div>
     <div id="cg26Savings"></div>
     <div id="cg26Audit"></div>
     <div id="cg26Status" class="cg26-status">
@@ -422,6 +560,7 @@ function init(){
 
   (document.querySelector('main')||document.body).appendChild(p);
 
+  $('cg26PlanBtn').onclick=buildDedupPlan;
   $('cg26SavingsBtn').onclick=calculateSavings;
   $('cg26AuditBtn').onclick=auditDuplicates;
   $('cg26Scan').onclick=scan;
@@ -454,7 +593,7 @@ function init(){
   });
 }
 
-window.CGWEB026_API={scan,auditDuplicates,calculateSavings};
+window.CGWEB026_API={scan,auditDuplicates,calculateSavings,buildDedupPlan};
 document.readyState==='loading'
   ?document.addEventListener('DOMContentLoaded',init)
   :init();

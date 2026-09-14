@@ -468,6 +468,232 @@ exports.cgweb026ImageCenter=onRequest(
         });
       }
 
+      if(mode==='dedupPlan'){
+        const started=Date.now();
+
+        const questionsPromise=(async()=>{
+          const t=Date.now();
+          const snap=await base.collection('questions')
+            .select('image_file','image_thumb_file')
+            .get();
+          return {snap,ms:Date.now()-t};
+        })();
+
+        const filesPromise=(async()=>{
+          const t=Date.now();
+          const [files]=await bucket.getFiles({prefix});
+          return {files:files||[],ms:Date.now()-t};
+        })();
+
+        const [{snap:qSnap,ms:questionMs},{files,ms:storageListMs}]
+          =await Promise.all([questionsPromise,filesPromise]);
+
+        const all=(files||[]).map(auditRecord);
+        const mainRows=all.filter(r=>!r.isThumb);
+        const fileByPath=new Map(all.map(r=>[r.path,r]));
+
+        // References Firestore exactes vers chaque chemin Storage.
+        const refsByPath=new Map();
+        for(const d of qSnap.docs){
+          const q=d.data()||{};
+          for(const field of ['image_file','image_thumb_file']){
+            const path=one(q[field]);
+            if(!path)continue;
+            if(!refsByPath.has(path))refsByPath.set(path,[]);
+            refsByPath.get(path).push({
+              questionId:String(d.id),
+              field
+            });
+          }
+        }
+
+        // Même logique de regroupement que l'audit et le calcul d'économies.
+        const primaryMap=new Map();
+        for(const r of mainRows){
+          pushGroup(primaryMap,r.signature?`${r.source}:${r.signature}`:'',r);
+        }
+
+        const candidates=duplicateValues(primaryMap);
+        const confirmedGroups=[];
+        let conflictGroups=0;
+        let unverifiedGroups=0;
+
+        for(const g of candidates){
+          const source=g.rows[0]?.source||'none';
+          const cls=classifyAuditGroup(source,g.rows);
+
+          if(cls.verdict==='conflict'){
+            conflictGroups++;
+            continue;
+          }
+          if(cls.verdict!=='confirmed'){
+            unverifiedGroups++;
+            continue;
+          }
+
+          // Canonique déterministe et plus robuste :
+          // privilégier un fichier déjà référencé dans Firestore,
+          // puis ordre lexical stable.
+          const sorted=[...g.rows].sort((a,b)=>{
+            const ar=(refsByPath.get(a.path)||[]).length>0?0:1;
+            const br=(refsByPath.get(b.path)||[]).length>0?0:1;
+            return (ar-br)||a.path.localeCompare(b.path);
+          });
+
+          const canonical=sorted[0];
+          confirmedGroups.push({
+            source,
+            signature:g.key.replace(/^[^:]+:/,''),
+            canonical,
+            duplicates:sorted.slice(1)
+          });
+        }
+
+        const plan=[];
+        const uniqueDocs=new Set();
+        let fieldUpdates=0;
+        let deleteOnlyCopies=0;
+        let reclaimableBytes=0;
+        let unknownSizeCopies=0;
+        let canonicalsWithoutRefs=0;
+        let duplicateRefs=0;
+
+        const anomalySamples=[];
+        let missingCanonicalFiles=0;
+        let missingDuplicateFiles=0;
+        let duplicateRefsToMissingStorage=0;
+
+        for(const g of confirmedGroups){
+          const canonical=g.canonical;
+          const canonicalExists=fileByPath.has(canonical.path);
+          const canonicalRefs=refsByPath.get(canonical.path)||[];
+
+          if(!canonicalExists){
+            missingCanonicalFiles++;
+            if(anomalySamples.length<50){
+              anomalySamples.push({
+                type:'missingCanonical',
+                path:canonical.path,
+                signature:g.signature
+              });
+            }
+            continue;
+          }
+
+          if(canonicalRefs.length===0)canonicalsWithoutRefs++;
+
+          for(const d of g.duplicates){
+            const exists=fileByPath.has(d.path);
+            if(!exists){
+              missingDuplicateFiles++;
+              if(anomalySamples.length<50){
+                anomalySamples.push({
+                  type:'missingDuplicate',
+                  path:d.path,
+                  signature:g.signature
+                });
+              }
+              continue;
+            }
+
+            const refs=refsByPath.get(d.path)||[];
+            duplicateRefs+=refs.length;
+
+            for(const ref of refs){
+              uniqueDocs.add(ref.questionId);
+              fieldUpdates++;
+            }
+
+            if(refs.length===0)deleteOnlyCopies++;
+
+            if(d.sizeKnown){
+              reclaimableBytes+=d.size;
+            }else{
+              unknownSizeCopies++;
+            }
+
+            plan.push({
+              signature:g.signature,
+              source:g.source,
+              fromPath:d.path,
+              toPath:canonical.path,
+              fileSize:d.sizeKnown?d.size:0,
+              sizeKnown:d.sizeKnown,
+              refCount:refs.length,
+              refs,
+              action:refs.length?'update_then_delete':'delete_only_unreferenced_copy'
+            });
+          }
+        }
+
+        // Vérification supplémentaire : toute référence incluse dans le plan
+        // doit pointer vers un fichier Storage réellement présent.
+        for(const item of plan){
+          if(item.refCount>0 && !fileByPath.has(item.fromPath)){
+            duplicateRefsToMissingStorage+=item.refCount;
+            if(anomalySamples.length<50){
+              anomalySamples.push({
+                type:'refToMissingDuplicateStorage',
+                path:item.fromPath,
+                refCount:item.refCount
+              });
+            }
+          }
+        }
+
+        const filesToDelete=plan.length;
+        const documentsToUpdate=uniqueDocs.size;
+        const anomalyCount=
+          missingCanonicalFiles
+          +missingDuplicateFiles
+          +duplicateRefsToMissingStorage;
+
+        const safeToExecute=
+          conflictGroups===0
+          &&unverifiedGroups===0
+          &&anomalyCount===0
+          &&unknownSizeCopies===0;
+
+        const samplePlan=plan.slice(0,100);
+
+        return json(res,200,{
+          ok:true,
+          version:'CGWEB026_DEDUP_PLAN001',
+          dryRun:true,
+          safeToExecute,
+          questionCount:qSnap.size,
+          storageFileCount:all.length,
+          mainFileCount:mainRows.length,
+          candidateGroups:candidates.length,
+          confirmedGroups:confirmedGroups.length,
+          conflictGroups,
+          unverifiedGroups,
+          canonicalFiles:confirmedGroups.length,
+          canonicalsWithoutRefs,
+          filesToDelete,
+          deleteOnlyCopies,
+          documentsToUpdate,
+          fieldUpdates,
+          duplicateRefs,
+          reclaimableBytes,
+          unknownSizeCopies,
+          anomalies:{
+            total:anomalyCount,
+            missingCanonicalFiles,
+            missingDuplicateFiles,
+            duplicateRefsToMissingStorage,
+            samples:anomalySamples
+          },
+          plan,
+          samplePlan,
+          timing:{
+            questionMs,
+            storageListMs,
+            totalMs:Date.now()-started
+          }
+        });
+      }
+
       if(mode==='deleteOrphan'){
         const path=one(req.body?.path);
 
