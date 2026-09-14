@@ -91,6 +91,15 @@ final class CgPlayHistoryUi001 {
         status.setGravity(Gravity.CENTER);
         screen.addView(status, lp(0, 0, 0, dp(6)));
 
+        // CGLEARN001 · MASTERY001
+        Button mastery = button("Maîtrise", 16);
+        mastery.setTextColor(Color.WHITE);
+        mastery.setBackground(round(PANEL2, dp(11)));
+        mastery.setOnClickListener(v ->
+                CgMastery001.show(activity, font, this::render)
+        );
+        screen.addView(mastery, lp(0, 0, 0, dp(8)));
+
         ScrollView scroll = new ScrollView(activity);
         listHost = new LinearLayout(activity);
         listHost.setOrientation(LinearLayout.VERTICAL);
