@@ -17,6 +17,30 @@ exports.cgweb026ImageCenter=onRequest({region:REGION,timeoutSeconds:540,memory:'
     const u=await user(req);const mode=one(req.body?.mode)||'scan';
     const db=getFirestore();const base=db.collection('users').doc(u.uid);
     const bucket=getStorage().bucket();const prefix=`users/${u.uid}/question-images/`;
+
+    if(mode==='diagPing'){
+      return json(res,200,{ok:true,mode:'diagPing',uid:u.uid,ts:new Date().toISOString()});
+    }
+
+    if(mode==='diagScanLight'){
+      const started=Date.now();
+      const q0=Date.now();
+      const qSnap=await base.collection('questions').get();
+      const qMs=Date.now()-q0;
+      const s0=Date.now();
+      const [files]=await bucket.getFiles({prefix});
+      const storageMs=Date.now()-s0;
+      return json(res,200,{
+        ok:true,
+        mode:'diagScanLight',
+        uid:u.uid,
+        questionCount:qSnap.size,
+        fileCount:(files||[]).length,
+        questionMs:qMs,
+        storageListMs:storageMs,
+        totalMs:Date.now()-started
+      });
+    }
     if(mode==='scan'){
       const [qSnap,fileTuple]=await Promise.all([base.collection('questions').get(),bucket.getFiles({prefix})]);
       const files=fileTuple[0]||[];const refs=new Map();const themes=new Map();
