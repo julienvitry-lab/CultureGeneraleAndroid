@@ -1927,17 +1927,46 @@ final String currentHash =
         }
     }
 
+    // CGDIAG001_FIX1_SQLITE_LOCK001_START
     private SQLiteDatabase openDb() {
-        SQLiteDatabase db = SQLiteDatabase.openDatabase(
-                dbFile.getAbsolutePath(),
-                null,
-                SQLiteDatabase.OPEN_READWRITE
-        );
-        try {
-            db.execSQL("PRAGMA busy_timeout=5000");
-        } catch (Exception ignored) { }
-        return db;
+        final long deadline = android.os.SystemClock.uptimeMillis() + 4000L;
+        RuntimeException lastBusy = null;
+
+        while (true) {
+            try {
+                SQLiteDatabase db = SQLiteDatabase.openDatabase(
+                        dbFile.getAbsolutePath(),
+                        null,
+                        SQLiteDatabase.OPEN_READWRITE
+                );
+                try {
+                    db.execSQL("PRAGMA busy_timeout=5000");
+                } catch (Exception ignored) { }
+                return db;
+
+            } catch (android.database.sqlite.SQLiteDatabaseLockedException e) {
+                lastBusy = e;
+
+            } catch (android.database.sqlite.SQLiteException e) {
+                String message = String.valueOf(e.getMessage()).toLowerCase(java.util.Locale.ROOT);
+                if (!message.contains("locked")
+                        && !message.contains("busy")
+                        && !message.contains("sqlite_busy")) {
+                    throw e;
+                }
+                lastBusy = e;
+            }
+
+            if (android.os.SystemClock.uptimeMillis() >= deadline) {
+                throw lastBusy != null
+                        ? lastBusy
+                        : new android.database.sqlite.SQLiteException("Base SQLite occupée");
+            }
+
+            android.os.SystemClock.sleep(100L);
+        }
     }
+    // CGDIAG001_FIX1_SQLITE_LOCK001_END
 
     private void showHome() {
         if (firebaseAuth != null && firebaseAuth.getCurrentUser() == null) {
@@ -1980,7 +2009,15 @@ final String currentHash =
         }
 
         migrateLegacyStatuses();
-        exportProblemsP(false);
+        try {
+            exportProblemsP(false);
+        } catch (android.database.sqlite.SQLiteException e) {
+            android.util.Log.w(
+                    "SQLITE_LOCK001",
+                    "Export P différé : base SQLite encore occupée",
+                    e
+            );
+        }
 
         Space topSpace = new Space(this);
         root.addView(topSpace, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -4308,8 +4345,16 @@ private void flagAndNext(String status, String msg) {
      * La migration est idempotente : après le premier passage, elle ne modifie plus rien.
      */
     private void migrateLegacyStatuses() {
-        SQLiteDatabase db = openDb();
+        android.content.SharedPreferences prefs = getSharedPreferences(
+                "STATUTA001",
+                android.content.Context.MODE_PRIVATE
+        );
+
+        if (prefs.getBoolean("legacy_statuses_migrated_v1", false)) return;
+
+        SQLiteDatabase db = null;
         try {
+            db = openDb();
             db.beginTransaction();
             try {
                 db.execSQL("UPDATE " + TABLE + " SET status='A' WHERE UPPER(TRIM(status))='M'");
@@ -4318,8 +4363,38 @@ private void flagAndNext(String status, String msg) {
             } finally {
                 db.endTransaction();
             }
+
+            prefs.edit()
+                    .putBoolean("legacy_statuses_migrated_v1", true)
+                    .apply();
+
+        } catch (android.database.sqlite.SQLiteException e) {
+            String message = String.valueOf(e.getMessage())
+                    .toLowerCase(java.util.Locale.ROOT);
+
+            if (message.contains("locked")
+                    || message.contains("busy")
+                    || message.contains("sqlite_busy")) {
+                android.util.Log.w(
+                        "SQLITE_LOCK001",
+                        "Migration STATUTA001 différée : base occupée",
+                        e
+                );
+                return;
+            }
+
+            throw e;
+
         } finally {
-            db.close();
+            if (db != null) {
+                try {
+                    if (db.inTransaction()) db.endTransaction();
+                } catch (Exception ignored) { }
+
+                try {
+                    db.close();
+                } catch (Exception ignored) { }
+            }
         }
     }
 
