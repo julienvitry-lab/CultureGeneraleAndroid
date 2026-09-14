@@ -8,7 +8,6 @@ import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
-import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -73,8 +72,7 @@ final class CgPlayHistoryUi001 {
         summary.setGravity(Gravity.CENTER);
         screen.addView(summary, lp(0, 0, 0, dp(8)));
 
-        HorizontalScrollView filterScroll = new HorizontalScrollView(activity);
-        filterScroll.setHorizontalScrollBarEnabled(false);
+        // CGHISTORY002 FIX1 · filtres toujours visibles sur une seule ligne.
         LinearLayout filters = new LinearLayout(activity);
         filters.setOrientation(LinearLayout.HORIZONTAL);
 
@@ -87,8 +85,7 @@ final class CgPlayHistoryUi001 {
         filters.addView(filterChoice, filterLp());
         filters.addView(filterMental, filterLp());
         filters.addView(filterRevision, filterLp());
-        filterScroll.addView(filters);
-        screen.addView(filterScroll, lp(0, 0, 0, dp(8)));
+        screen.addView(filters, lp(0, 0, 0, dp(8)));
 
         status = text("Connexion à Firestore…", 14, GREY, false);
         status.setGravity(Gravity.CENTER);
@@ -134,11 +131,31 @@ final class CgPlayHistoryUi001 {
                     for (DocumentSnapshot doc : snapshot.getDocuments()) {
                         allEntries.add(Entry.from(doc));
                     }
+                    assignAttemptNumbers();
                     updateSummary();
                     applyFilter();
                 })
                 .addOnFailureListener(error ->
                         status.setText("Historique indisponible : " + safe(error.getMessage())));
+    }
+
+    private void assignAttemptNumbers() {
+        java.util.Map<String, Integer> totals = new java.util.HashMap<>();
+        java.util.Map<String, Integer> counters = new java.util.HashMap<>();
+
+        for (Entry e : allEntries) {
+            String key = e.attemptKey();
+            totals.put(key, totals.getOrDefault(key, 0) + 1);
+        }
+
+        for (int i = allEntries.size() - 1; i >= 0; i--) {
+            Entry e = allEntries.get(i);
+            String key = e.attemptKey();
+            int number = counters.getOrDefault(key, 0) + 1;
+            counters.put(key, number);
+            e.attemptNumber = number;
+            e.attemptTotal = totals.getOrDefault(key, 1);
+        }
     }
 
     private void updateSummary() {
@@ -169,7 +186,7 @@ final class CgPlayHistoryUi001 {
 
         for (Entry e : allEntries) {
             if (!"all".equals(activeFilter) && !activeFilter.equals(e.playType)) continue;
-            listHost.addView(entryView(e), lp(0, 0, 0, dp(8)));
+            listHost.addView(entryView(e), lp(0, 0, 0, dp(6)));
             shown++;
         }
 
@@ -187,30 +204,38 @@ final class CgPlayHistoryUi001 {
     private View entryView(Entry e) {
         LinearLayout card = new LinearLayout(activity);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(12), dp(10), dp(12), dp(10));
-        card.setBackground(round(PANEL, dp(12)));
+        card.setPadding(dp(10), dp(8), dp(10), dp(8));
+        card.setBackground(round(PANEL, dp(11)));
         card.setClickable(true);
 
-        card.addView(text(formatDate(e.playedAtMs) + " · " + typeLabel(e),
-                14, typeColor(e), true));
+        String attempt = e.attemptTotal > 1
+                ? " · Tentative " + e.attemptNumber + "/" + e.attemptTotal
+                : "";
+
+        card.addView(text(
+                formatDate(e.playedAtMs) + " · " + typeLabel(e) + attempt,
+                13,
+                typeColor(e),
+                true
+        ));
 
         String domainTheme = join(" › ", e.domain, e.theme);
         if (!domainTheme.isEmpty()) {
-            TextView line = text(domainTheme, 13, GREY, false);
-            line.setPadding(0, dp(4), 0, 0);
+            TextView line = text(domainTheme, 12, GREY, false);
+            line.setPadding(0, dp(3), 0, 0);
             card.addView(line);
         }
 
         TextView q = text(e.question.isEmpty() ? "(question sans texte)" : e.question,
-                17, Color.WHITE, true);
-        q.setPadding(0, dp(6), 0, 0);
+                16, Color.WHITE, true);
+        q.setPadding(0, dp(4), 0, 0);
         q.setMaxLines(3);
         card.addView(q);
 
         String result = resultLabel(e);
         if (!result.isEmpty()) {
-            TextView r = text(result, 14, resultColor(e), true);
-            r.setPadding(0, dp(7), 0, 0);
+            TextView r = text(result, 13, resultColor(e), true);
+            r.setPadding(0, dp(5), 0, 0);
             card.addView(r);
         }
 
@@ -231,6 +256,13 @@ final class CgPlayHistoryUi001 {
 
         addDetail(content, "Date", formatDate(e.playedAtMs));
         addDetail(content, "Mode", typeLabel(e));
+        if (e.attemptTotal > 1) {
+            addDetail(
+                    content,
+                    "Tentative",
+                    e.attemptNumber + " / " + e.attemptTotal
+            );
+        }
         addDetail(content, "Domaine", e.domain);
         addDetail(content, "Thème", e.theme);
         addDetail(content, "Question", e.question);
@@ -272,7 +304,7 @@ final class CgPlayHistoryUi001 {
     }
 
     private Button filterButton(String label, String filter) {
-        Button b = button(label, 15);
+        Button b = button(label, 14);
         b.setOnClickListener(v -> {
             activeFilter = filter;
             updateFilterButtons();
@@ -294,8 +326,9 @@ final class CgPlayHistoryUi001 {
     }
 
     private LinearLayout.LayoutParams filterLp() {
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(105), dp(46));
-        p.setMargins(0, 0, dp(8), 0);
+        LinearLayout.LayoutParams p =
+                new LinearLayout.LayoutParams(0, dp(44), 1f);
+        p.setMargins(dp(2), 0, dp(2), 0);
         return p;
     }
 
@@ -413,10 +446,13 @@ final class CgPlayHistoryUi001 {
 
     private static final class Entry {
         long playedAtMs;
+        String questionId = "";
         String playType = "";
         String result = "";
         Boolean isCorrect;
         long responseTimeMs;
+        int attemptNumber = 1;
+        int attemptTotal = 1;
         String domain = "";
         String theme = "";
         String question = "";
@@ -425,8 +461,16 @@ final class CgPlayHistoryUi001 {
         String correctAnswer = "";
         String revisionMode = "";
 
+        String attemptKey() {
+            String base = questionId;
+            if (base.isEmpty()) base = question;
+            if (base.isEmpty()) base = theme + "|" + playedAtMs;
+            return playType + "|" + base;
+        }
+
         static Entry from(DocumentSnapshot doc) {
             Entry e = new Entry();
+            e.questionId = safe(doc.get("question_id"));
             e.playType = safe(doc.get("play_type"));
             e.result = safe(doc.get("result"));
             e.isCorrect = booleanValue(doc.get("is_correct"));
