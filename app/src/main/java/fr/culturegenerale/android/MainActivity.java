@@ -4232,7 +4232,6 @@ private void flagAndNext(String status, String msg) {
     private void cgHistory001LogChoice(Question q, int choice) {
         if (q == null) return;
         CgHistory001.log(
-                this,
                 cgHistory001SessionId, "challenge", "", "challenge_choice",
                 q, choice, choice == q.correct,
                 choice == q.correct ? "correct" : "wrong",
@@ -4244,7 +4243,6 @@ private void flagAndNext(String status, String msg) {
         if (q == null) return;
         boolean assimilated = "A".equalsIgnoreCase(status);
         CgHistory001.log(
-                this,
                 cgHistory001SessionId, "challenge", "", "challenge_mental",
                 q, 0, assimilated, assimilated ? "assimilated" : "review",
                 cgHistory001ElapsedMs()
@@ -4256,7 +4254,6 @@ private void flagAndNext(String status, String msg) {
         String key = cgHistory001SessionId + ":" + q.row;
         if (!cgHistory001RevisionLogged.add(key)) return;
         CgHistory001.log(
-                this,
                 cgHistory001SessionId, "revision", revisionMode, "revision_reveal",
                 q, 0, null, "revealed", cgHistory001ElapsedMs()
         );
