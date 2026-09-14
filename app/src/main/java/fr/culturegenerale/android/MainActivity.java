@@ -213,6 +213,12 @@ public class MainActivity extends Activity {
     private int lastCombinedPopupAt = 0;
     private long remainingInCurrentDomain = 0;
 
+    // CGPLAY002 · NEVER_SEEN001
+    private final Set<Long> cgNeverSeenPlayedRows = new HashSet<>();
+    private final List<Long> cgNeverSeenQueue = new ArrayList<>();
+    private int cgNeverSeenQueueIndex = 0;
+    private String cgNeverSeenTheme = null;
+
     // Préchargement léger pour fluidifier les transitions sans modifier la logique de jeu.
     private volatile Question prefetchedNextQuestion = null;
     private volatile List<Question> prefetchedRelatedQuestions = null;
@@ -2100,6 +2106,18 @@ final String currentHash =
         playHistoryLp.setMargins(0, cmToPx(0.10f), 0, cmToPx(0.10f));
         root.addView(playHistory, playHistoryLp);
 
+        // CGPLAY002 · NEVER_SEEN001
+        Button neverSeen = btn("JAMAIS VUES\nQuestions non jouées", 18);
+        neverSeen.setSingleLine(false);
+        neverSeen.setMaxLines(2);
+        setRoundedBackgroundWithStroke(neverSeen, DARK, 14, Color.WHITE, 1);
+        neverSeen.setTextColor(Color.WHITE);
+        neverSeen.setOnClickListener(v -> showNeverSeen001());
+        LinearLayout.LayoutParams neverSeenLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(1.35f));
+        neverSeenLp.setMargins(0, cmToPx(0.10f), 0, cmToPx(0.10f));
+        root.addView(neverSeen, neverSeenLp);
+
         // CGIMPORT002_HOME_BUTTON_START
         Button cgImport002 = btn("IMPORT QUIZYPEDIA\nNouvelle page → questions", 18);
         cgImport002.setSingleLine(false);
@@ -2138,6 +2156,658 @@ final String currentHash =
                 appFont,
                 () -> runOnUiThread(this::showHome)
         );
+    }
+
+    // CGPLAY002 · NEVER_SEEN001
+    private void showNeverSeen001() {
+        phase = "never_seen_loading";
+        gameMode = "never_seen";
+        current = null;
+        baseFixed();
+
+        add(tv("Jamais vues", 32, Color.WHITE, Gravity.CENTER, true));
+        band("Lecture de l'historique de jeu…", DARK, Color.WHITE, 19, 58);
+
+        Space flexible = new Space(this);
+        root.addView(flexible, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        TextView info = tv(
+                "Les questions déjà présentes dans play_history sont exclues.",
+                15, Color.LTGRAY, Gravity.CENTER, false);
+        root.addView(info);
+
+        Button back = btn("Retour", 22);
+        back.setOnClickListener(v -> showHome());
+        LinearLayout.LayoutParams backLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(1.0f));
+        backLp.setMargins(0, cmToPx(0.2f), 0, cmToPx(0.2f));
+        root.addView(back, backLp);
+
+        FirebaseUser user = firebaseAuth == null
+                ? FirebaseAuth.getInstance().getCurrentUser()
+                : firebaseAuth.getCurrentUser();
+
+        if (user == null) {
+            Toast.makeText(
+                    this,
+                    "Utilisateur Firebase non connecté.",
+                    Toast.LENGTH_SHORT
+            ).show();
+            showHome();
+            return;
+        }
+
+        FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(user.getUid())
+                .collection("play_history")
+                .get()
+                .addOnSuccessListener(snapshot -> {
+                    if (!"never_seen_loading".equals(phase)) return;
+
+                    final Set<Long> played = new HashSet<>();
+
+                    for (com.google.firebase.firestore.DocumentSnapshot doc
+                            : snapshot.getDocuments()) {
+                        Object rowObject = doc.get("question_row_number");
+
+                        if (rowObject instanceof Number) {
+                            played.add(((Number) rowObject).longValue());
+                            continue;
+                        }
+
+                        String id = safe(doc.getString("question_id"));
+                        try {
+                            if (!id.isEmpty()) played.add(Long.parseLong(id));
+                        } catch (Exception ignored) { }
+                    }
+
+                    new Thread(() -> {
+                        android.os.Process.setThreadPriority(
+                                android.os.Process.THREAD_PRIORITY_BACKGROUND);
+
+                        synchronized (cgNeverSeenPlayedRows) {
+                            cgNeverSeenPlayedRows.clear();
+                            cgNeverSeenPlayedRows.addAll(played);
+                        }
+
+                        final Map<String, Long> counts;
+                        try {
+                            counts = countNeverSeenDomains001();
+                        } catch (Exception error) {
+                            runOnUiThread(() -> {
+                                if (!"never_seen_loading".equals(phase)) return;
+                                Toast.makeText(
+                                        this,
+                                        "Jamais vues indisponible : "
+                                                + safe(error.getMessage()),
+                                        Toast.LENGTH_LONG
+                                ).show();
+                                showHome();
+                            });
+                            return;
+                        }
+
+                        runOnUiThread(() -> {
+                            if (!"never_seen_loading".equals(phase)) return;
+                            showNeverSeenDomains001(counts);
+                        });
+                    }, "CGPLAY002-DomainCount").start();
+                })
+                .addOnFailureListener(error -> {
+                    if (!"never_seen_loading".equals(phase)) return;
+
+                    Toast.makeText(
+                            this,
+                            "Historique indisponible : " + safe(error.getMessage()),
+                            Toast.LENGTH_LONG
+                    ).show();
+
+                    showHome();
+                });
+    }
+
+    private Map<String, Long> countNeverSeenDomains001() {
+        Map<String, Long> counts = new HashMap<>();
+        for (String domain : DOMAINS) counts.put(domain, 0L);
+
+        SQLiteDatabase db = openDb();
+        Cursor cursor = null;
+
+        try {
+            cursor = db.rawQuery(
+                    "SELECT row_number, megatheme FROM "
+                            + TABLE
+                            + " WHERE "
+                            + availableWhere(false),
+                    null
+            );
+
+            while (cursor.moveToNext()) {
+                long row = cursor.getLong(0);
+
+                synchronized (cgNeverSeenPlayedRows) {
+                    if (cgNeverSeenPlayedRows.contains(row)) continue;
+                }
+
+                String domain = normalize(cursor.getString(1));
+                counts.put(domain, counts.getOrDefault(domain, 0L) + 1L);
+            }
+
+            return counts;
+
+        } finally {
+            if (cursor != null) cursor.close();
+            db.close();
+        }
+    }
+
+    private void showNeverSeenDomains001(Map<String, Long> domainCounts) {
+        phase = "never_seen_domains";
+        gameMode = "never_seen";
+        baseFixed();
+
+        add(tv("Jamais vues", 32, Color.WHITE, Gravity.CENTER, true));
+        band("Choisissez un domaine", DARK, Color.WHITE, 19, 54);
+
+        int gap = cmToPx(0.2f);
+        int halfGap = cmToPx(0.10f);
+
+        LinearLayout selector = new LinearLayout(this);
+        selector.setOrientation(LinearLayout.VERTICAL);
+        selector.setGravity(Gravity.CENTER);
+        root.addView(selector, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        for (int rowIndex = 0; rowIndex < 4; rowIndex++) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER);
+
+            for (int col = 0; col < 2; col++) {
+                String domain = DOMAINS[rowIndex * 2 + col];
+                long count = domainCounts.getOrDefault(domain, 0L);
+
+                Button button = btn(domain + "\n(" + count + ")", 21);
+                button.setSingleLine(false);
+                button.setMaxLines(3);
+
+                setRoundedBackgroundWithStroke(
+                        button,
+                        domainBandColor(domain),
+                        16,
+                        Color.WHITE,
+                        1
+                );
+
+                button.setTextColor(domainBandTextColor(domain));
+                button.setEnabled(count > 0L);
+                button.setAlpha(count > 0L ? 1f : 0.40f);
+                button.setOnClickListener(v -> loadNeverSeenThemes001(domain));
+
+                LinearLayout.LayoutParams lp =
+                        new LinearLayout.LayoutParams(0, -1, 1);
+
+                if (col == 0) lp.setMargins(0, 0, halfGap, 0);
+                else lp.setMargins(halfGap, 0, 0, 0);
+
+                row.addView(button, lp);
+            }
+
+            selector.addView(row, new LinearLayout.LayoutParams(-1, 0, 1));
+
+            if (rowIndex < 3) {
+                Space verticalGap = new Space(this);
+                selector.addView(verticalGap,
+                        new LinearLayout.LayoutParams(-1, gap));
+            }
+        }
+
+        long total = 0L;
+        for (long value : domainCounts.values()) total += value;
+
+        Button all = btn("Tous les domaines\n(" + total + ")", 23);
+        all.setSingleLine(false);
+        all.setMaxLines(3);
+        setRoundedBackgroundWithStroke(all, Color.BLACK, 16, Color.WHITE, 1);
+        all.setTextColor(Color.WHITE);
+        all.setEnabled(total > 0L);
+        all.setAlpha(total > 0L ? 1f : 0.40f);
+        all.setOnClickListener(v -> prepareNeverSeenQueue001(null, null));
+
+        LinearLayout.LayoutParams allLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(1.75f));
+        allLp.setMargins(0, gap, 0, 0);
+        selector.addView(all, allLp);
+
+        Button back = btn("Retour", 22);
+        back.setOnClickListener(v -> showHome());
+        LinearLayout.LayoutParams backLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(1.0f));
+        backLp.setMargins(0, cmToPx(0.2f), 0, cmToPx(0.2f));
+        root.addView(back, backLp);
+    }
+
+    private void loadNeverSeenThemes001(String domain) {
+        phase = "never_seen_theme_loading";
+        gameMode = "never_seen";
+        baseFixed();
+
+        add(tv(domain, 30, Color.WHITE, Gravity.CENTER, true));
+        band("Recherche des thèmes jamais vus…", DARK, Color.WHITE, 18, 54);
+
+        Space flexible = new Space(this);
+        root.addView(flexible, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        Button back = btn("Retour", 22);
+        back.setOnClickListener(v -> showNeverSeen001());
+        root.addView(back, new LinearLayout.LayoutParams(-1, cmToPx(1.0f)));
+
+        new Thread(() -> {
+            android.os.Process.setThreadPriority(
+                    android.os.Process.THREAD_PRIORITY_BACKGROUND);
+
+            final Map<String, Long> themeCounts;
+
+            try {
+                themeCounts = countNeverSeenThemes001(domain);
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    if (!"never_seen_theme_loading".equals(phase)) return;
+
+                    Toast.makeText(
+                            this,
+                            "Thèmes indisponibles : " + safe(error.getMessage()),
+                            Toast.LENGTH_LONG
+                    ).show();
+
+                    showNeverSeen001();
+                });
+                return;
+            }
+
+            runOnUiThread(() -> {
+                if (!"never_seen_theme_loading".equals(phase)) return;
+                showNeverSeenThemes001(domain, themeCounts);
+            });
+
+        }, "CGPLAY002-ThemeCount").start();
+    }
+
+    private Map<String, Long> countNeverSeenThemes001(String domain) {
+        Map<String, Long> counts =
+                new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+        SQLiteDatabase db = openDb();
+        Cursor cursor = null;
+
+        try {
+            cursor = db.rawQuery(
+                    "SELECT row_number, theme FROM "
+                            + TABLE
+                            + " WHERE "
+                            + availableWhere(true),
+                    new String[]{domain}
+            );
+
+            while (cursor.moveToNext()) {
+                long row = cursor.getLong(0);
+
+                synchronized (cgNeverSeenPlayedRows) {
+                    if (cgNeverSeenPlayedRows.contains(row)) continue;
+                }
+
+                String theme = safe(cursor.getString(1));
+                if (theme.isEmpty()) theme = "(Sans thème)";
+
+                counts.put(theme, counts.getOrDefault(theme, 0L) + 1L);
+            }
+
+            return counts;
+
+        } finally {
+            if (cursor != null) cursor.close();
+            db.close();
+        }
+    }
+
+    private void showNeverSeenThemes001(
+            String domain,
+            Map<String, Long> themeCounts
+    ) {
+        phase = "never_seen_themes";
+        gameMode = "never_seen";
+        baseScrollable();
+
+        add(tv(domain, 30, Color.WHITE, Gravity.CENTER, true));
+        band("Thèmes jamais vus", DARK, Color.WHITE, 18, 54);
+
+        long total = 0L;
+        for (long value : themeCounts.values()) total += value;
+
+        Button all = btn("Tous les thèmes (" + total + ")", 20);
+        setRoundedBackgroundWithStroke(all, Color.BLACK, 14, Color.WHITE, 1);
+        all.setTextColor(Color.WHITE);
+        all.setOnClickListener(v -> prepareNeverSeenQueue001(domain, null));
+
+        LinearLayout.LayoutParams allLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(1.25f));
+        allLp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+        root.addView(all, allLp);
+
+        for (Map.Entry<String, Long> entry : themeCounts.entrySet()) {
+            String theme = entry.getKey();
+            long count = entry.getValue();
+
+            Button button = btn(theme + " (" + count + ")", 18);
+            button.setSingleLine(false);
+            button.setMaxLines(3);
+            setRoundedBackgroundWithStroke(
+                    button, DARK, 14, Color.WHITE, 1);
+            button.setTextColor(Color.WHITE);
+
+            button.setOnClickListener(v ->
+                    prepareNeverSeenQueue001(
+                            domain,
+                            "(Sans thème)".equals(theme) ? "" : theme
+                    ));
+
+            LinearLayout.LayoutParams lp =
+                    new LinearLayout.LayoutParams(-1, cmToPx(1.25f));
+            lp.setMargins(0, halfBandGapPx(), 0, halfBandGapPx());
+            root.addView(button, lp);
+        }
+
+        Button back = btn("Retour", 22);
+        back.setOnClickListener(v -> showNeverSeen001());
+        LinearLayout.LayoutParams backLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(1.0f));
+        backLp.setMargins(0, cmToPx(0.2f), 0, cmToPx(0.2f));
+        root.addView(back, backLp);
+    }
+
+    private void prepareNeverSeenQueue001(String domain, String theme) {
+        phase = "never_seen_prepare";
+        gameMode = "never_seen";
+        current = null;
+        baseFixed();
+
+        add(tv("Jamais vues", 30, Color.WHITE, Gravity.CENTER, true));
+
+        String selection = domain == null ? "Tous les domaines" : domain;
+        if (theme != null && !theme.isEmpty()) selection += "\n" + theme;
+
+        band(selection, DARK, Color.WHITE, 18, 70);
+
+        Space flexible = new Space(this);
+        root.addView(flexible, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        add(tv(
+                "Préparation du stock de questions…",
+                17, Color.LTGRAY, Gravity.CENTER, false));
+
+        Button back = btn("Retour", 22);
+        back.setOnClickListener(v -> {
+            if (domain == null) showNeverSeen001();
+            else loadNeverSeenThemes001(domain);
+        });
+        root.addView(back, new LinearLayout.LayoutParams(-1, cmToPx(1.0f)));
+
+        new Thread(() -> {
+            android.os.Process.setThreadPriority(
+                    android.os.Process.THREAD_PRIORITY_BACKGROUND);
+
+            final List<Long> rows;
+
+            try {
+                rows = buildNeverSeenQueue001(domain, theme);
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    if (!"never_seen_prepare".equals(phase)) return;
+
+                    Toast.makeText(
+                            this,
+                            "Préparation impossible : " + safe(error.getMessage()),
+                            Toast.LENGTH_LONG
+                    ).show();
+
+                    showNeverSeen001();
+                });
+                return;
+            }
+
+            java.util.Collections.shuffle(rows, random);
+
+            runOnUiThread(() -> {
+                if (!"never_seen_prepare".equals(phase)) return;
+                startNeverSeenGame001(domain, theme, rows);
+            });
+
+        }, "CGPLAY002-Queue").start();
+    }
+
+    private List<Long> buildNeverSeenQueue001(String domain, String theme) {
+        List<Long> rows = new ArrayList<>();
+
+        SQLiteDatabase db = openDb();
+        Cursor cursor = null;
+
+        try {
+            StringBuilder where =
+                    new StringBuilder(availableWhere(domain != null));
+
+            List<String> args = new ArrayList<>();
+            if (domain != null) args.add(domain);
+
+            if (theme != null) {
+                if (theme.isEmpty()) {
+                    where.append(" AND (theme IS NULL OR TRIM(theme)='')");
+                } else {
+                    where.append(
+                            " AND LOWER(TRIM(theme))=LOWER(TRIM(?))");
+                    args.add(theme);
+                }
+            }
+
+            cursor = db.rawQuery(
+                    "SELECT row_number FROM "
+                            + TABLE
+                            + " WHERE "
+                            + where,
+                    args.isEmpty()
+                            ? null
+                            : args.toArray(new String[0])
+            );
+
+            while (cursor.moveToNext()) {
+                long row = cursor.getLong(0);
+
+                synchronized (cgNeverSeenPlayedRows) {
+                    if (cgNeverSeenPlayedRows.contains(row)) continue;
+                }
+
+                rows.add(row);
+            }
+
+            return rows;
+
+        } finally {
+            if (cursor != null) cursor.close();
+            db.close();
+        }
+    }
+
+    private void startNeverSeenGame001(
+            String domain,
+            String theme,
+            List<Long> rows
+    ) {
+        gameMode = "never_seen";
+        cgHistory001bStartSession("never_seen");
+
+        currentDomain = domain;
+        cgNeverSeenTheme = theme;
+
+        answered = 0;
+        mentalOk = 0;
+        classicOk = 0;
+        revised = 0;
+        goodStreak = 0;
+        classicStreak = 0;
+        bestGoodStreak = 0;
+        mentalStreak = 0;
+        bestMentalStreak = 0;
+
+        lastQuestionsPopupAt = 0;
+        lastMentalPopupAt = 0;
+        lastCombinedPopupAt = 0;
+
+        askedThisSession.clear();
+        history.clear();
+        wrongAnswers.clear();
+        goodThemesThisSession.clear();
+        historyIndex = -1;
+
+        prefetchedNextQuestion = null;
+        prefetchedRelatedQuestions = null;
+        prefetchedRelatedThemeKey = "";
+        prefetchedRelatedQuestionKey = "";
+
+        cgNeverSeenQueue.clear();
+        cgNeverSeenQueue.addAll(rows);
+        cgNeverSeenQueueIndex = 0;
+
+        remainingInCurrentDomain = cgNeverSeenQueue.size();
+
+        if (cgNeverSeenQueue.isEmpty()) {
+            baseFixed();
+            band(
+                    "Aucune question jamais vue",
+                    BLUE, Color.WHITE, 22, 70);
+
+            Space flexible = new Space(this);
+            root.addView(flexible, new LinearLayout.LayoutParams(-1, 0, 1));
+
+            Button back = btn("Retour", 22);
+            back.setOnClickListener(v -> showNeverSeen001());
+            root.addView(back,
+                    new LinearLayout.LayoutParams(-1, cmToPx(1.0f)));
+            return;
+        }
+
+        nextNeverSeenQuestion001();
+    }
+
+    private void nextNeverSeenQuestion001() {
+        try {
+            Question question = null;
+
+            while (cgNeverSeenQueueIndex < cgNeverSeenQueue.size()) {
+                long row = cgNeverSeenQueue.get(cgNeverSeenQueueIndex++);
+
+                if (askedThisSession.contains(row)) continue;
+
+                question = loadQuestionByRow001(row);
+                if (question != null) break;
+            }
+
+            remainingInCurrentDomain = Math.max(
+                    0,
+                    cgNeverSeenQueue.size() - cgNeverSeenQueueIndex
+            );
+
+            if (question == null) {
+                baseFixed();
+
+                band(
+                        "Stock « Jamais vues » terminé",
+                        GREEN, Color.WHITE, 22, 70);
+
+                Space flexible = new Space(this);
+                root.addView(
+                        flexible,
+                        new LinearLayout.LayoutParams(-1, 0, 1));
+
+                Button home = btn("Retour à l'accueil", 22);
+                home.setOnClickListener(v -> showHome());
+                root.addView(
+                        home,
+                        new LinearLayout.LayoutParams(-1, cmToPx(1.0f)));
+                return;
+            }
+
+            current = question;
+            cgHistory001bMarkQuestionShown();
+            askedThisSession.add(question.row);
+
+            if (historyIndex < history.size() - 1) {
+                while (history.size() > historyIndex + 1) {
+                    history.remove(history.size() - 1);
+                }
+            }
+
+            history.add(question);
+            historyIndex = history.size() - 1;
+
+            showQuestion();
+
+        } catch (Exception error) {
+            baseScrollable();
+
+            band(
+                    "Erreur Jamais vues : " + safe(error.getMessage()),
+                    RED, Color.WHITE, 18, 90);
+
+            Button back = btn("Retour", 20);
+            back.setOnClickListener(v -> showHome());
+            add(back);
+        }
+    }
+
+    private Question loadQuestionByRow001(long row) {
+        SQLiteDatabase db = openDb();
+        Cursor cursor = null;
+
+        try {
+            cursor = db.rawQuery(
+                    "SELECT row_number, megatheme, theme, question, detail, "
+                            + "proposition_a, proposition_b, proposition_c, "
+                            + "proposition_d, correct_index, image_file, is_image "
+                            + "FROM "
+                            + TABLE
+                            + " WHERE row_number=? LIMIT 1",
+                    new String[]{String.valueOf(row)}
+            );
+
+            if (!cursor.moveToFirst()) return null;
+
+            Question question = new Question();
+
+            question.row = cursor.getLong(0);
+            question.domain = normalize(cursor.getString(1));
+            question.theme = safe(cursor.getString(2));
+            question.question = safe(cursor.getString(3));
+            question.detail = safe(cursor.getString(4));
+
+            for (int i = 0; i < 4; i++) {
+                question.props[i] = safe(cursor.getString(5 + i));
+            }
+
+            question.correct = cursor.getInt(9);
+            if (question.correct < 1 || question.correct > 4) {
+                question.correct = 1;
+            }
+
+            question.imageFile = safe(cursor.getString(10));
+            question.isImage =
+                    cursor.getInt(11) == 1
+                            || question.imageFile.length() > 0;
+
+            return question;
+
+        } finally {
+            if (cursor != null) cursor.close();
+            db.close();
+        }
     }
 
     private void showChallengeDomains() {
@@ -2859,6 +3529,8 @@ final String currentHash =
     }
 
     private void startBackgroundPreloadForCurrentQuestion() {
+        if ("never_seen".equals(gameMode)) return;
+
         final Question snapshot = current;
         final String domainSnapshot = currentDomain;
         if (snapshot == null || screenRoot == null) return;
@@ -4313,7 +4985,11 @@ private void flagAndNext(String status, String msg) {
     }
 
     private void continueAfterAnswer() {
-        nextQuestion();
+        if ("never_seen".equals(gameMode)) {
+            nextNeverSeenQuestion001();
+        } else {
+            nextQuestion();
+        }
     }
 
     // CGHISTORY001B · PLAYLOG_SAFE001
@@ -4339,10 +5015,19 @@ private void flagAndNext(String status, String msg) {
 
     private void cgHistory001bLogChoice(Question q, int choice) {
         if (q == null) return;
+
+        if ("never_seen".equals(gameMode)) {
+            synchronized (cgNeverSeenPlayedRows) {
+                cgNeverSeenPlayedRows.add(q.row);
+            }
+        }
+
         CgHistory001B.logSafe(
                 this,
                 cgHistory001bSessionId,
-                "challenge",
+                "never_seen".equals(gameMode)
+                        ? "never_seen"
+                        : "challenge",
                 "",
                 "challenge_choice",
                 q,
@@ -4355,11 +5040,20 @@ private void flagAndNext(String status, String msg) {
 
     private void cgHistory001bLogMental(Question q, String status) {
         if (q == null) return;
+
+        if ("never_seen".equals(gameMode)) {
+            synchronized (cgNeverSeenPlayedRows) {
+                cgNeverSeenPlayedRows.add(q.row);
+            }
+        }
+
         boolean assimilated = "A".equalsIgnoreCase(status);
         CgHistory001B.logSafe(
                 this,
                 cgHistory001bSessionId,
-                "challenge",
+                "never_seen".equals(gameMode)
+                        ? "never_seen"
+                        : "challenge",
                 "",
                 "challenge_mental",
                 q,
