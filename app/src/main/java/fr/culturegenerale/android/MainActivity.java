@@ -112,6 +112,11 @@ public class MainActivity extends Activity {
     private PopupWindow transientPopup;
     private final Random random = new Random();
     private Question current;
+
+    // CGHISTORY001B · PLAYLOG_SAFE001
+    private String cgHistory001bSessionId = "";
+    private long cgHistory001bQuestionShownAtElapsedMs = 0L;
+    private final Set<String> cgHistory001bRevisionRevealed = new HashSet<>();
     private String currentDomain = null;
     private String phase = "home";
 
@@ -2412,6 +2417,7 @@ final String currentHash =
         revisionIndex = 0;
         revisionAnswerVisible = false;
         gameMode = "revision";
+        cgHistory001bStartSession("revision_" + revisionMode);
         showRevisionQuestion();
     }
 
@@ -2459,6 +2465,9 @@ final String currentHash =
 
         Question q = revisionQuestions.get(revisionIndex);
         current = q;
+        if (!revisionAnswerVisible) {
+            cgHistory001bMarkQuestionShown();
+        }
 
         upperBand(q.theme, GREEN, Color.WHITE, 25, 48);
         TextView themeView = (TextView) root.getChildAt(root.getChildCount() - 1);
@@ -2645,6 +2654,7 @@ final String currentHash =
                 ? View.INVISIBLE : View.VISIBLE);
         next.setOnClickListener(v -> {
             if (!revisionAnswerVisible) {
+                cgHistory001bLogRevisionReveal(current);
                 revisionAnswerVisible = true;
             } else if (revisionIndex < revisionQuestions.size() - 1) {
                 revisionIndex++;
@@ -2764,6 +2774,7 @@ final String currentHash =
 
     private void startDomain(String domain) {
         gameMode = "challenge";
+        cgHistory001bStartSession("challenge");
         currentDomain = domain;
         answered = mentalOk = classicOk = revised = goodStreak = classicStreak = bestGoodStreak = mentalStreak = bestMentalStreak = 0;
         lastQuestionsPopupAt = 0;
@@ -2798,6 +2809,7 @@ final String currentHash =
                 return;
             }
             current = q;
+            cgHistory001bMarkQuestionShown();
             askedThisSession.add(q.row);
             if (historyIndex < history.size() - 1) {
                 while (history.size() > historyIndex + 1) history.remove(history.size() - 1);
@@ -4280,11 +4292,86 @@ private void flagAndNext(String status, String msg) {
         nextQuestion();
     }
 
+    // CGHISTORY001B · PLAYLOG_SAFE001
+    private void cgHistory001bStartSession(String mode) {
+        cgHistory001bSessionId = CgHistory001B.newSessionId(mode);
+        cgHistory001bQuestionShownAtElapsedMs = 0L;
+        cgHistory001bRevisionRevealed.clear();
+    }
+
+    private void cgHistory001bMarkQuestionShown() {
+        cgHistory001bQuestionShownAtElapsedMs =
+                android.os.SystemClock.elapsedRealtime();
+    }
+
+    private long cgHistory001bElapsedMs() {
+        if (cgHistory001bQuestionShownAtElapsedMs <= 0L) return 0L;
+        return Math.max(
+                0L,
+                android.os.SystemClock.elapsedRealtime()
+                        - cgHistory001bQuestionShownAtElapsedMs
+        );
+    }
+
+    private void cgHistory001bLogChoice(Question q, int choice) {
+        if (q == null) return;
+        CgHistory001B.logSafe(
+                this,
+                cgHistory001bSessionId,
+                "challenge",
+                "",
+                "challenge_choice",
+                q,
+                choice,
+                choice == q.correct,
+                choice == q.correct ? "correct" : "wrong",
+                cgHistory001bElapsedMs()
+        );
+    }
+
+    private void cgHistory001bLogMental(Question q, String status) {
+        if (q == null) return;
+        boolean assimilated = "A".equalsIgnoreCase(status);
+        CgHistory001B.logSafe(
+                this,
+                cgHistory001bSessionId,
+                "challenge",
+                "",
+                "challenge_mental",
+                q,
+                0,
+                assimilated,
+                assimilated ? "assimilated" : "review",
+                cgHistory001bElapsedMs()
+        );
+    }
+
+    private void cgHistory001bLogRevisionReveal(Question q) {
+        if (q == null) return;
+
+        String key = cgHistory001bSessionId + ":" + q.row;
+        if (!cgHistory001bRevisionRevealed.add(key)) return;
+
+        CgHistory001B.logSafe(
+                this,
+                cgHistory001bSessionId,
+                "revision",
+                revisionMode,
+                "revision_reveal",
+                q,
+                0,
+                null,
+                "revealed",
+                cgHistory001bElapsedMs()
+        );
+    }
+
     private void answerChoice(int choice) {
         answered++;
         revised++;
         mentalStreak = 0;
         final Question answeredQuestion = current;
+        cgHistory001bLogChoice(answeredQuestion, choice);
 
         showChoiceResult(choice);
 
@@ -4310,6 +4397,7 @@ private void flagAndNext(String status, String msg) {
     private void finish(String status) {
         answered++;
         final Question answeredQuestion = current;
+        cgHistory001bLogMental(answeredQuestion, status);
         if ("A".equals(status)) {
             mentalOk++;
             goodStreak++;
@@ -4369,6 +4457,7 @@ private void flagAndNext(String status, String msg) {
     if (historyIndex > 0) {
         historyIndex--;
         current = history.get(historyIndex);
+        cgHistory001bMarkQuestionShown();
         showQuestion();
     } else {
         // Toast supprimé
