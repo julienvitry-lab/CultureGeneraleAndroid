@@ -219,6 +219,11 @@ public class MainActivity extends Activity {
     private int cgNeverSeenQueueIndex = 0;
     private String cgNeverSeenTheme = null;
 
+    // CGLEARN002 · SPACED_REPETITION001
+    private final List<Long> cgSpacedQueue = new ArrayList<>();
+    private int cgSpacedQueueIndex = 0;
+    private String cgSpacedLabel = "";
+
     // Préchargement léger pour fluidifier les transitions sans modifier la logique de jeu.
     private volatile Question prefetchedNextQuestion = null;
     private volatile List<Question> prefetchedRelatedQuestions = null;
@@ -2118,6 +2123,18 @@ final String currentHash =
         neverSeenLp.setMargins(0, cmToPx(0.10f), 0, cmToPx(0.10f));
         root.addView(neverSeen, neverSeenLp);
 
+        // CGLEARN002 · SPACED_REPETITION001
+        Button spacedReview = btn("À RÉVISER\nRévisions planifiées", 18);
+        spacedReview.setSingleLine(false);
+        spacedReview.setMaxLines(2);
+        setRoundedBackgroundWithStroke(spacedReview, RED, 14, Color.WHITE, 1);
+        spacedReview.setTextColor(Color.WHITE);
+        spacedReview.setOnClickListener(v -> showSpacedRepetition001());
+        LinearLayout.LayoutParams spacedReviewLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(1.35f));
+        spacedReviewLp.setMargins(0, cmToPx(0.10f), 0, cmToPx(0.10f));
+        root.addView(spacedReview, spacedReviewLp);
+
         // CGIMPORT002_HOME_BUTTON_START
         Button cgImport002 = btn("IMPORT QUIZYPEDIA\nNouvelle page → questions", 18);
         cgImport002.setSingleLine(false);
@@ -2807,6 +2824,102 @@ final String currentHash =
         } finally {
             if (cursor != null) cursor.close();
             db.close();
+        }
+    }
+
+    // CGLEARN002 · SPACED_REPETITION001
+    private void showSpacedRepetition001() {
+        phase = "spaced_repetition_menu";
+        gameMode = "spaced_repetition";
+        current = null;
+        CgSpacedRepetition001.show(
+                this,
+                appFont,
+                this::startSpacedRepetition001,
+                () -> runOnUiThread(this::showHome)
+        );
+    }
+
+    private void startSpacedRepetition001(List<Long> rows, String label) {
+        gameMode = "spaced_repetition";
+        phase = "spaced_repetition_game";
+        cgHistory001bStartSession("spaced_repetition");
+        current = null;
+        currentDomain = null;
+        cgSpacedLabel = label == null ? "" : label;
+
+        answered = mentalOk = classicOk = revised = goodStreak = classicStreak = bestGoodStreak = mentalStreak = bestMentalStreak = 0;
+        lastQuestionsPopupAt = 0;
+        lastMentalPopupAt = 0;
+        lastCombinedPopupAt = 0;
+        askedThisSession.clear();
+        history.clear();
+        wrongAnswers.clear();
+        goodThemesThisSession.clear();
+        historyIndex = -1;
+        prefetchedNextQuestion = null;
+        prefetchedRelatedQuestions = null;
+        prefetchedRelatedThemeKey = "";
+        prefetchedRelatedQuestionKey = "";
+
+        cgSpacedQueue.clear();
+        if (rows != null) cgSpacedQueue.addAll(rows);
+        cgSpacedQueueIndex = 0;
+        remainingInCurrentDomain = cgSpacedQueue.size();
+
+        if (cgSpacedQueue.isEmpty()) {
+            baseFixed();
+            band("Aucune révision échue", GREEN, Color.WHITE, 22, 70);
+            Space flexible = new Space(this);
+            root.addView(flexible, new LinearLayout.LayoutParams(-1, 0, 1));
+            Button back = btn("Retour à l'accueil", 22);
+            back.setOnClickListener(v -> showHome());
+            root.addView(back, new LinearLayout.LayoutParams(-1, cmToPx(1.0f)));
+            return;
+        }
+
+        nextSpacedQuestion001();
+    }
+
+    private void nextSpacedQuestion001() {
+        try {
+            Question q = null;
+            while (cgSpacedQueueIndex < cgSpacedQueue.size()) {
+                long row = cgSpacedQueue.get(cgSpacedQueueIndex++);
+                if (askedThisSession.contains(row)) continue;
+                q = loadQuestionByRow001(row);
+                if (q != null) break;
+            }
+
+            remainingInCurrentDomain = Math.max(0, cgSpacedQueue.size() - cgSpacedQueueIndex);
+
+            if (q == null) {
+                baseFixed();
+                String done = cgSpacedLabel.isEmpty() ? "Révisions terminées" : cgSpacedLabel + "\nterminé";
+                band(done, GREEN, Color.WHITE, 21, 82);
+                Space flexible = new Space(this);
+                root.addView(flexible, new LinearLayout.LayoutParams(-1, 0, 1));
+                Button home = btn("Retour à l'accueil", 22);
+                home.setOnClickListener(v -> showHome());
+                root.addView(home, new LinearLayout.LayoutParams(-1, cmToPx(1.0f)));
+                return;
+            }
+
+            current = q;
+            cgHistory001bMarkQuestionShown();
+            askedThisSession.add(q.row);
+            if (historyIndex < history.size() - 1) {
+                while (history.size() > historyIndex + 1) history.remove(history.size() - 1);
+            }
+            history.add(q);
+            historyIndex = history.size() - 1;
+            showQuestion();
+        } catch (Exception e) {
+            baseScrollable();
+            band("Erreur révision : " + safe(e.getMessage()), RED, Color.WHITE, 18, 90);
+            Button back = btn("Retour", 20);
+            back.setOnClickListener(v -> showHome());
+            add(back);
         }
     }
 
@@ -3529,7 +3642,8 @@ final String currentHash =
     }
 
     private void startBackgroundPreloadForCurrentQuestion() {
-        if ("never_seen".equals(gameMode)) return;
+        if ("never_seen".equals(gameMode)
+                || "spaced_repetition".equals(gameMode)) return;
 
         final Question snapshot = current;
         final String domainSnapshot = currentDomain;
@@ -4985,7 +5099,9 @@ private void flagAndNext(String status, String msg) {
     }
 
     private void continueAfterAnswer() {
-        if ("never_seen".equals(gameMode)) {
+        if ("spaced_repetition".equals(gameMode)) {
+            nextSpacedQuestion001();
+        } else if ("never_seen".equals(gameMode)) {
             nextNeverSeenQuestion001();
         } else {
             nextQuestion();
@@ -5013,6 +5129,12 @@ private void flagAndNext(String status, String msg) {
         );
     }
 
+    private String cgHistory001bAnswerGameMode() {
+        if ("never_seen".equals(gameMode)) return "never_seen";
+        if ("spaced_repetition".equals(gameMode)) return "spaced_repetition";
+        return "challenge";
+    }
+
     private void cgHistory001bLogChoice(Question q, int choice) {
         if (q == null) return;
 
@@ -5025,9 +5147,7 @@ private void flagAndNext(String status, String msg) {
         CgHistory001B.logSafe(
                 this,
                 cgHistory001bSessionId,
-                "never_seen".equals(gameMode)
-                        ? "never_seen"
-                        : "challenge",
+                cgHistory001bAnswerGameMode(),
                 "",
                 "challenge_choice",
                 q,
@@ -5051,9 +5171,7 @@ private void flagAndNext(String status, String msg) {
         CgHistory001B.logSafe(
                 this,
                 cgHistory001bSessionId,
-                "never_seen".equals(gameMode)
-                        ? "never_seen"
-                        : "challenge",
+                cgHistory001bAnswerGameMode(),
                 "",
                 "challenge_mental",
                 q,
