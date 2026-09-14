@@ -1,7 +1,7 @@
 import {getApp,getApps} from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js';
 import {getStorage,ref,getDownloadURL} from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-storage.js';
 
-const CGWEB026_VERSION='CGWEB026_DUPLICATE_AUDIT001';
+const CGWEB026_VERSION='CGWEB026_DUPLICATE_SAVINGS001';
 const END='https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb026ImageCenter';
 
 const $=id=>document.getElementById(id);
@@ -197,6 +197,100 @@ function renderAudit(a){
   `;
 }
 
+
+function renderSavings(s){
+  const panel=$('cg26Savings');
+  if(!panel)return;
+
+  const top=(s.topGroups||[]).map((g,i)=>`
+    <details class="cg26-audit-group" ${i<5?'open':''}>
+      <summary>
+        ${g.fileCount} copies
+        · ${g.removableFiles} supprimable(s)
+        · ${g.sizeKnown?fmt(g.reclaimableBytes):'taille inconnue'}
+        récupérable(s)
+      </summary>
+      <div style="padding:8px 0 12px 18px">
+        <div><b>Exemplaire canonique proposé :</b></div>
+        <code>${esc(g.canonicalPath)}</code>
+        <div style="margin-top:6px;opacity:.82">
+          Taille unitaire ${g.sizeKnown?fmt(g.fileSize):'—'}
+          · total groupe ${g.sizeKnown?fmt(g.totalBytes):'—'}
+          · économie ${g.sizeKnown?fmt(g.reclaimableBytes):'—'}
+        </div>
+        ${(g.duplicatePaths||[]).length
+          ? `<div style="margin-top:8px"><b>Copies candidates :</b>${g.duplicatePaths.map(p=>`<div><code>${esc(p)}</code></div>`).join('')}</div>`
+          : ''}
+      </div>
+    </details>
+  `).join('');
+
+  const sizeWarning=s.unknownSizeGroups>0
+    ? `⚠️ ${s.unknownSizeGroups} groupe(s) confirmé(s) ont une taille incomplète : l’économie affichée est un minimum.`
+    : `✅ Taille connue pour tous les groupes confirmés : l’économie est calculée exactement.`;
+
+  panel.innerHTML=`
+    <div style="margin-top:18px;padding:14px;border:1px solid rgba(200,150,40,.45);border-radius:12px">
+      <h3 style="margin:0 0 10px">Économies potentielles</h3>
+      <div class="cg26-stats" style="margin-bottom:10px">
+        <span>Groupes confirmés <b>${s.confirmedGroups}</b></span>
+        <span>Copies supprimables <b>${s.reclaimableFiles}</b></span>
+        <span>Espace récupérable <b>${fmt(s.reclaimableBytes)}</b></span>
+        <span>Gain Storage <b>${s.reclaimablePercentOfMainBytes}%</b></span>
+      </div>
+      <div style="margin:8px 0">
+        ${s.filesInsideConfirmedGroups} fichiers dans les groupes confirmés
+        · ${s.reclaimablePercentOfMainFiles}% des images principales seraient des copies supprimables
+      </div>
+      <div style="margin:8px 0">
+        Répartition :
+        <b>2 copies ${s.distribution?.twoCopies??0}</b>
+        · 3–5 ${s.distribution?.threeToFive??0}
+        · 6–10 ${s.distribution?.sixToTen??0}
+        · &gt;10 ${s.distribution?.moreThanTen??0}
+      </div>
+      <div style="margin:10px 0"><b>${esc(sizeWarning)}</b></div>
+      <div style="opacity:.8;margin-bottom:10px">
+        Calcul sans suppression ni modification
+        · ${fmtMs(s.timing?.totalMs||0)}
+        · miniatures exclues : ${s.thumbFileCount}
+      </div>
+      <h4 style="margin:14px 0 8px">Groupes les plus coûteux</h4>
+      <div>${top||'<div>Aucun doublon confirmé.</div>'}</div>
+    </div>
+  `;
+}
+
+async function calculateSavings(){
+  const btn=$('cg26SavingsBtn');
+  const started=Date.now();
+  let timer=null;
+
+  if(btn)btn.disabled=true;
+  status('⏳ Calcul des économies potentielles…');
+
+  const update=()=>{
+    status(`⏳ Calcul des économies… ${fmtMs(Date.now()-started)} écoulées`);
+  };
+  timer=setInterval(update,1000);
+
+  try{
+    const s=await api({mode:'duplicateSavings'});
+    renderSavings(s);
+    status(
+      `✅ Économies calculées : ${s.reclaimableFiles} copies · ${fmt(s.reclaimableBytes)} récupérables · ${s.reclaimablePercentOfMainBytes}% du Storage principal.`,
+      'ok'
+    );
+    return s;
+  }catch(e){
+    status(`❌ Calcul économies : ${e.message}`,'bad');
+    return null;
+  }finally{
+    if(timer)clearInterval(timer);
+    if(btn)btn.disabled=false;
+  }
+}
+
 async function auditDuplicates(){
   const btn=$('cg26AuditBtn');
   const started=Date.now();
@@ -291,11 +385,11 @@ function init(){
   p.innerHTML=`
     <header>
       <div>
-        <div class="k">CGWEB026 · IMAGECENTER_SCALE001 · DUPLICATE_AUDIT001</div>
+        <div class="k">CGWEB026 · IMAGECENTER_SCALE001 · DUPLICATE_AUDIT001 · DUPLICATE_SAVINGS001</div>
         <h2>Bibliothèque d’images</h2>
         <p>Inventaire central Storage, usages Firestore, orphelines et doublons.</p>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><button id="cg26AuditBtn">Auditer doublons</button><button id="cg26Scan" class="primary">Analyser</button></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button id="cg26SavingsBtn">Calculer économies</button><button id="cg26AuditBtn">Auditer doublons</button><button id="cg26Scan" class="primary">Analyser</button></div>
     </header>
 
     <div class="cg26-stats">
@@ -319,6 +413,7 @@ function init(){
     </div>
 
     <div id="cg26Rows"></div>
+    <div id="cg26Savings"></div>
     <div id="cg26Audit"></div>
     <div id="cg26Status" class="cg26-status">
       IMAGECENTER_SCALE001 prêt. L’analyse d’une grande bibliothèque peut prendre quelques minutes.
@@ -327,6 +422,7 @@ function init(){
 
   (document.querySelector('main')||document.body).appendChild(p);
 
+  $('cg26SavingsBtn').onclick=calculateSavings;
   $('cg26AuditBtn').onclick=auditDuplicates;
   $('cg26Scan').onclick=scan;
 
@@ -358,7 +454,7 @@ function init(){
   });
 }
 
-window.CGWEB026_API={scan,auditDuplicates};
+window.CGWEB026_API={scan,auditDuplicates,calculateSavings};
 document.readyState==='loading'
   ?document.addEventListener('DOMContentLoaded',init)
   :init();

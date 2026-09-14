@@ -124,7 +124,7 @@ jobs:
           grep -Fq 'cgweb022.js?v=CGWEB022_1' web/public/index.html
           grep -Fq 'cgweb024.js?v=CGWEB024_1' web/public/index.html
           grep -Fq 'cgweb025.js?v=CGWEB025_1' web/public/index.html
-          grep -Fq 'cgweb026.js?v=CGWEB026_DUPLICATE_AUDIT001' web/public/index.html
+          grep -Fq 'cgweb026.js?v=CGWEB026_DUPLICATE_SAVINGS001' web/public/index.html
           grep -Fq 'cgweb027.js?v=CGWEB027_1' web/public/index.html
           grep -Fq 'cgweb028.js?v=CGWEB028_1' web/public/index.html
           grep -Fq 'cgweb029.js?v=CGWEB029_1' web/public/index.html

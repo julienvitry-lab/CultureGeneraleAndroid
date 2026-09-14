@@ -358,6 +358,116 @@ exports.cgweb026ImageCenter=onRequest(
         });
       }
 
+      if(mode==='duplicateSavings'){
+        const started=Date.now();
+        const listStarted=Date.now();
+        const [files]=await bucket.getFiles({prefix});
+        const storageListMs=Date.now()-listStarted;
+
+        const all=(files||[]).map(auditRecord);
+        const rows=all.filter(r=>!r.isThumb);
+
+        const primaryMap=new Map();
+        let mainBytes=0;
+        let mainSizeKnownCount=0;
+
+        for(const r of rows){
+          if(r.sizeKnown){
+            mainBytes+=r.size;
+            mainSizeKnownCount++;
+          }
+          pushGroup(primaryMap,r.signature?`${r.source}:${r.signature}`:'',r);
+        }
+
+        const primaryGroups=duplicateValues(primaryMap);
+        const confirmed=[];
+
+        for(const g of primaryGroups){
+          const source=g.rows[0]?.source||'none';
+          const cls=classifyAuditGroup(source,g.rows);
+          if(cls.verdict!=='confirmed')continue;
+
+          const sizeKnown=g.rows.every(r=>r.sizeKnown);
+          const sorted=[...g.rows].sort((a,b)=>a.path.localeCompare(b.path));
+          const canonical=sorted[0]||null;
+          const totalBytes=sizeKnown
+            ? sorted.reduce((n,r)=>n+r.size,0)
+            : 0;
+          const canonicalBytes=sizeKnown && canonical
+            ? canonical.size
+            : 0;
+          const reclaimableBytes=sizeKnown
+            ? Math.max(0,totalBytes-canonicalBytes)
+            : 0;
+
+          confirmed.push({
+            source,
+            signature:g.key.replace(/^[^:]+:/,''),
+            fileCount:sorted.length,
+            removableFiles:Math.max(0,sorted.length-1),
+            sizeKnown,
+            fileSize:sizeKnown&&canonical?canonical.size:0,
+            totalBytes,
+            canonicalBytes,
+            reclaimableBytes,
+            canonicalPath:canonical?.path||'',
+            duplicatePaths:sorted.slice(1,9).map(r=>r.path)
+          });
+        }
+
+        const reclaimableFiles=confirmed.reduce((n,g)=>n+g.removableFiles,0);
+        const reclaimableBytes=confirmed.reduce((n,g)=>n+g.reclaimableBytes,0);
+        const bytesInDuplicateGroups=confirmed.reduce((n,g)=>n+g.totalBytes,0);
+        const canonicalBytes=confirmed.reduce((n,g)=>n+g.canonicalBytes,0);
+        const sizeKnownGroups=confirmed.filter(g=>g.sizeKnown).length;
+        const unknownSizeGroups=confirmed.length-sizeKnownGroups;
+
+        const distribution={
+          twoCopies:confirmed.filter(g=>g.fileCount===2).length,
+          threeToFive:confirmed.filter(g=>g.fileCount>=3&&g.fileCount<=5).length,
+          sixToTen:confirmed.filter(g=>g.fileCount>=6&&g.fileCount<=10).length,
+          moreThanTen:confirmed.filter(g=>g.fileCount>10).length
+        };
+
+        const topGroups=[...confirmed]
+          .sort((a,b)=>
+            (b.reclaimableBytes-a.reclaimableBytes)
+            || (b.fileCount-a.fileCount)
+            || a.signature.localeCompare(b.signature)
+          )
+          .slice(0,80);
+
+        return json(res,200,{
+          ok:true,
+          version:'CGWEB026_DUPLICATE_SAVINGS001',
+          fileCount:all.length,
+          mainFileCount:rows.length,
+          thumbFileCount:all.length-rows.length,
+          mainBytes,
+          mainSizeKnownCount,
+          confirmedGroups:confirmed.length,
+          sizeKnownGroups,
+          unknownSizeGroups,
+          filesInsideConfirmedGroups:confirmed.reduce((n,g)=>n+g.fileCount,0),
+          reclaimableFiles,
+          bytesInDuplicateGroups,
+          canonicalBytes,
+          reclaimableBytes,
+          reclaimablePercentOfMainBytes:mainBytes
+            ? Math.round((reclaimableBytes/mainBytes)*10000)/100
+            : 0,
+          reclaimablePercentOfMainFiles:rows.length
+            ? Math.round((reclaimableFiles/rows.length)*10000)/100
+            : 0,
+          distribution,
+          topGroups,
+          timing:{
+            storageListMs,
+            totalMs:Date.now()-started
+          }
+        });
+      }
+
       if(mode==='deleteOrphan'){
         const path=one(req.body?.path);
 
