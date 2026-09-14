@@ -97,6 +97,12 @@ public class MainActivity extends Activity {
     private final int NAVY = Color.rgb(18, 45, 92);
 
     private File appFolder, dbFile, imagesFolder, problemsFile;
+
+    // CGDIAG001 FIX2 · SQLITE_SHARED_CONNECTION001
+    // Une référence de base reste ouverte pendant la vie du processus.
+    // Chaque appel openDb() acquiert sa propre référence, libérée par db.close().
+    private final Object cgSqliteOpenLock = new Object();
+    private SQLiteDatabase cgSharedDb = null;
     private LinearLayout screenRoot;
     private LinearLayout root;
     private LinearLayout bottomBar;
@@ -1927,46 +1933,67 @@ final String currentHash =
         }
     }
 
-    // CGDIAG001_FIX1_SQLITE_LOCK001_START
+    // CGDIAG001_FIX2_SQLITE_SHARED_CONNECTION001_START
     private SQLiteDatabase openDb() {
-        final long deadline = android.os.SystemClock.uptimeMillis() + 4000L;
-        RuntimeException lastBusy = null;
+        synchronized (cgSqliteOpenLock) {
+            if (cgSharedDb != null && cgSharedDb.isOpen()) {
+                // SQLiteDatabase est un SQLiteClosable : on donne une référence
+                // au demandeur. Son db.close() ne ferme donc pas la pool partagée.
+                cgSharedDb.acquireReference();
+                return cgSharedDb;
+            }
 
-        while (true) {
-            try {
-                SQLiteDatabase db = SQLiteDatabase.openDatabase(
-                        dbFile.getAbsolutePath(),
-                        null,
-                        SQLiteDatabase.OPEN_READWRITE
-                );
+            final long deadline = android.os.SystemClock.uptimeMillis() + 10000L;
+            RuntimeException lastBusy = null;
+
+            while (true) {
                 try {
-                    db.execSQL("PRAGMA busy_timeout=5000");
-                } catch (Exception ignored) { }
-                return db;
+                    SQLiteDatabase db = SQLiteDatabase.openDatabase(
+                            dbFile.getAbsolutePath(),
+                            null,
+                            SQLiteDatabase.OPEN_READWRITE
+                    );
 
-            } catch (android.database.sqlite.SQLiteDatabaseLockedException e) {
-                lastBusy = e;
+                    try {
+                        db.execSQL("PRAGMA busy_timeout=10000");
+                    } catch (Exception ignored) { }
 
-            } catch (android.database.sqlite.SQLiteException e) {
-                String message = String.valueOf(e.getMessage()).toLowerCase(java.util.Locale.ROOT);
-                if (!message.contains("locked")
-                        && !message.contains("busy")
-                        && !message.contains("sqlite_busy")) {
-                    throw e;
+                    // La référence initiale de db reste détenue ici.
+                    cgSharedDb = db;
+
+                    // Référence propre à l'appelant ; son db.close() la libérera.
+                    cgSharedDb.acquireReference();
+                    return cgSharedDb;
+
+                } catch (android.database.sqlite.SQLiteDatabaseLockedException e) {
+                    lastBusy = e;
+
+                } catch (android.database.sqlite.SQLiteException e) {
+                    String message = String.valueOf(e.getMessage())
+                            .toLowerCase(java.util.Locale.ROOT);
+
+                    if (!message.contains("locked")
+                            && !message.contains("busy")
+                            && !message.contains("sqlite_busy")) {
+                        throw e;
+                    }
+
+                    lastBusy = e;
                 }
-                lastBusy = e;
-            }
 
-            if (android.os.SystemClock.uptimeMillis() >= deadline) {
-                throw lastBusy != null
-                        ? lastBusy
-                        : new android.database.sqlite.SQLiteException("Base SQLite occupée");
-            }
+                if (android.os.SystemClock.uptimeMillis() >= deadline) {
+                    throw lastBusy != null
+                            ? lastBusy
+                            : new android.database.sqlite.SQLiteException(
+                                    "Base SQLite occupée"
+                            );
+                }
 
-            android.os.SystemClock.sleep(100L);
+                android.os.SystemClock.sleep(100L);
+            }
         }
     }
-    // CGDIAG001_FIX1_SQLITE_LOCK001_END
+    // CGDIAG001_FIX2_SQLITE_SHARED_CONNECTION001_END
 
     private void showHome() {
         if (firebaseAuth != null && firebaseAuth.getCurrentUser() == null) {
@@ -5876,10 +5903,8 @@ private void flagAndNext(String status, String msg) {
         android.database.sqlite.SQLiteDatabase db = null;
 
         try {
-            db = android.database.sqlite.SQLiteDatabase.openDatabase(
-                    dbFile.getAbsolutePath(),
-                    null,
-                    android.database.sqlite.SQLiteDatabase.OPEN_READWRITE);
+            // CGDIAG001 FIX2 : utiliser la même pool que le reste de MainActivity.
+            db = openDb();
 
             db.beginTransaction();
 
