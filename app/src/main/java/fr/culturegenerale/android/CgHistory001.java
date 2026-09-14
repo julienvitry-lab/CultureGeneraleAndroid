@@ -1,5 +1,6 @@
 package fr.culturegenerale.android;
 
+import android.content.Context;
 import android.os.Build;
 import android.util.Log;
 
@@ -27,6 +28,7 @@ final class CgHistory001 {
     private CgHistory001() { }
 
     static void log(
+            Context context,
             String sessionId,
             String gameMode,
             String revisionMode,
@@ -97,7 +99,15 @@ final class CgHistory001 {
         event.put("is_correct", isCorrect);
 
         event.put("source", "android");
-        event.put("app_version", BuildConfig.VERSION_NAME);
+        String appVersion = "";
+        try {
+            appVersion = context.getPackageManager()
+                    .getPackageInfo(context.getPackageName(), 0)
+                    .versionName;
+        } catch (Exception ignored) {
+            appVersion = "";
+        }
+        event.put("app_version", appVersion == null ? "" : appVersion);
         event.put("device_model", safe(Build.MANUFACTURER) + " " + safe(Build.MODEL));
         event.put("android_sdk", Build.VERSION.SDK_INT);
         event.put("question_snapshot", snapshot);
