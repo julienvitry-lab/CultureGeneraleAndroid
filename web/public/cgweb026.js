@@ -1,7 +1,7 @@
 import {getApp,getApps} from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js';
 import {getStorage,ref,getDownloadURL} from 'https://www.gstatic.com/firebasejs/12.18.0/firebase-storage.js';
 
-const CGWEB026_VERSION='CGWEB026_IMAGECENTER_SCALE001';
+const CGWEB026_VERSION='CGWEB026_DUPLICATE_AUDIT001';
 const END='https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb026ImageCenter';
 
 const $=id=>document.getElementById(id);
@@ -28,27 +28,18 @@ async function api(body){
   });
 
   const raw=await r.text();
-  let d=null;
-  try{
-    d=raw?JSON.parse(raw):{};
-  }catch(_){
-    throw new Error(`Réponse serveur illisible · HTTP ${r.status}`);
-  }
+  let d={};
+  try{d=raw?JSON.parse(raw):{}}
+  catch(_){throw new Error(`Réponse serveur illisible · HTTP ${r.status}`)}
 
-  if(!r.ok||!d.ok){
-    throw new Error(d.error||`HTTP ${r.status}`);
-  }
-
+  if(!r.ok||!d.ok)throw new Error(d.error||`HTTP ${r.status}`);
   return d;
 }
 
 function fmt(n){
   const u=['o','Ko','Mo','Go','To'];
   let x=Number(n||0),i=0;
-  while(x>=1024&&i<u.length-1){
-    x/=1024;
-    i++;
-  }
+  while(x>=1024&&i<u.length-1){x/=1024;i++}
   return `${x.toFixed(i?1:0)} ${u[i]}`;
 }
 
@@ -104,9 +95,7 @@ function render(){
 
   $('cg26Rows').innerHTML=rows.map((r,i)=>`
     <article class="cg26-card">
-      <div class="cg26-preview">
-        <img id="cg26img${i}" hidden>
-      </div>
+      <div class="cg26-preview"><img id="cg26img${i}" hidden></div>
       <div class="cg26-info">
         <strong>${esc(r.path.split('/').pop())}</strong>
         <small>
@@ -117,9 +106,7 @@ function render(){
         </small>
         <div>${esc(r.themes.join(' · ')||'Sans thème')}</div>
         <code>${esc(r.path)}</code>
-        <div class="cg26-q">
-          ${r.questionIds.map(id=>`#${esc(id)}`).join(' ')||'Aucune question'}
-        </div>
+        <div class="cg26-q">${r.questionIds.map(id=>`#${esc(id)}`).join(' ')||'Aucune question'}</div>
       </div>
       <div class="cg26-actions">
         ${r.questionIds[0]?`<button data-q="${esc(r.questionIds[0])}">Gérer</button>`:''}
@@ -135,6 +122,112 @@ function render(){
 
   $('cg26Shown').textContent=
     all.length>500?`${rows.length} / ${all.length}`:String(all.length);
+}
+
+
+function auditVerdictLabel(v){
+  if(v==='confirmed')return '✅ confirmé';
+  if(v==='conflict')return '❌ conflit';
+  return '⚠️ à vérifier';
+}
+
+function renderAudit(a){
+  const panel=$('cg26Audit');
+  if(!panel)return;
+
+  const warning=a.conflictGroups>0
+    ? `⚠️ ${a.conflictGroups} groupe(s) actuellement marqués « doublon » contiennent plusieurs MD5 ou tailles incompatibles. Ne supprimer aucun doublon sur la seule base du compteur actuel.`
+    : a.unverifiedGroups>0
+      ? `⚠️ ${a.unverifiedGroups} groupe(s) restent non vérifiés faute d’un signal indépendant complet.`
+      : `✅ Tous les groupes candidats sont confirmés par un signal indépendant.`;
+
+  const samples=(a.samples||[]).map((g,i)=>`
+    <details class="cg26-audit-group" ${i<5?'open':''}>
+      <summary>
+        ${auditVerdictLabel(g.verdict)}
+        · ${g.fileCount} fichier(s)
+        · source ${esc(g.source)}
+        · ${esc(g.signature.slice(0,18))}${g.signature.length>18?'…':''}
+      </summary>
+      <div style="padding:8px 0 12px 18px">
+        <div><b>${esc(g.reason)}</b></div>
+        <div style="opacity:.8;margin:4px 0">
+          MD5 distincts ${g.distinctMd5}
+          · tailles distinctes ${g.distinctSizes}
+          · SHA custom distincts ${g.distinctCustomSha}
+          · hash nom distincts ${g.distinctFilenameHash}
+        </div>
+        ${(g.paths||[]).map(p=>`
+          <div style="margin:5px 0">
+            <code>${esc(p.path)}</code>
+            <small style="display:block;opacity:.75">
+              ${p.sizeKnown?fmt(p.size):'taille —'}
+              · MD5 ${esc((p.md5||'—').slice(0,18))}
+              · SHA ${esc((p.customSha||'—').slice(0,18))}
+            </small>
+          </div>
+        `).join('')}
+      </div>
+    </details>
+  `).join('');
+
+  panel.innerHTML=`
+    <div style="margin-top:18px;padding:14px;border:1px solid rgba(200,150,40,.45);border-radius:12px">
+      <h3 style="margin:0 0 10px">Audit des doublons</h3>
+      <div class="cg26-stats" style="margin-bottom:10px">
+        <span>Candidats actuels <b>${a.currentCandidateGroups}</b></span>
+        <span>Confirmés <b>${a.confirmedGroups}</b></span>
+        <span>Conflits <b>${a.conflictGroups}</b></span>
+        <span>À vérifier <b>${a.unverifiedGroups}</b></span>
+      </div>
+      <div style="margin:8px 0">
+        Groupes selon signal indépendant :
+        <b>MD5 ${a.groupsByIndependentSignal?.gcsMd5??0}</b>
+        · SHA custom ${a.groupsByIndependentSignal?.customSha256??0}
+        · hash nom ${a.groupsByIndependentSignal?.filenameHash??0}
+      </div>
+      <div style="margin:10px 0"><b>${esc(warning)}</b></div>
+      <div style="opacity:.8;margin-bottom:10px">
+        ${a.mainFileCount} images principales auditées
+        · ${a.thumbFileCount} miniatures exclues
+        · ${fmtMs(a.timing?.totalMs||0)}
+      </div>
+      <div>${samples||'<div>Aucun groupe candidat.</div>'}</div>
+    </div>
+  `;
+}
+
+async function auditDuplicates(){
+  const btn=$('cg26AuditBtn');
+  const started=Date.now();
+  let timer=null;
+
+  if(btn)btn.disabled=true;
+  status('⏳ Audit des signatures de doublons…');
+
+  const update=()=>{
+    status(`⏳ Audit des doublons… ${fmtMs(Date.now()-started)} écoulées`);
+  };
+  timer=setInterval(update,1000);
+
+  try{
+    const a=await api({mode:'duplicateAudit'});
+    renderAudit(a);
+
+    if(a.conflictGroups>0){
+      status(`⚠️ Audit terminé : ${a.conflictGroups} groupes en conflit sur ${a.currentCandidateGroups} candidats. Aucune suppression automatique.`,'bad');
+    }else{
+      status(`✅ Audit terminé : ${a.confirmedGroups} groupes confirmés · ${a.unverifiedGroups} à vérifier.`,'ok');
+    }
+
+    return a;
+  }catch(e){
+    status(`❌ Audit doublons : ${e.message}`,'bad');
+    return null;
+  }finally{
+    if(timer)clearInterval(timer);
+    if(btn)btn.disabled=false;
+  }
 }
 
 async function scan(){
@@ -198,11 +291,11 @@ function init(){
   p.innerHTML=`
     <header>
       <div>
-        <div class="k">CGWEB026 · IMAGECENTER_SCALE001</div>
+        <div class="k">CGWEB026 · IMAGECENTER_SCALE001 · DUPLICATE_AUDIT001</div>
         <h2>Bibliothèque d’images</h2>
         <p>Inventaire central Storage, usages Firestore, orphelines et doublons.</p>
       </div>
-      <button id="cg26Scan" class="primary">Analyser</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button id="cg26AuditBtn">Auditer doublons</button><button id="cg26Scan" class="primary">Analyser</button></div>
     </header>
 
     <div class="cg26-stats">
@@ -226,6 +319,7 @@ function init(){
     </div>
 
     <div id="cg26Rows"></div>
+    <div id="cg26Audit"></div>
     <div id="cg26Status" class="cg26-status">
       IMAGECENTER_SCALE001 prêt. L’analyse d’une grande bibliothèque peut prendre quelques minutes.
     </div>
@@ -233,6 +327,7 @@ function init(){
 
   (document.querySelector('main')||document.body).appendChild(p);
 
+  $('cg26AuditBtn').onclick=auditDuplicates;
   $('cg26Scan').onclick=scan;
 
   for(const id of ['cg26Filter','cg26Theme']){
@@ -263,7 +358,7 @@ function init(){
   });
 }
 
-window.CGWEB026_API={scan};
+window.CGWEB026_API={scan,auditDuplicates};
 document.readyState==='loading'
   ?document.addEventListener('DOMContentLoaded',init)
   :init();

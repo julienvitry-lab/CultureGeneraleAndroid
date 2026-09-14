@@ -42,6 +42,91 @@ function digestFromFile(file){
     || ((String(file?.name||'').match(/\/([a-f0-9]{24,64})-(?:main|thumb)\./i)||[])[1]||'');
 }
 
+
+function auditRecord(file){
+  const m=file?.metadata||{};
+  const path=String(file?.name||'');
+  const customSha=one(m?.metadata?.sha256);
+  const md5=one(m.md5Hash);
+  const filenameHash=((path.match(/\/([a-f0-9]{24,64})-(?:main|thumb)\./i)||[])[1]||'').toLowerCase();
+  const rawSize=m.size;
+  const size=Number(rawSize);
+  const sizeKnown=rawSize!==undefined && rawSize!==null && Number.isFinite(size);
+
+  let source='none';
+  let signature='';
+  if(customSha){
+    source='custom-sha256';
+    signature=customSha.toLowerCase();
+  }else if(md5){
+    source='gcs-md5';
+    signature=md5;
+  }else if(filenameHash){
+    source='filename-hash';
+    signature=filenameHash;
+  }
+
+  return {
+    path,
+    isThumb:/-thumb\./i.test(path),
+    size:sizeKnown?size:0,
+    sizeKnown,
+    contentType:one(m.contentType),
+    customSha:customSha.toLowerCase(),
+    md5,
+    filenameHash,
+    source,
+    signature
+  };
+}
+
+function pushGroup(map,key,row){
+  if(!key)return;
+  if(!map.has(key))map.set(key,[]);
+  map.get(key).push(row);
+}
+
+function duplicateValues(map){
+  return [...map.entries()]
+    .filter(([,rows])=>rows.length>1)
+    .map(([key,rows])=>({key,rows}));
+}
+
+function classifyAuditGroup(source,rows){
+  const md5Values=[...new Set(rows.map(r=>r.md5).filter(Boolean))];
+  const customValues=[...new Set(rows.map(r=>r.customSha).filter(Boolean))];
+  const filenameValues=[...new Set(rows.map(r=>r.filenameHash).filter(Boolean))];
+  const sizes=[...new Set(rows.filter(r=>r.sizeKnown).map(r=>r.size))];
+  const md5Complete=rows.every(r=>!!r.md5);
+
+  let verdict='unverified';
+  let reason='Pas assez de métadonnées indépendantes pour confirmer le contenu.';
+
+  if(source==='gcs-md5'){
+    verdict='confirmed';
+    reason='Même MD5 Google Cloud Storage : contenu binaire identique.';
+  }else if(md5Values.length>1){
+    verdict='conflict';
+    reason='Même signature primaire mais plusieurs MD5 : les fichiers ne sont pas identiques.';
+  }else if(md5Complete && md5Values.length===1){
+    verdict='confirmed';
+    reason='Signature primaire confirmée par un MD5 identique sur tous les fichiers.';
+  }else if(sizes.length>1){
+    verdict='conflict';
+    reason='Même signature primaire mais tailles différentes : faux doublon certain.';
+  }
+
+  return {
+    verdict,
+    reason,
+    distinctMd5:md5Values.length,
+    distinctCustomSha:customValues.length,
+    distinctFilenameHash:filenameValues.length,
+    distinctSizes:sizes.length,
+    md5Complete
+  };
+}
+
 exports.cgweb026ImageCenter=onRequest(
   {region:REGION,timeoutSeconds:540,memory:'2GiB'},
   async(req,res)=>{
@@ -104,12 +189,6 @@ exports.cgweb026ImageCenter=onRequest(
         let totalBytes=0;
         let sizeKnownCount=0;
 
-        /*
-         * SCALE001:
-         * bucket.getFiles() fournit déjà un objet File avec metadata issu du
-         * listing Cloud Storage. On utilise donc file.metadata directement.
-         * AUCUN getMetadata() individuel n'est lancé ici.
-         */
         for(const f of files){
           const m=f.metadata||{};
           const path=String(f.name||'');
@@ -169,11 +248,112 @@ exports.cgweb026ImageCenter=onRequest(
           orphanCount:rows.filter(r=>r.orphan).length,
           duplicateGroups,
           rows,
+          timing:{questionMs,storageListMs,processingMs,totalMs}
+        });
+      }
+
+      if(mode==='duplicateAudit'){
+        const started=Date.now();
+        const listStarted=Date.now();
+        const [files]=await bucket.getFiles({prefix});
+        const storageListMs=Date.now()-listStarted;
+
+        const all=(files||[]).map(auditRecord);
+        const rows=all.filter(r=>!r.isThumb);
+
+        const customMap=new Map();
+        const md5Map=new Map();
+        const filenameMap=new Map();
+        const primaryMap=new Map();
+
+        const sourceFileCounts={
+          'custom-sha256':0,
+          'gcs-md5':0,
+          'filename-hash':0,
+          'none':0
+        };
+
+        for(const r of rows){
+          sourceFileCounts[r.source]=(sourceFileCounts[r.source]||0)+1;
+          pushGroup(customMap,r.customSha,r);
+          pushGroup(md5Map,r.md5,r);
+          pushGroup(filenameMap,r.filenameHash,r);
+          pushGroup(primaryMap,r.signature?`${r.source}:${r.signature}`:'',r);
+        }
+
+        const primaryGroups=duplicateValues(primaryMap);
+        const customGroups=duplicateValues(customMap);
+        const md5Groups=duplicateValues(md5Map);
+        const filenameGroups=duplicateValues(filenameMap);
+
+        const audited=primaryGroups.map(g=>{
+          const source=g.rows[0]?.source||'none';
+          const cls=classifyAuditGroup(source,g.rows);
+          const totalBytes=g.rows.reduce((n,r)=>n+(r.sizeKnown?r.size:0),0);
+
+          return {
+            source,
+            signature:g.key.replace(/^[^:]+:/,''),
+            fileCount:g.rows.length,
+            totalBytes,
+            verdict:cls.verdict,
+            reason:cls.reason,
+            distinctMd5:cls.distinctMd5,
+            distinctCustomSha:cls.distinctCustomSha,
+            distinctFilenameHash:cls.distinctFilenameHash,
+            distinctSizes:cls.distinctSizes,
+            md5Complete:cls.md5Complete,
+            paths:g.rows.slice(0,8).map(r=>({
+              path:r.path,
+              size:r.size,
+              sizeKnown:r.sizeKnown,
+              md5:r.md5,
+              customSha:r.customSha,
+              filenameHash:r.filenameHash
+            }))
+          };
+        });
+
+        const countVerdict=v=>audited.filter(g=>g.verdict===v);
+        const confirmed=countVerdict('confirmed');
+        const conflicts=countVerdict('conflict');
+        const unverified=countVerdict('unverified');
+
+        const filesIn=arr=>arr.reduce((n,g)=>n+g.fileCount,0);
+
+        const priority={conflict:0,unverified:1,confirmed:2};
+        const samples=[...audited]
+          .sort((a,b)=>
+            (priority[a.verdict]-priority[b.verdict])
+            || (b.fileCount-a.fileCount)
+            || a.signature.localeCompare(b.signature)
+          )
+          .slice(0,80);
+
+        return json(res,200,{
+          ok:true,
+          version:'CGWEB026_DUPLICATE_AUDIT001',
+          fileCount:all.length,
+          mainFileCount:rows.length,
+          thumbFileCount:all.length-rows.length,
+          currentCandidateGroups:primaryGroups.length,
+          currentCandidateFiles:filesIn(audited),
+          confirmedGroups:confirmed.length,
+          confirmedFiles:filesIn(confirmed),
+          conflictGroups:conflicts.length,
+          conflictFiles:filesIn(conflicts),
+          unverifiedGroups:unverified.length,
+          unverifiedFiles:filesIn(unverified),
+          groupsByIndependentSignal:{
+            customSha256:customGroups.length,
+            gcsMd5:md5Groups.length,
+            filenameHash:filenameGroups.length
+          },
+          sourceFileCounts,
+          samples,
           timing:{
-            questionMs,
             storageListMs,
-            processingMs,
-            totalMs
+            totalMs:Date.now()-started
           }
         });
       }
@@ -208,11 +388,7 @@ exports.cgweb026ImageCenter=onRequest(
 
       return json(res,400,{ok:false,error:'Mode inconnu.'});
     }catch(e){
-      return json(
-        res,
-        Number(e?.status)||500,
-        {ok:false,error:e?.message||String(e)}
-      );
+      return json(res,Number(e?.status)||500,{ok:false,error:e?.message||String(e)});
     }
   }
 );
