@@ -2088,6 +2088,18 @@ final String currentHash =
         revisionLp.setMargins(0, cmToPx(0.25f), 0, cmToPx(0.2f));
         root.addView(revision, revisionLp);
 
+        // CGHISTORY002 · PLAYHISTORY_UI001
+        Button playHistory = btn("HISTORIQUE\nQuestions jouées", 18);
+        playHistory.setSingleLine(false);
+        playHistory.setMaxLines(2);
+        setRoundedBackgroundWithStroke(playHistory, NAVY, 14, Color.WHITE, 1);
+        playHistory.setTextColor(Color.WHITE);
+        playHistory.setOnClickListener(v -> showPlayHistory001());
+        LinearLayout.LayoutParams playHistoryLp =
+                new LinearLayout.LayoutParams(-1, cmToPx(1.35f));
+        playHistoryLp.setMargins(0, cmToPx(0.10f), 0, cmToPx(0.10f));
+        root.addView(playHistory, playHistoryLp);
+
         // CGIMPORT002_HOME_BUTTON_START
         Button cgImport002 = btn("IMPORT QUIZYPEDIA\nNouvelle page → questions", 18);
         cgImport002.setSingleLine(false);
@@ -2114,6 +2126,18 @@ final String currentHash =
 
         Space bottomSpace = new Space(this);
         root.addView(bottomSpace, new LinearLayout.LayoutParams(-1, 0, 1));
+    }
+
+    private void showPlayHistory001() {
+        phase = "play_history";
+        gameMode = "history";
+        current = null;
+
+        CgPlayHistoryUi001.show(
+                this,
+                appFont,
+                () -> runOnUiThread(this::showHome)
+        );
     }
 
     private void showChallengeDomains() {
