@@ -208,10 +208,16 @@ function buildAnalysis(events){
     q.weakness=Math.round(100*(0.45*failure+0.30*recentFailure+0.15*repeatPenalty+0.10*slowPenalty));
     q.priority=q.weakness>=WEAK_THRESHOLD||(q.attempts>0&&!q.lastPositive);
 
-    const adjustedFailure=(q.failures+globalFailure*PRIOR_WEIGHT)/(q.attempts+PRIOR_WEIGHT);
-    q.difficulty=Math.round(100*(0.80*adjustedFailure+0.20*slowPenalty));
-    q.difficultyLabel=q.difficulty<20?'Très facile':q.difficulty<40?'Facile':q.difficulty<60?'Moyenne':q.difficulty<80?'Difficile':'Très difficile';
-    q.confidence=q.attempts<=1?'Données insuffisantes':q.attempts<=4?'Échantillon limité':'Données suffisantes';
+    if(q.attempts<=0){
+      q.difficulty=null;
+      q.difficultyLabel='Données insuffisantes';
+      q.confidence='Aucune réponse évaluée';
+    }else{
+      const adjustedFailure=(q.failures+globalFailure*PRIOR_WEIGHT)/(q.attempts+PRIOR_WEIGHT);
+      q.difficulty=Math.round(100*(0.80*adjustedFailure+0.20*slowPenalty));
+      q.difficultyLabel=q.difficulty<20?'Très facile':q.difficulty<40?'Facile':q.difficulty<60?'Moyenne':q.difficulty<80?'Difficile':'Très difficile';
+      q.confidence=q.attempts<=1?'Données insuffisantes':q.attempts<=4?'Échantillon limité':'Données suffisantes';
+    }
 
     q.knownSlow=q.successPercent>=60&&q.timeCount>=2&&globalMedian>0&&q.medianResponseMs>=globalMedian*1.4;
 
@@ -251,8 +257,10 @@ function groupQuestions(list,name='',domain=''){
   for(const q of list){
     attempts+=q.attempts;positive+=q.positive;weak+=q.weakness;
     mastery[q.mastery]=(mastery[q.mastery]||0)+1;
-    const w=Math.max(1,Math.min(5,q.attempts));
-    diffWeighted+=q.difficulty*w;diffWeight+=w;
+    if(q.attempts>0&&Number.isFinite(q.difficulty)){
+      const w=Math.max(1,Math.min(5,q.attempts));
+      diffWeighted+=q.difficulty*w;diffWeight+=w;
+    }
     if(q.due)due++;
     if(q.priority)priority++;
     if(q.knownSlow)knownSlow++;
@@ -263,7 +271,8 @@ function groupQuestions(list,name='',domain=''){
     mastery,weakness:list.length?Math.round(weak/list.length):0,
     priorityCount:priority,dueCount:due,knownSlowCount:knownSlow,
     medianResponseMs:median(times),averageResponseMs:avg(times),
-    difficulty:diffWeight?Math.round(diffWeighted/diffWeight):0
+    difficulty:diffWeight?Math.round(diffWeighted/diffWeight):null,
+    difficultyQuestionCount:list.filter(q=>q.attempts>0&&Number.isFinite(q.difficulty)).length
   };
 }
 function groupsFor(analysis,domain=null){
@@ -281,7 +290,11 @@ function sortGroups(rows,view){
   const r=rows.slice();
   if(view==='weakness')return r.sort((a,b)=>b.weakness-a.weakness||b.priorityCount-a.priorityCount);
   if(view==='response')return r.sort((a,b)=>b.medianResponseMs-a.medianResponseMs||b.knownSlowCount-a.knownSlowCount);
-  if(view==='difficulty')return r.sort((a,b)=>b.difficulty-a.difficulty);
+  if(view==='difficulty')return r.sort((a,b)=>{
+    const ad=Number.isFinite(a.difficulty)?a.difficulty:-1;
+    const bd=Number.isFinite(b.difficulty)?b.difficulty:-1;
+    return bd-ad||b.attempts-a.attempts;
+  });
   if(view==='due')return r.sort((a,b)=>b.dueCount-a.dueCount||b.priorityCount-a.priorityCount);
   if(view==='mastery')return r.sort((a,b)=>(b.mastery['À réviser']*100+b.mastery.Fragile*10+b.mastery.Découverte)-(a.mastery['À réviser']*100+a.mastery.Fragile*10+a.mastery.Découverte));
   return r.sort((a,b)=>a.name.localeCompare(b.name,'fr',{numeric:true,sensitivity:'base'}));
@@ -290,7 +303,11 @@ function sortQuestions(rows,view){
   const r=rows.slice();
   if(view==='weakness')return r.sort((a,b)=>b.weakness-a.weakness||b.failures-a.failures);
   if(view==='response')return r.sort((a,b)=>b.medianResponseMs-a.medianResponseMs||b.timeCount-a.timeCount);
-  if(view==='difficulty')return r.sort((a,b)=>b.difficulty-a.difficulty||b.attempts-a.attempts);
+  if(view==='difficulty')return r.sort((a,b)=>{
+    const ad=Number.isFinite(a.difficulty)?a.difficulty:-1;
+    const bd=Number.isFinite(b.difficulty)?b.difficulty:-1;
+    return bd-ad||b.attempts-a.attempts;
+  });
   if(view==='due')return r.filter(x=>x.due).sort((a,b)=>b.overdueMs-a.overdueMs||a.successPercent-b.successPercent);
   if(view==='mastery'){
     const rank={'À réviser':0,'Fragile':1,'Découverte':2,'Connue':3,'Maîtrisée':4};
@@ -300,14 +317,14 @@ function sortQuestions(rows,view){
 }
 function summaryOf(analysis){
   const mastery={Découverte:0,Fragile:0,Connue:0,Maîtrisée:0,'À réviser':0};
-  let priority=0,due=0,knownSlow=0,weakSum=0,diffSum=0;
+  let priority=0,due=0,knownSlow=0,weakSum=0,diffSum=0,diffCount=0;
   for(const q of analysis.questions){
     mastery[q.mastery]=(mastery[q.mastery]||0)+1;
     if(q.priority)priority++;
     if(q.due)due++;
     if(q.knownSlow)knownSlow++;
     weakSum+=q.weakness;
-    diffSum+=q.difficulty;
+    if(q.attempts>0&&Number.isFinite(q.difficulty)){diffSum+=q.difficulty;diffCount++}
   }
   return {
     eventsCount:analysis.eventsCount,
@@ -319,7 +336,8 @@ function summaryOf(analysis){
     dueCount:due,
     knownSlowCount:knownSlow,
     averageWeakness:analysis.questions.length?Math.round(weakSum/analysis.questions.length):0,
-    averageDifficulty:analysis.questions.length?Math.round(diffSum/analysis.questions.length):0,
+    averageDifficulty:diffCount?Math.round(diffSum/diffCount):null,
+    difficultyQuestionCount:diffCount,
     medianResponseMs:analysis.globalMedianResponseMs,
     averageResponseMs:analysis.globalAverageResponseMs
   };
