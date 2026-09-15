@@ -27,3 +27,14 @@
   .cg16-primary-nav{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important}
   .cg16-primary-nav>button{white-space:normal!important;line-height:1.15!important}
 }
+
+
+/* CGWEB035 FIX3 · NAVIGATION_RESPONSIVE001 */
+.cg16-primary-nav.cg16-primary-nav-fix3{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;align-items:stretch!important;gap:8px!important}
+.cg16-primary-nav.cg16-primary-nav-fix3>button{min-width:0!important;width:100%!important;padding:10px 8px!important;white-space:normal!important;line-height:1.15!important;text-align:center!important}
+.cg16-plus-nav.cg16-plus-nav-fix3{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(155px,1fr))!important;gap:7px!important;align-items:stretch!important}
+.cg16-plus-nav.cg16-plus-nav-fix3>button{min-width:0!important;width:100%!important;white-space:normal!important;line-height:1.15!important}
+.cg16-plus-group-title{grid-column:1/-1;display:block;margin:3px 1px 0;padding:5px 3px 2px;color:rgba(214,232,244,.72);font-size:.72rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase}
+.cg16-plus-primary-shortcut{border-color:rgba(77,190,235,.32)!important;background:rgba(12,72,105,.72)!important}
+@media(max-width:900px){.cg16-primary-nav.cg16-primary-nav-fix3{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
+@media(max-width:600px){.cg16-primary-nav.cg16-primary-nav-fix3{grid-template-columns:repeat(2,minmax(0,1fr))!important}.cg16-plus-nav.cg16-plus-nav-fix3{grid-template-columns:repeat(2,minmax(0,1fr))!important}}

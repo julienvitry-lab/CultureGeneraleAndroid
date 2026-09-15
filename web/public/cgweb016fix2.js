@@ -9,7 +9,7 @@
   const SESSION_PLUS = "cgweb016_plus";
   const SESSION_IMPORT = "cgweb016_import";
   const PAGES = new Set(["dashboard", "directory", "create", "import", "more", "learning"]);
-  const PLUS_PAGES = new Set(["dedup", "quality", "bulk", "history", "fulltext", "sync", "diagnostic", "imagescenter", "androidpreview", "analytics", "backup"]);
+  const PLUS_PAGES = new Set(["dashboard", "funlists", "create", "import", "dedup", "quality", "bulk", "history", "fulltext", "sync", "diagnostic", "imagescenter", "androidpreview", "analytics", "backup"]);
   const IMPORT_PAGES = new Set(["url", "review", "images", "migration", "recovery404", "semantic"]);
 
   let currentPage = sessionStorage.getItem(SESSION_PAGE) || "dashboard";
@@ -210,6 +210,8 @@
     if (main?.parentElement === appShell) main.insertAdjacentElement("afterend", shell);
     else appShell.appendChild(shell);
 
+    cgweb035Fix3RehomePrimaryPages();
+
     document.querySelectorAll("[data-cg16-page]").forEach(button => {
       button.addEventListener("click", () => navigate(button.dataset.cg16Page));
     });
@@ -228,6 +230,11 @@
   }
 
   function navigate(page) {
+    if (CGWEB035_FIX3_MOVED_TO_PLUS.has(page)) {
+      navigatePlus(page);
+      return;
+    }
+
     if (!PAGES.has(page)) page = "directory";
     currentPage = page;
     sessionStorage.setItem(SESSION_PAGE, page);
@@ -249,13 +256,82 @@
     if (!IMPORT_PAGES.has(subpage)) subpage = "url";
     currentImport = subpage;
     sessionStorage.setItem(SESSION_IMPORT, subpage);
-    if (currentPage !== "import") currentPage = "import";
+    currentPlus = "import";
+    sessionStorage.setItem(SESSION_PLUS, currentPlus);
+    if (currentPage !== "more") currentPage = "more";
     sessionStorage.setItem(SESSION_PAGE, currentPage);
     renderNavigation();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   window.CGWEB016_API = { navigate, navigatePlus, navigateImport };
+
+  // CGWEB035_FIX3_NAVIGATION_RESPONSIVE001
+  const CGWEB035_FIX3_MOVED_TO_PLUS = new Map([
+    ["dashboard", { label: "Tableau de bord", pageId: "cg16PageDashboard" }],
+    ["funlists", { label: "Listes fun", pageId: "cg16PageFunlists" }],
+    ["create", { label: "Création de question", pageId: "cg16PageCreate" }],
+    ["import", { label: "Import Quizypedia", pageId: "cg16PageImport" }]
+  ]);
+
+  function cgweb035Fix3RehomePrimaryPages() {
+    const primaryNav = document.querySelector(".cg16-primary-nav");
+    const plusNav = document.querySelector(".cg16-plus-nav");
+    const morePage = document.getElementById("cg16PageMore") || document.querySelector('[data-cg16-page-panel="more"]');
+    if (!primaryNav || !plusNav || !morePage) return;
+
+    if (CGWEB035_FIX3_MOVED_TO_PLUS.has(currentPage)) {
+      currentPlus = currentPage;
+      currentPage = "more";
+      sessionStorage.setItem(SESSION_PLUS, currentPlus);
+      sessionStorage.setItem(SESSION_PAGE, currentPage);
+    }
+
+    const existingToolButton = plusNav.querySelector("[data-cg16-plus]");
+    if (!plusNav.querySelector(".cg16-plus-group-pages")) {
+      const title = document.createElement("span");
+      title.className = "cg16-plus-group-title cg16-plus-group-pages";
+      title.textContent = "Pages";
+      plusNav.insertBefore(title, plusNav.firstChild);
+    }
+
+    for (const [key, def] of CGWEB035_FIX3_MOVED_TO_PLUS.entries()) {
+      primaryNav.querySelector(`[data-cg16-page="${key}"]`)?.remove();
+      let button = plusNav.querySelector(`[data-cg16-plus="${key}"]`);
+      if (!button) {
+        button = document.createElement("button");
+        button.type = "button";
+        button.dataset.cg16Plus = key;
+        button.className = "cg16-plus-primary-shortcut";
+        button.textContent = def.label;
+        if (existingToolButton && existingToolButton.parentElement === plusNav) plusNav.insertBefore(button, existingToolButton);
+        else plusNav.appendChild(button);
+      }
+
+      const oldPage = document.getElementById(def.pageId) || document.querySelector(`[data-cg16-page-panel="${key}"]`);
+      let plusPanel = morePage.querySelector(`[data-cg16-plus-panel="${key}"]`);
+      if (!plusPanel) {
+        plusPanel = document.createElement("section");
+        plusPanel.className = "cg16-plus-page";
+        plusPanel.dataset.cg16PlusPanel = key;
+        plusPanel.hidden = true;
+        morePage.appendChild(plusPanel);
+      }
+      if (oldPage && oldPage !== plusPanel) {
+        while (oldPage.firstChild) plusPanel.appendChild(oldPage.firstChild);
+        oldPage.remove();
+      }
+    }
+
+    if (existingToolButton && existingToolButton.parentElement === plusNav && !plusNav.querySelector(".cg16-plus-group-tools")) {
+      const title = document.createElement("span");
+      title.className = "cg16-plus-group-title cg16-plus-group-tools";
+      title.textContent = "Outils et maintenance";
+      plusNav.insertBefore(title, existingToolButton);
+    }
+    primaryNav.classList.add("cg16-primary-nav-fix3");
+    plusNav.classList.add("cg16-plus-nav-fix3");
+  }
 
   function renderNavigation() {
     const loggedIn = Boolean(window.CGWEB001?.getUser?.());
