@@ -8,14 +8,14 @@
   const SESSION_PAGE = "cgweb016_page";
   const SESSION_PLUS = "cgweb016_plus";
   const SESSION_IMPORT = "cgweb016_import";
-  const PAGES = new Set(["dashboard", "directory", "create", "import", "more", "learning"]);
+  const PAGES = new Set(["home2", "search", "learning", "directory", "more"]);
   const PLUS_PAGES = new Set(["dashboard", "funlists", "create", "import", "dedup", "quality", "bulk", "history", "fulltext", "sync", "diagnostic", "imagescenter", "androidpreview", "analytics", "backup"]);
   const IMPORT_PAGES = new Set(["url", "review", "images", "migration", "recovery404", "semantic"]);
 
-  let currentPage = sessionStorage.getItem(SESSION_PAGE) || "dashboard";
+  let currentPage = sessionStorage.getItem(SESSION_PAGE) || "home2";
   let currentPlus = sessionStorage.getItem(SESSION_PLUS) || "dedup";
   let currentImport = sessionStorage.getItem(SESSION_IMPORT) || "url";
-  if (!PAGES.has(currentPage)) currentPage = "dashboard";
+  if (!PAGES.has(currentPage)) currentPage = "home2";
   if (!PLUS_PAGES.has(currentPlus)) currentPlus = "dedup";
   if (!IMPORT_PAGES.has(currentImport)) currentImport = "url";
 
@@ -42,17 +42,19 @@
       <nav class="cg16-primary-nav" aria-label="Navigation Culture Générale">
         <button type="button" data-cg16-page="home2">Accueil</button>
         <button type="button" data-cg16-page="search">Recherche</button>
-        <button type="button" data-cg16-page="funlists">Listes fun</button>
-        <button type="button" data-cg16-page="learning">Apprentissage</button>
-        <button type="button" data-cg16-page="dashboard">Tableau de bord</button>
-        <button type="button" data-cg16-page="directory">Répertoire de questions</button>
-        <button type="button" data-cg16-page="create">Création de question</button>
-        <button type="button" data-cg16-page="import">Import Quizypedia</button>
-        <button type="button" data-cg16-page="more">Plus</button>
+<button type="button" data-cg16-page="learning">Apprentissage</button>
+<button type="button" data-cg16-page="directory">Répertoire de questions</button>
+<button type="button" data-cg16-page="more">Plus</button>
       </nav>
 
-      <nav id="cg16SecondaryNav" class="cg16-secondary-nav" aria-label="Sous-navigation Plus">
-        <button type="button" data-cg16-plus="dedup">Doublons intelligents</button>
+      <nav id="cg16SecondaryNav" class="cg16-secondary-nav cg16-plus-nav-fix4c" aria-label="Sous-navigation Plus">
+        <span class="cg16-plus-group-title cg16-plus-group-pages">Pages</span>
+          <button type="button" data-cg16-plus="dashboard">Tableau de bord</button>
+          <button type="button" data-cg16-plus="funlists">Listes fun</button>
+          <button type="button" data-cg16-plus="create">Création de question</button>
+          <button type="button" data-cg16-plus="import">Import Quizypedia</button>
+          <span class="cg16-plus-group-title cg16-plus-group-tools">Outils et maintenance</span>
+          <button type="button" data-cg16-plus="dedup">Doublons intelligents</button>
         <button type="button" data-cg16-plus="quality">Contrôle qualité</button>
         <button type="button" data-cg16-plus="bulk">Modifications massives</button>
         <button type="button" data-cg16-plus="history">Historique</button>
@@ -68,16 +70,24 @@
       <div class="cg16-workspace">
         <section id="cg16PageHome2" class="cg16-page" data-cg16-page-panel="home2"><div id="cg16Home2Mount" class="cg16-mount"></div></section>
         <section id="cg16PageSearch" class="cg16-page" data-cg16-page-panel="search"><div id="cg16SearchMount" class="cg16-mount"></div></section>
-        <section id="cg16PageFunlists" class="cg16-page" data-cg16-page-panel="funlists"><div id="cg16FunlistsMount" class="cg16-mount"></div></section>
+
         <section id="cg16PageLearning" class="cg16-page" data-cg16-page-panel="learning"><div id="cg16LearningMount" class="cg16-mount"></div></section>
-        <section id="cg16PageDashboard" class="cg16-page" data-cg16-page-panel="dashboard">
-          <div id="cg16DashboardMount" class="cg16-mount"></div>
-        </section>
+
         <section id="cg16PageDirectory" class="cg16-page" data-cg16-page-panel="directory">
           <div id="cg16DirectoryMount" class="cg16-mount"></div>
         </section>
 
-        <section id="cg16PageCreate" class="cg16-page" data-cg16-page-panel="create">
+
+
+
+
+        <section id="cg16PageMore" class="cg16-page" data-cg16-page-panel="more">
+
+          <section id="cg16PageDashboard" class="cg16-plus-page" data-cg16-plus-panel="dashboard">
+          <div id="cg16DashboardMount" class="cg16-mount"></div>
+        </section>
+          <section id="cg16PageFunlists" class="cg16-plus-page" data-cg16-plus-panel="funlists"><div id="cg16FunlistsMount" class="cg16-mount"></div></section>
+          <section id="cg16PageCreate" class="cg16-plus-page" data-cg16-plus-panel="create">
           <div class="cg16-create-panel">
             <div class="cg16-section-head">
               <div>
@@ -158,8 +168,7 @@
             </form>
           </div>
         </section>
-
-        <section id="cg16PageImport" class="cg16-page" data-cg16-page-panel="import">
+          <section id="cg16PageImport" class="cg16-plus-page" data-cg16-plus-panel="import">
           <nav id="cg16ImportNav" class="cg16-import-nav" aria-label="Sous-navigation Import Quizypedia">
             <button type="button" data-cg16-import="url">Import Quizypedia par URL</button>
             <button type="button" data-cg16-import="review">Validation après import</button>
@@ -188,8 +197,6 @@
             <div id="cg16ImportSemanticMount" class="cg16-mount"></div>
           </section>
         </section>
-
-        <section id="cg16PageMore" class="cg16-page" data-cg16-page-panel="more">
           <section class="cg16-plus-page" data-cg16-plus-panel="dedup"><div id="cg16DedupMount" class="cg16-mount"></div></section>
           <section class="cg16-plus-page" data-cg16-plus-panel="quality"><div id="cg16QualityMount" class="cg16-mount"></div></section>
           <section class="cg16-plus-page" data-cg16-plus-panel="bulk"><div id="cg16BulkMount" class="cg16-mount"></div></section>
@@ -210,8 +217,6 @@
     if (main?.parentElement === appShell) main.insertAdjacentElement("afterend", shell);
     else appShell.appendChild(shell);
 
-    cgweb035Fix3RehomePrimaryPages();
-
     document.querySelectorAll("[data-cg16-page]").forEach(button => {
       button.addEventListener("click", () => navigate(button.dataset.cg16Page));
     });
@@ -230,12 +235,13 @@
   }
 
   function navigate(page) {
-    if (CGWEB035_FIX3_MOVED_TO_PLUS.has(page)) {
+    // CGWEB035_FIX4C_NAVIGATION_STATIC003
+    if (["dashboard","funlists","create","import"].includes(page)) {
       navigatePlus(page);
       return;
     }
 
-    if (!PAGES.has(page)) page = "directory";
+if (!PAGES.has(page)) page = "directory";
     currentPage = page;
     sessionStorage.setItem(SESSION_PAGE, page);
     renderNavigation();
@@ -266,72 +272,6 @@
 
   window.CGWEB016_API = { navigate, navigatePlus, navigateImport };
 
-  // CGWEB035_FIX3_NAVIGATION_RESPONSIVE001
-  const CGWEB035_FIX3_MOVED_TO_PLUS = new Map([
-    ["dashboard", { label: "Tableau de bord", pageId: "cg16PageDashboard" }],
-    ["funlists", { label: "Listes fun", pageId: "cg16PageFunlists" }],
-    ["create", { label: "Création de question", pageId: "cg16PageCreate" }],
-    ["import", { label: "Import Quizypedia", pageId: "cg16PageImport" }]
-  ]);
-
-  function cgweb035Fix3RehomePrimaryPages() {
-    const primaryNav = document.querySelector(".cg16-primary-nav");
-    const plusNav = document.querySelector(".cg16-plus-nav");
-    const morePage = document.getElementById("cg16PageMore") || document.querySelector('[data-cg16-page-panel="more"]');
-    if (!primaryNav || !plusNav || !morePage) return;
-
-    if (CGWEB035_FIX3_MOVED_TO_PLUS.has(currentPage)) {
-      currentPlus = currentPage;
-      currentPage = "more";
-      sessionStorage.setItem(SESSION_PLUS, currentPlus);
-      sessionStorage.setItem(SESSION_PAGE, currentPage);
-    }
-
-    const existingToolButton = plusNav.querySelector("[data-cg16-plus]");
-    if (!plusNav.querySelector(".cg16-plus-group-pages")) {
-      const title = document.createElement("span");
-      title.className = "cg16-plus-group-title cg16-plus-group-pages";
-      title.textContent = "Pages";
-      plusNav.insertBefore(title, plusNav.firstChild);
-    }
-
-    for (const [key, def] of CGWEB035_FIX3_MOVED_TO_PLUS.entries()) {
-      primaryNav.querySelector(`[data-cg16-page="${key}"]`)?.remove();
-      let button = plusNav.querySelector(`[data-cg16-plus="${key}"]`);
-      if (!button) {
-        button = document.createElement("button");
-        button.type = "button";
-        button.dataset.cg16Plus = key;
-        button.className = "cg16-plus-primary-shortcut";
-        button.textContent = def.label;
-        if (existingToolButton && existingToolButton.parentElement === plusNav) plusNav.insertBefore(button, existingToolButton);
-        else plusNav.appendChild(button);
-      }
-
-      const oldPage = document.getElementById(def.pageId) || document.querySelector(`[data-cg16-page-panel="${key}"]`);
-      let plusPanel = morePage.querySelector(`[data-cg16-plus-panel="${key}"]`);
-      if (!plusPanel) {
-        plusPanel = document.createElement("section");
-        plusPanel.className = "cg16-plus-page";
-        plusPanel.dataset.cg16PlusPanel = key;
-        plusPanel.hidden = true;
-        morePage.appendChild(plusPanel);
-      }
-      if (oldPage && oldPage !== plusPanel) {
-        while (oldPage.firstChild) plusPanel.appendChild(oldPage.firstChild);
-        oldPage.remove();
-      }
-    }
-
-    if (existingToolButton && existingToolButton.parentElement === plusNav && !plusNav.querySelector(".cg16-plus-group-tools")) {
-      const title = document.createElement("span");
-      title.className = "cg16-plus-group-title cg16-plus-group-tools";
-      title.textContent = "Outils et maintenance";
-      plusNav.insertBefore(title, existingToolButton);
-    }
-    primaryNav.classList.add("cg16-primary-nav-fix3");
-    plusNav.classList.add("cg16-plus-nav-fix3");
-  }
 
   function renderNavigation() {
     const loggedIn = Boolean(window.CGWEB001?.getUser?.());
