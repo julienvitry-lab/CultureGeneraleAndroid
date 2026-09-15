@@ -224,6 +224,11 @@ public class MainActivity extends Activity {
     private int cgSpacedQueueIndex = 0;
     private String cgSpacedLabel = "";
 
+    // CGLEARN003 · WEAKNESS_ENGINE001
+    private final List<Long> cgWeaknessQueue = new ArrayList<>();
+    private int cgWeaknessQueueIndex = 0;
+    private String cgWeaknessLabel = "";
+
     // Préchargement léger pour fluidifier les transitions sans modifier la logique de jeu.
     private volatile Question prefetchedNextQuestion = null;
     private volatile List<Question> prefetchedRelatedQuestions = null;
@@ -2923,6 +2928,201 @@ final String currentHash =
         }
     }
 
+    // CGLEARN003 · WEAKNESS_ENGINE001
+    void startWeaknessSession001(List<Long> rows, String label) {
+        gameMode = "weakness";
+        phase = "weakness_game";
+        cgHistory001bStartSession("weakness");
+
+        current = null;
+        currentDomain = null;
+        cgWeaknessLabel = label == null ? "" : label;
+
+        answered = mentalOk = classicOk = revised = goodStreak =
+                classicStreak = bestGoodStreak = mentalStreak =
+                bestMentalStreak = 0;
+
+        lastQuestionsPopupAt = 0;
+        lastMentalPopupAt = 0;
+        lastCombinedPopupAt = 0;
+
+        askedThisSession.clear();
+        history.clear();
+        wrongAnswers.clear();
+        goodThemesThisSession.clear();
+        historyIndex = -1;
+
+        prefetchedNextQuestion = null;
+        prefetchedRelatedQuestions = null;
+        prefetchedRelatedThemeKey = "";
+        prefetchedRelatedQuestionKey = "";
+
+        cgWeaknessQueue.clear();
+        if (rows != null) {
+            cgWeaknessQueue.addAll(rows);
+        }
+        cgWeaknessQueueIndex = 0;
+
+        remainingInCurrentDomain =
+                cgWeaknessQueue.size();
+
+        if (cgWeaknessQueue.isEmpty()) {
+            baseFixed();
+
+            band(
+                    "Aucun point faible à travailler",
+                    GREEN,
+                    Color.WHITE,
+                    21,
+                    72
+            );
+
+            Space flexible = new Space(this);
+            root.addView(
+                    flexible,
+                    new LinearLayout.LayoutParams(
+                            -1,
+                            0,
+                            1
+                    )
+            );
+
+            Button back = btn(
+                    "Retour à l'accueil",
+                    22
+            );
+            back.setOnClickListener(
+                    v -> showHome()
+            );
+            root.addView(
+                    back,
+                    new LinearLayout.LayoutParams(
+                            -1,
+                            cmToPx(1.0f)
+                    )
+            );
+            return;
+        }
+
+        nextWeaknessQuestion001();
+    }
+
+    private void nextWeaknessQuestion001() {
+        try {
+            Question q = null;
+
+            while (cgWeaknessQueueIndex
+                    < cgWeaknessQueue.size()) {
+                long row =
+                        cgWeaknessQueue.get(
+                                cgWeaknessQueueIndex++
+                        );
+
+                if (askedThisSession.contains(row)) {
+                    continue;
+                }
+
+                q = loadQuestionByRow001(row);
+
+                if (q != null) {
+                    break;
+                }
+            }
+
+            remainingInCurrentDomain =
+                    Math.max(
+                            0,
+                            cgWeaknessQueue.size()
+                                    - cgWeaknessQueueIndex
+                    );
+
+            if (q == null) {
+                baseFixed();
+
+                String done =
+                        cgWeaknessLabel.isEmpty()
+                                ? "Travail des points faibles terminé"
+                                : cgWeaknessLabel
+                                + "\nterminé";
+
+                band(
+                        done,
+                        GREEN,
+                        Color.WHITE,
+                        20,
+                        82
+                );
+
+                Space flexible = new Space(this);
+                root.addView(
+                        flexible,
+                        new LinearLayout.LayoutParams(
+                                -1,
+                                0,
+                                1
+                        )
+                );
+
+                Button home = btn(
+                        "Retour à l'accueil",
+                        22
+                );
+                home.setOnClickListener(
+                        v -> showHome()
+                );
+                root.addView(
+                        home,
+                        new LinearLayout.LayoutParams(
+                                -1,
+                                cmToPx(1.0f)
+                        )
+                );
+                return;
+            }
+
+            current = q;
+            cgHistory001bMarkQuestionShown();
+            askedThisSession.add(q.row);
+
+            if (historyIndex
+                    < history.size() - 1) {
+                while (history.size()
+                        > historyIndex + 1) {
+                    history.remove(
+                            history.size() - 1
+                    );
+                }
+            }
+
+            history.add(q);
+            historyIndex =
+                    history.size() - 1;
+
+            showQuestion();
+
+        } catch (Exception error) {
+            baseScrollable();
+
+            band(
+                    "Erreur points faibles : "
+                            + safe(error.getMessage()),
+                    RED,
+                    Color.WHITE,
+                    18,
+                    90
+            );
+
+            Button back = btn(
+                    "Retour",
+                    20
+            );
+            back.setOnClickListener(
+                    v -> showHome()
+            );
+            add(back);
+        }
+    }
+
     private void showChallengeDomains() {
         phase = "challenge_domains";
         gameMode = "challenge";
@@ -3643,7 +3843,8 @@ final String currentHash =
 
     private void startBackgroundPreloadForCurrentQuestion() {
         if ("never_seen".equals(gameMode)
-                || "spaced_repetition".equals(gameMode)) return;
+                || "spaced_repetition".equals(gameMode)
+                || "weakness".equals(gameMode)) return;
 
         final Question snapshot = current;
         final String domainSnapshot = currentDomain;
@@ -5099,7 +5300,9 @@ private void flagAndNext(String status, String msg) {
     }
 
     private void continueAfterAnswer() {
-        if ("spaced_repetition".equals(gameMode)) {
+        if ("weakness".equals(gameMode)) {
+            nextWeaknessQuestion001();
+        } else if ("spaced_repetition".equals(gameMode)) {
             nextSpacedQuestion001();
         } else if ("never_seen".equals(gameMode)) {
             nextNeverSeenQuestion001();
@@ -5132,6 +5335,7 @@ private void flagAndNext(String status, String msg) {
     private String cgHistory001bAnswerGameMode() {
         if ("never_seen".equals(gameMode)) return "never_seen";
         if ("spaced_repetition".equals(gameMode)) return "spaced_repetition";
+        if ("weakness".equals(gameMode)) return "weakness";
         return "challenge";
     }
 

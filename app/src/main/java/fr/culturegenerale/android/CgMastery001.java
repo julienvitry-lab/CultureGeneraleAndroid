@@ -87,6 +87,31 @@ final class CgMastery001 {
         status.setGravity(Gravity.CENTER);
         screen.addView(status, lp(0, 0, 0, dp(8)));
 
+        // CGLEARN003 · WEAKNESS_ENGINE001
+        Button weakness = button("Points faibles", 16);
+        weakness.setTextColor(Color.WHITE);
+        weakness.setBackground(round(GOLD, dp(11)));
+        weakness.setOnClickListener(v -> {
+            if (!(activity instanceof MainActivity)) {
+                return;
+            }
+
+            MainActivity mainActivity =
+                    (MainActivity) activity;
+
+            CgWeakness001.show(
+                    activity,
+                    font,
+                    mainActivity::startWeaknessSession001,
+                    () -> CgMastery001.show(
+                            activity,
+                            font,
+                            onBack
+                    )
+            );
+        });
+        screen.addView(weakness, lp(0, 0, 0, dp(8)));
+
         ScrollView scroll = new ScrollView(activity);
         contentHost = new LinearLayout(activity);
         contentHost.setOrientation(LinearLayout.VERTICAL);
