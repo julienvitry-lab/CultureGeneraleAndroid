@@ -110,7 +110,24 @@ final class CgMastery001 {
                     )
             );
         });
-        screen.addView(weakness, lp(0, 0, 0, dp(8)));
+        screen.addView(weakness, lp(0, 0, 0, dp(6)));
+
+        // CGSTATS002 · RESPONSE_TIME001
+        Button responseTime = button("Temps de réponse", 16);
+        responseTime.setTextColor(Color.WHITE);
+        responseTime.setBackground(round(BLUE, dp(11)));
+        responseTime.setOnClickListener(v ->
+                CgResponseTime001.show(
+                        activity,
+                        font,
+                        () -> CgMastery001.show(
+                                activity,
+                                font,
+                                onBack
+                        )
+                )
+        );
+        screen.addView(responseTime, lp(0, 0, 0, dp(8)));
 
         ScrollView scroll = new ScrollView(activity);
         contentHost = new LinearLayout(activity);
