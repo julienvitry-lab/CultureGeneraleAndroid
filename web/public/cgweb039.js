@@ -11,6 +11,8 @@
     directoryPanel: null,
     toolbar: null,
     modal: null,
+    observer: null,
+    observerTimer: null,
     initialized: false
   };
 
@@ -490,11 +492,24 @@
     buildToolbar();
     syncVisibleRows();
 
-    new MutationObserver(() => {
-      state.directoryPanel = findDirectoryPanel() || state.directoryPanel;
-      buildToolbar();
-      installTransferPanel();
-    }).observe(document.documentElement, { childList: true, subtree: true });
+    state.observer = new MutationObserver((mutations) => {
+      const relevant = mutations.some((m) =>
+        [...m.addedNodes].some((n) => {
+          if (n.nodeType !== 1) return false;
+          return n.matches?.("table,[data-cg16-plus-panel],button") ||
+            n.querySelector?.("table,[data-cg16-plus-panel],button");
+        })
+      );
+      if (!relevant) return;
+
+      clearTimeout(state.observerTimer);
+      state.observerTimer = setTimeout(() => {
+        state.directoryPanel = findDirectoryPanel() || state.directoryPanel;
+        buildToolbar();
+        installTransferPanel();
+      }, 120);
+    });
+    state.observer.observe(document.body, { childList: true, subtree: true });
 
     state.initialized = true;
     window.CGWEB039 = {

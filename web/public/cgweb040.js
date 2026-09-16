@@ -387,16 +387,25 @@
   function signature() {
     const state = getQueue();
     if (!state) return "noqueue";
-    return JSON.stringify({
-      sourceName: state.sourceName,
-      startedAt: state.startedAt,
-      running: state.running,
-      pauseRequested: state.pauseRequested,
-      stopRequested: state.stopRequested,
-      items: state.items.map((x) => [
-        x.url, x.status, x.added, x.duplicates, x.errors, x.durationSec, x.message
-      ])
-    });
+
+    const stats = queueStats(state.items);
+    const agg = aggregate(state.items);
+    return [
+      state.sourceName || "",
+      state.startedAt || "",
+      state.running ? 1 : 0,
+      state.pauseRequested ? 1 : 0,
+      state.stopRequested ? 1 : 0,
+      stats.total,
+      stats.done,
+      stats.errors,
+      stats.running,
+      stats.pending,
+      agg.added,
+      agg.duplicates,
+      agg.errors,
+      Math.round(agg.duration)
+    ].join("|");
   }
 
   function poll() {
@@ -419,7 +428,16 @@
 
     createUi();
     render();
-    rt.timer = setInterval(poll, 1200);
+    rt.timer = setInterval(() => {
+      if (!document.hidden) poll();
+    }, 2000);
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) {
+        rt.lastSignature = "";
+        poll();
+      }
+    });
 
     window.CGWEB040 = {
       version: VERSION,

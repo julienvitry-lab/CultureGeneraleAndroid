@@ -8,6 +8,8 @@
     ctx: null,
     injectedInto: null,
     observer: null,
+    renderTimer: null,
+    wiredRoot: null,
     active: false
   };
 
@@ -331,6 +333,25 @@
     state.active = true;
   }
 
+  function scheduleWorkspaceRender(root, ctx) {
+    clearTimeout(state.renderTimer);
+    state.renderTimer = setTimeout(() => {
+      if (root?.isConnected) renderWorkspace(root, ctx || loadCtx());
+    }, 120);
+  }
+
+  function wireDetailRoot(root, ctx) {
+    if (state.wiredRoot === root) return;
+    state.wiredRoot = root;
+
+    const refreshFromEditor = (ev) => {
+      if (ev.target?.closest?.("#cgweb038Workspace")) return;
+      scheduleWorkspaceRender(root, ctx);
+    };
+    root.addEventListener("input", refreshFromEditor, true);
+    root.addEventListener("change", refreshFromEditor, true);
+  }
+
   function waitForDetail(ctx) {
     let attempts = 0;
     const maxAttempts = 80;
@@ -340,18 +361,24 @@
       const root = findDetailRoot();
       if (root) {
         renderWorkspace(root, ctx);
+        wireDetailRoot(root, ctx);
 
         if (state.observer) state.observer.disconnect();
-        state.observer = new MutationObserver(() => {
-          if (state.injectedInto?.isConnected) {
-            renderWorkspace(state.injectedInto, loadCtx());
-          }
+        state.observer = new MutationObserver((mutations) => {
+          const relevant = mutations.some((m) => {
+            if (m.target?.closest?.("#cgweb038Workspace")) return false;
+            return [...m.addedNodes].some((n) => {
+              if (n.nodeType !== 1) return false;
+              if (n.matches?.("#cgweb038Workspace")) return false;
+              if (n.closest?.("#cgweb038Workspace")) return false;
+              return true;
+            });
+          });
+          if (relevant) scheduleWorkspaceRender(root, loadCtx());
         });
         state.observer.observe(root, {
           childList: true,
-          subtree: true,
-          attributes: true,
-          characterData: true
+          subtree: true
         });
         return;
       }

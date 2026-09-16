@@ -1,0 +1,19 @@
+/* CGWEB043 · PERFORMANCE001 */
+
+/*
+ * Ces cartes peuvent devenir nombreuses.
+ * content-visibility:auto permet au navigateur de différer le rendu
+ * des cartes réellement hors écran, sans modifier leur contenu.
+ */
+.cgweb040-history-card,
+.cgweb042-domain{
+  content-visibility:auto;
+  contain-intrinsic-size:auto 110px;
+}
+
+/* Empêche les longues listes analytiques de provoquer des débordements coûteux. */
+#cgweb040HistoryList,
+#cgweb042Domains{
+  min-width:0;
+}
+

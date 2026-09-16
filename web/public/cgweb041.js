@@ -356,9 +356,7 @@
           refresh: render,
           metrics: collectMetrics
         };
-        rt.timer = setInterval(() => {
-          if (rt.panel && visible(rt.panel)) render();
-        }, 15000);
+        rt.timer = null;
         return;
       }
       if (attempts < 120) setTimeout(tick, 250);
