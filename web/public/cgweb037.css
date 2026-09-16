@@ -1,0 +1,107 @@
+/* CGWEB037 · DIRECTORY_SEARCH002 */
+.cgweb037-tools{
+  margin:10px 0 12px;
+  padding:10px 12px;
+  border:1px solid rgba(108,184,226,.28);
+  border-radius:12px;
+  background:rgba(5,27,43,.46);
+}
+.cgweb037-queryline{
+  display:grid;
+  grid-template-columns:minmax(300px,1fr) auto auto auto;
+  gap:8px;
+  align-items:end;
+}
+.cgweb037-querylabel{
+  display:grid;
+  gap:4px;
+  min-width:0;
+  font-weight:700;
+}
+.cgweb037-query{
+  width:100%;
+  min-height:38px;
+  box-sizing:border-box;
+}
+.cgweb037-queryline button{
+  min-height:38px;
+  padding:7px 12px;
+  white-space:nowrap;
+}
+.cgweb037-hint{
+  margin-top:6px;
+  font-size:.80rem;
+  opacity:.72;
+}
+.cgweb037-memory{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px 18px;
+  margin-top:9px;
+}
+.cgweb037-memory > div{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:6px;
+  min-width:0;
+}
+.cgweb037-chips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px;
+}
+.cgweb037-chip,.cgweb037-chip-x{
+  min-height:27px!important;
+  padding:3px 8px!important;
+  border-radius:999px!important;
+  font-size:.76rem!important;
+}
+.cgweb037-saved-chip{
+  display:inline-flex;
+  gap:2px;
+}
+.cgweb037-chip-x{
+  min-width:27px;
+  padding:3px 6px!important;
+}
+.cgweb037-empty{
+  opacity:.55;
+  font-size:.76rem;
+}
+.cgweb037-status{
+  min-height:19px;
+  margin-top:7px;
+  font-size:.80rem;
+}
+.cgweb037-status[data-kind="ok"]{color:#73e6ad}
+.cgweb037-status[data-kind="error"]{color:#ff8b8b}
+.cgweb037-status[data-kind="info"]{opacity:.72}
+
+/* CGWEB032 is now a search engine embedded in Directory. */
+.cgweb037-search-engine{
+  margin-top:8px!important;
+  padding-top:8px!important;
+  border-top:1px solid rgba(126,181,217,.18);
+}
+.cgweb037-search-engine:not(.cgweb037-search-open){
+  display:none!important;
+}
+.cgweb037-search-engine.cgweb037-search-open{
+  display:block!important;
+}
+.cgweb037-search-engine > h1,
+.cgweb037-search-engine > h2,
+.cgweb037-search-engine > h3{
+  margin-top:0;
+}
+@media(max-width:900px){
+  .cgweb037-queryline{grid-template-columns:1fr 1fr 1fr}
+  .cgweb037-querylabel{grid-column:1/-1}
+  .cgweb037-memory{grid-template-columns:1fr}
+}
+@media(max-width:600px){
+  .cgweb037-queryline{grid-template-columns:1fr 1fr}
+  .cgweb037-queryline #cgweb037Save{grid-column:1/-1}
+}
+
