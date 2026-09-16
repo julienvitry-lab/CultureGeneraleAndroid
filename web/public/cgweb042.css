@@ -1,0 +1,186 @@
+/* CGWEB042 · LEARNING_ANALYTICS002 */
+.cgweb042-tab.cgweb042-active{
+  background:#1b84b2!important;
+  border-color:#39a6d3!important;
+}
+.cgweb042-analysis{
+  margin-top:10px;
+}
+.cgweb042-head{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:flex-start;
+}
+.cgweb042-head h2{margin:0 0 3px;font-size:1.35rem}
+.cgweb042-head p{margin:0;opacity:.72}
+.cgweb042-head button{min-height:35px;padding:6px 10px}
+
+.cgweb042-global{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:8px;
+  margin-top:11px;
+}
+.cgweb042-global article{
+  padding:9px 10px;
+  border:1px solid rgba(126,190,226,.18);
+  border-radius:10px;
+  background:rgba(7,34,52,.58);
+}
+.cgweb042-global span{
+  display:block;
+  font-size:.72rem;
+  opacity:.64;
+}
+.cgweb042-global strong{
+  display:block;
+  margin-top:2px;
+  font-size:1.12rem;
+}
+
+.cgweb042-section{
+  margin-top:11px;
+  padding:10px 11px;
+  border:1px solid rgba(126,190,226,.16);
+  border-radius:11px;
+  background:rgba(4,24,38,.40);
+}
+.cgweb042-section h3{margin:0 0 4px}
+.cgweb042-section p{margin:0;font-size:.76rem;opacity:.62}
+.cgweb042-domains{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+  margin-top:8px;
+}
+.cgweb042-domain{
+  padding:10px;
+  border:1px solid rgba(126,190,226,.16);
+  border-radius:10px;
+  background:rgba(8,40,60,.50);
+}
+.cgweb042-domain-top{
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  align-items:flex-start;
+}
+.cgweb042-domain-top > strong{font-size:1rem}
+.cgweb042-flags{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:4px;
+}
+.cgweb042-flag{
+  padding:3px 7px;
+  border-radius:999px;
+  font-size:.68rem;
+  white-space:nowrap;
+}
+.cgweb042-warn{
+  color:#ffd56b;
+  background:rgba(255,213,107,.09);
+  border:1px solid rgba(255,213,107,.22);
+}
+.cgweb042-ok{
+  color:#76e0a9;
+  background:rgba(118,224,169,.08);
+  border:1px solid rgba(118,224,169,.18);
+}
+.cgweb042-muted{
+  opacity:.62;
+  background:rgba(140,183,210,.08);
+  border:1px solid rgba(140,183,210,.14);
+}
+.cgweb042-metrics{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:6px;
+  margin-top:8px;
+}
+.cgweb042-metrics > div{
+  padding:6px 7px;
+  border-radius:7px;
+  background:rgba(3,20,32,.38);
+}
+.cgweb042-metrics span{
+  display:block;
+  font-size:.67rem;
+  opacity:.58;
+}
+.cgweb042-metrics strong{
+  display:block;
+  margin-top:1px;
+  font-size:.83rem;
+}
+.cgweb042-domain-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px;
+  margin-top:8px;
+}
+.cgweb042-domain-actions button{
+  min-height:29px;
+  padding:4px 7px;
+  font-size:.72rem;
+}
+.cgweb042-mastery{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:6px;
+  margin-top:7px;
+}
+.cgweb042-mastery span{
+  padding:7px 8px;
+  border-radius:8px;
+  background:rgba(8,40,60,.42);
+  font-size:.75rem;
+}
+.cgweb042-mastery strong{float:right}
+.cgweb042-note{
+  margin-top:9px;
+  font-size:.72rem;
+  opacity:.56;
+}
+.cgweb042-empty,.cgweb042-error{
+  padding:12px;
+  border-radius:9px;
+  background:rgba(7,34,52,.52);
+}
+.cgweb042-error{color:#ff8b8b}
+
+.cgweb042-overlay[hidden]{display:none!important}
+.cgweb042-overlay{
+  position:fixed;
+  inset:0;
+  z-index:99999;
+  display:grid;
+  place-items:center;
+  padding:18px;
+  background:rgba(0,0,0,.68);
+}
+.cgweb042-overlay-box{
+  display:grid;
+  gap:5px;
+  min-width:min(420px,88vw);
+  padding:16px 18px;
+  border:1px solid rgba(113,190,231,.34);
+  border-radius:13px;
+  background:#082238;
+  text-align:center;
+}
+.cgweb042-overlay-box span{font-size:.78rem;opacity:.64}
+
+@media(max-width:950px){
+  .cgweb042-global{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .cgweb042-domains{grid-template-columns:1fr}
+}
+@media(max-width:650px){
+  .cgweb042-head{display:grid}
+  .cgweb042-global{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cgweb042-mastery{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cgweb042-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
