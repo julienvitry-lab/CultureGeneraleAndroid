@@ -8,8 +8,8 @@
   const SESSION_PAGE = "cgweb016_page";
   const SESSION_PLUS = "cgweb016_plus";
   const SESSION_IMPORT = "cgweb016_import";
-  const PAGES = new Set(["learning", "directory", "import", "more"]);
-  const PLUS_PAGES = new Set(["home2", "create", "dedup", "quality", "bulk", "history", "fulltext", "sync", "diagnostic", "imagescenter", "androidpreview", "analytics", "backup"]);
+  const PAGES = new Set(["directory", "import", "create", "more"]);
+  const PLUS_PAGES = new Set(["home2", "learning", "dedup", "quality", "bulk", "history", "fulltext", "analytics", "backup", "androidpreview", "sync", "diagnostic", "imagescenter"]);
   const IMPORT_PAGES = new Set(["url", "review", "images", "migration", "recovery404", "semantic"]);
 
   let currentPage = sessionStorage.getItem(SESSION_PAGE) || "directory";
@@ -40,16 +40,17 @@
     shell.innerHTML = `
       <div class="cg16-version-proof" id="cg16VersionProof">CGWEB022 · CGWEB024 · CGWEB025 ACTIFS</div>
       <nav class="cg16-primary-nav" aria-label="Navigation Culture Générale">
-        <button type="button" data-cg16-page="learning">Apprentissage</button>
         <button type="button" data-cg16-page="directory">Répertoire</button>
         <button type="button" data-cg16-page="import">Import Quizypedia</button>
+        <button type="button" data-cg16-page="create">Création de questions</button>
         <button type="button" data-cg16-page="more">Plus</button>
       </nav>
 
       <nav id="cg16SecondaryNav" class="cg16-secondary-nav cg16-plus-nav-fix4c cg36-plus-grid" aria-label="Sous-navigation Plus">
           <span class="cg16-plus-group-title">Pages</span>
           <button type="button" data-cg16-plus="home2">Accueil</button>
-          <button type="button" data-cg16-plus="create">Création de question</button>
+          <button type="button" data-cg16-plus="learning">Apprentissage</button>
+
           <span class="cg16-plus-group-title">Qualité</span>
           <button type="button" data-cg16-plus="dedup">Doublons intelligents</button>
           <button type="button" data-cg16-plus="quality">Contrôle qualité</button>
@@ -71,7 +72,7 @@
         <section id="cg16PageHome2" class="cg16-plus-page" data-cg16-plus-panel="home2"><div id="cg16Home2Mount" class="cg16-mount"></div></section>
         <section id="cg16PageSearch" class="cg16-page" data-cg16-page-panel="search"><div id="cg16SearchMount" class="cg16-mount"></div></section>
 
-        <section id="cg16PageLearning" class="cg16-page" data-cg16-page-panel="learning"><div id="cg16LearningMount" class="cg16-mount"></div></section>
+        <section id="cg16PageLearning" class="cg16-plus-page" data-cg16-plus-panel="learning"><div id="cg16LearningMount" class="cg16-mount"></div></section>
 
         <section id="cg16PageDirectory" class="cg16-page" data-cg16-page-panel="directory">
           <div id="cg16DirectoryMount" class="cg16-mount"></div>
@@ -87,7 +88,7 @@
           <div id="cg16DashboardMount" class="cg16-mount"></div>
         </section>
           <section id="cg16PageFunlists" class="cg16-plus-page" data-cg16-plus-panel="funlists"><div id="cg16FunlistsMount" class="cg16-mount"></div></section>
-          <section id="cg16PageCreate" class="cg16-plus-page" data-cg16-plus-panel="create">
+          <section id="cg16PageCreate" class="cg16-page" data-cg16-page-panel="create">
           <div class="cg16-create-panel">
             <div class="cg16-section-head">
               <div>
@@ -235,6 +236,16 @@
   }
 
   function navigate(page) {
+    // CGWEB036_FIX3D_ROUTING_BEGIN
+    if (page === "learning") {
+      navigatePlus("learning");
+      return;
+    }
+    if (page === "import") {
+      navigateImport(currentImport);
+      return;
+    }
+    // CGWEB036_FIX3D_ROUTING_END
     // CGWEB036_FIX1_NAVIGATION
     if (page === "home2") {
       navigatePlus("home2");
