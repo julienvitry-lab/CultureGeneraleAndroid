@@ -82,13 +82,36 @@
 
 
 
-        <section id="cg16PageMore" class="cg16-page" data-cg16-page-panel="more">
+        <section id="cg16PageImport" class="cg16-page" data-cg16-page-panel="import">
+          <nav id="cg16ImportNav" class="cg16-import-nav" aria-label="Sous-navigation Import Quizypedia">
+            <button type="button" data-cg16-import="url">Import Quizypedia par URL</button>
+            <button type="button" data-cg16-import="review">Validation après import</button>
+            <button type="button" data-cg16-import="images">Gestion avancée des images</button>
+            <button type="button" data-cg16-import="migration">Migration massive des images historiques</button>
+            <button type="button" data-cg16-import="recovery404">Récupération ciblée des 404</button>
+            <button type="button" data-cg16-import="semantic">Récupération sémantique des images restantes</button>
+          </nav>
 
-          <section id="cg16PageDashboard" class="cg16-plus-page" data-cg16-plus-panel="dashboard">
-          <div id="cg16DashboardMount" class="cg16-mount"></div>
+          <section class="cg16-import-page" data-cg16-import-panel="url">
+            <div id="cg16ImportUrlMount" class="cg16-mount"></div>
+          </section>
+          <section class="cg16-import-page" data-cg16-import-panel="review">
+            <div id="cg16ImportReviewMount" class="cg16-mount"></div>
+          </section>
+          <section class="cg16-import-page" data-cg16-import-panel="images">
+            <div id="cg16ImportImagesMount" class="cg16-mount"></div>
+          </section>
+          <section class="cg16-import-page" data-cg16-import-panel="migration">
+            <div id="cg16ImportMigrationMount" class="cg16-mount"></div>
+          </section>
+          <section class="cg16-import-page" data-cg16-import-panel="recovery404">
+            <div id="cg16Import404Mount" class="cg16-mount"></div>
+          </section>
+          <section class="cg16-import-page" data-cg16-import-panel="semantic">
+            <div id="cg16ImportSemanticMount" class="cg16-mount"></div>
+          </section>
         </section>
-          <section id="cg16PageFunlists" class="cg16-plus-page" data-cg16-plus-panel="funlists"><div id="cg16FunlistsMount" class="cg16-mount"></div></section>
-          <section id="cg16PageCreate" class="cg16-page" data-cg16-page-panel="create">
+      <section id="cg16PageCreate" class="cg16-page" data-cg16-page-panel="create">
           <div class="cg16-create-panel">
             <div class="cg16-section-head">
               <div>
@@ -169,35 +192,14 @@
             </form>
           </div>
         </section>
-          <section id="cg16PageImport" class="cg16-page" data-cg16-page-panel="import">
-          <nav id="cg16ImportNav" class="cg16-import-nav" aria-label="Sous-navigation Import Quizypedia">
-            <button type="button" data-cg16-import="url">Import Quizypedia par URL</button>
-            <button type="button" data-cg16-import="review">Validation après import</button>
-            <button type="button" data-cg16-import="images">Gestion avancée des images</button>
-            <button type="button" data-cg16-import="migration">Migration massive des images historiques</button>
-            <button type="button" data-cg16-import="recovery404">Récupération ciblée des 404</button>
-            <button type="button" data-cg16-import="semantic">Récupération sémantique des images restantes</button>
-          </nav>
+      <section id="cg16PageMore" class="cg16-page" data-cg16-page-panel="more">
 
-          <section class="cg16-import-page" data-cg16-import-panel="url">
-            <div id="cg16ImportUrlMount" class="cg16-mount"></div>
-          </section>
-          <section class="cg16-import-page" data-cg16-import-panel="review">
-            <div id="cg16ImportReviewMount" class="cg16-mount"></div>
-          </section>
-          <section class="cg16-import-page" data-cg16-import-panel="images">
-            <div id="cg16ImportImagesMount" class="cg16-mount"></div>
-          </section>
-          <section class="cg16-import-page" data-cg16-import-panel="migration">
-            <div id="cg16ImportMigrationMount" class="cg16-mount"></div>
-          </section>
-          <section class="cg16-import-page" data-cg16-import-panel="recovery404">
-            <div id="cg16Import404Mount" class="cg16-mount"></div>
-          </section>
-          <section class="cg16-import-page" data-cg16-import-panel="semantic">
-            <div id="cg16ImportSemanticMount" class="cg16-mount"></div>
-          </section>
+          <section id="cg16PageDashboard" class="cg16-plus-page" data-cg16-plus-panel="dashboard">
+          <div id="cg16DashboardMount" class="cg16-mount"></div>
         </section>
+          <section id="cg16PageFunlists" class="cg16-plus-page" data-cg16-plus-panel="funlists"><div id="cg16FunlistsMount" class="cg16-mount"></div></section>
+
+
           <section class="cg16-plus-page" data-cg16-plus-panel="dedup"><div id="cg16DedupMount" class="cg16-mount"></div></section>
           <section class="cg16-plus-page" data-cg16-plus-panel="quality"><div id="cg16QualityMount" class="cg16-mount"></div></section>
           <section class="cg16-plus-page" data-cg16-plus-panel="bulk"><div id="cg16BulkMount" class="cg16-mount"></div></section>
