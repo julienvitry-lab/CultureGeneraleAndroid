@@ -13,9 +13,20 @@
         /session intelligente/i.test(norm(b.textContent))) || null;
   }
 
+  /* CGWEB057_FIX1_LEARNING_MOUNT_COMPAT001 */
+  function learningHost() {
+    return document.querySelector('[data-cg16-page-panel="learning"]') ||
+      document.querySelector('[data-cg16-plus-panel="learning"]') ||
+      document.getElementById("cgweb035Panel")?.parentElement ||
+      null;
+  }
+
   function openLearning() {
-    const b = [...document.querySelectorAll('button[data-cg16-page]')]
-      .find((x) => /apprentissage/i.test(norm(x.textContent)));
+    const b =
+      document.querySelector('button[data-cg16-page="learning"]') ||
+      document.querySelector('button[data-cg16-plus="learning"]') ||
+      [...document.querySelectorAll('button')].find((x) =>
+        /^apprentissage$/i.test(norm(x.textContent)));
     b?.click();
   }
 
@@ -63,10 +74,13 @@
   }
 
   function ensurePanel() {
-    const host = document.querySelector('[data-cg16-page-panel="learning"]');
+    const host = learningHost();
     if (!host) return null;
     let p = document.getElementById("cgweb057Panel");
-    if (p) return p;
+    if (p) {
+      if (p.parentElement !== host) host.appendChild(p);
+      return p;
+    }
     p = document.createElement("section");
     p.id = "cgweb057Panel";
     p.className = "cgweb057-panel";
