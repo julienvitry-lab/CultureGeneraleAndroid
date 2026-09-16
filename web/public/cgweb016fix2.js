@@ -8,14 +8,14 @@
   const SESSION_PAGE = "cgweb016_page";
   const SESSION_PLUS = "cgweb016_plus";
   const SESSION_IMPORT = "cgweb016_import";
-  const PAGES = new Set(["home2", "search", "learning", "directory", "more"]);
-  const PLUS_PAGES = new Set(["dashboard", "funlists", "create", "import", "dedup", "quality", "bulk", "history", "fulltext", "sync", "diagnostic", "imagescenter", "androidpreview", "analytics", "backup"]);
+  const PAGES = new Set(["learning", "directory", "import", "more"]);
+  const PLUS_PAGES = new Set(["home2", "create", "dedup", "quality", "bulk", "history", "fulltext", "sync", "diagnostic", "imagescenter", "androidpreview", "analytics", "backup"]);
   const IMPORT_PAGES = new Set(["url", "review", "images", "migration", "recovery404", "semantic"]);
 
-  let currentPage = sessionStorage.getItem(SESSION_PAGE) || "home2";
+  let currentPage = sessionStorage.getItem(SESSION_PAGE) || "directory";
   let currentPlus = sessionStorage.getItem(SESSION_PLUS) || "dedup";
   let currentImport = sessionStorage.getItem(SESSION_IMPORT) || "url";
-  if (!PAGES.has(currentPage)) currentPage = "home2";
+  if (!PAGES.has(currentPage)) currentPage = "directory";
   if (!PLUS_PAGES.has(currentPlus)) currentPlus = "dedup";
   if (!IMPORT_PAGES.has(currentImport)) currentImport = "url";
 
@@ -40,35 +40,35 @@
     shell.innerHTML = `
       <div class="cg16-version-proof" id="cg16VersionProof">CGWEB022 · CGWEB024 · CGWEB025 ACTIFS</div>
       <nav class="cg16-primary-nav" aria-label="Navigation Culture Générale">
-        <button type="button" data-cg16-page="home2">Accueil</button>
-        <button type="button" data-cg16-page="search">Recherche</button>
-<button type="button" data-cg16-page="learning">Apprentissage</button>
-<button type="button" data-cg16-page="directory">Répertoire de questions</button>
-<button type="button" data-cg16-page="more">Plus</button>
+        <button type="button" data-cg16-page="learning">Apprentissage</button>
+        <button type="button" data-cg16-page="directory">Répertoire</button>
+        <button type="button" data-cg16-page="import">Import Quizypedia</button>
+        <button type="button" data-cg16-page="more">Plus</button>
       </nav>
 
-      <nav id="cg16SecondaryNav" class="cg16-secondary-nav cg16-plus-nav-fix4c" aria-label="Sous-navigation Plus">
-        <span class="cg16-plus-group-title cg16-plus-group-pages">Pages</span>
-          <button type="button" data-cg16-plus="dashboard">Tableau de bord</button>
-          <button type="button" data-cg16-plus="funlists">Listes fun</button>
+      <nav id="cg16SecondaryNav" class="cg16-secondary-nav cg16-plus-nav-fix4c cg36-plus-grid" aria-label="Sous-navigation Plus">
+          <span class="cg16-plus-group-title">Pages</span>
+          <button type="button" data-cg16-plus="home2">Accueil</button>
           <button type="button" data-cg16-plus="create">Création de question</button>
-          <button type="button" data-cg16-plus="import">Import Quizypedia</button>
-          <span class="cg16-plus-group-title cg16-plus-group-tools">Outils et maintenance</span>
+          <span class="cg16-plus-group-title">Qualité</span>
           <button type="button" data-cg16-plus="dedup">Doublons intelligents</button>
-        <button type="button" data-cg16-plus="quality">Contrôle qualité</button>
-        <button type="button" data-cg16-plus="bulk">Modifications massives</button>
-        <button type="button" data-cg16-plus="history">Historique</button>
-        <button type="button" data-cg16-plus="imagescenter">Bibliothèque d’images</button>
-        <button type="button" data-cg16-plus="androidpreview">Simulateur Android</button>
-        <button type="button" data-cg16-plus="analytics">Statistiques</button>
-        <button type="button" data-cg16-plus="backup">Sauvegardes</button>
-        <button type="button" data-cg16-plus="fulltext">Plein texte</button>
-        <button type="button" data-cg16-plus="sync">Santé synchro</button>
-        <button type="button" data-cg16-plus="diagnostic">Diagnostic</button>
-      </nav>
+          <button type="button" data-cg16-plus="quality">Contrôle qualité</button>
+          <button type="button" data-cg16-plus="bulk">Modifications massives</button>
+          <span class="cg16-plus-group-title">Contenu et médias</span>
+          <button type="button" data-cg16-plus="history">Historique</button>
+          <button type="button" data-cg16-plus="fulltext">Plein texte</button>
+          <span class="cg16-plus-group-title">Données</span>
+          <button type="button" data-cg16-plus="analytics">Statistiques</button>
+          <button type="button" data-cg16-plus="backup">Sauvegardes</button>
+          <span class="cg16-plus-group-title">Système</span>
+          <button type="button" data-cg16-plus="androidpreview">Simulateur Android</button>
+          <button type="button" data-cg16-plus="sync">Santé synchro</button>
+          <button type="button" data-cg16-plus="diagnostic">Diagnostic</button>
+          <button type="button" data-cg16-plus="imagescenter">Bibliothèque d’images</button>
+        </nav>
 
       <div class="cg16-workspace">
-        <section id="cg16PageHome2" class="cg16-page" data-cg16-page-panel="home2"><div id="cg16Home2Mount" class="cg16-mount"></div></section>
+        <section id="cg16PageHome2" class="cg16-plus-page" data-cg16-plus-panel="home2"><div id="cg16Home2Mount" class="cg16-mount"></div></section>
         <section id="cg16PageSearch" class="cg16-page" data-cg16-page-panel="search"><div id="cg16SearchMount" class="cg16-mount"></div></section>
 
         <section id="cg16PageLearning" class="cg16-page" data-cg16-page-panel="learning"><div id="cg16LearningMount" class="cg16-mount"></div></section>
@@ -168,7 +168,7 @@
             </form>
           </div>
         </section>
-          <section id="cg16PageImport" class="cg16-plus-page" data-cg16-plus-panel="import">
+          <section id="cg16PageImport" class="cg16-page" data-cg16-page-panel="import">
           <nav id="cg16ImportNav" class="cg16-import-nav" aria-label="Sous-navigation Import Quizypedia">
             <button type="button" data-cg16-import="url">Import Quizypedia par URL</button>
             <button type="button" data-cg16-import="review">Validation après import</button>
@@ -235,9 +235,18 @@
   }
 
   function navigate(page) {
-    // CGWEB035_FIX4C_NAVIGATION_STATIC003
-    if (["dashboard","funlists","create","import"].includes(page)) {
-      navigatePlus(page);
+    // CGWEB036_FIX1_NAVIGATION
+    if (page === "home2") {
+      navigatePlus("home2");
+      return;
+    }
+    if (page === "search") page = "directory";
+    if (page === "dashboard") {
+      navigatePlus("home2");
+      return;
+    }
+    if (page === "funlists") {
+      navigatePlus("home2");
       return;
     }
 
@@ -262,9 +271,7 @@ if (!PAGES.has(page)) page = "directory";
     if (!IMPORT_PAGES.has(subpage)) subpage = "url";
     currentImport = subpage;
     sessionStorage.setItem(SESSION_IMPORT, subpage);
-    currentPlus = "import";
-    sessionStorage.setItem(SESSION_PLUS, currentPlus);
-    if (currentPage !== "more") currentPage = "more";
+    if (currentPage !== "import") currentPage = "import";
     sessionStorage.setItem(SESSION_PAGE, currentPage);
     renderNavigation();
     window.scrollTo({ top: 0, behavior: "smooth" });

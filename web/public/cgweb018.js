@@ -26,7 +26,7 @@ function cg18Filters(){return{
   megatheme:cg18$("cg18Mega").value.trim(),
   themeContains:cg18$("cg18Theme").value.trim(),
   status:cg18$("cg18StatusFilter").value,
-  questionPrefix:cg18$("cg18Prefix").value.trim(),
+  recordContains:cg18$("cg18Prefix").value.trim(),
   imageState:cg18$("cg18Image").value,
   nonTrouve:cg18$("cg18Missing").value
 }}
@@ -84,13 +84,37 @@ async function cg18Load(reset=false){
     const forceThemeCatalog=filters.themeContains
       ? sessionStorage.getItem(CG18_THEME_CATALOG_SESSION)!=="1"
       : false;
-    const res=filters.themeContains
-      ? await api.queryQuestionsThemeContains({
-          ...params,
-          term:filters.themeContains,
-          forceCatalog:forceThemeCatalog
-        })
-      : await api.queryQuestionsPage(params);
+    let res;
+    if(filters.recordContains){
+      const searchApi=window.CGWEB032_API?.query;
+      if(!searchApi)throw new Error("Moteur de recherche plein texte indisponible.");
+      const offset=Number((CG18.stack[CG18.page]||{}).offset||0);
+      const d=await searchApi({
+        term:filters.recordContains,
+        megatheme:filters.megatheme,
+        theme:filters.themeContains,
+        withImage:filters.imageState==="1"?"yes":filters.imageState==="0"?"no":"",
+        status:filters.status,
+        nonTrouve:filters.nonTrouve,
+        limit:Number(cg18$("cg18PageSize").value)||50,
+        offset,
+        sortField:cg18$("cg18Sort").value,
+        sortDirection:cg18$("cg18Direction").value
+      });
+      res={
+        items:d.rows||[],
+        total:Number(d.total||0),
+        nextCursor:d.nextOffset==null?null:{offset:d.nextOffset},
+        searchIndexCapped:false
+      };
+    }else{
+      res=filters.themeContains
+        ? await api.queryQuestionsThemeContains({
+            ...params,
+            term:filters.themeContains
+          })
+        : await api.queryQuestionsPage(params);
+    }
     if(filters.themeContains && res.catalogSchema===5){
       sessionStorage.setItem(CG18_THEME_CATALOG_SESSION,"1");
     }
@@ -132,12 +156,12 @@ function cg18CopySelected(){navigator.clipboard?.writeText([...CG18.selected].jo
 function cg18Init(){
   if(cg18$("cgweb018Panel"))return;cg18LoadPrefs();
   const panel=document.createElement("section");panel.id="cgweb018Panel";panel.className="cg18-panel";panel.innerHTML=`
-    <div class="cg18-head"><div><div class="cg18-kicker">CGWEB018 · DIRECTORY003</div><h2>Répertoire de questions</h2><p>Filtres combinés, recherche de thème par terme, tri, colonnes configurables et sélection persistante.</p></div></div>
+    <div class="cg18-head"><div><h2>Répertoire</h2><p>Filtres combinés, recherche de thème par terme, tri, colonnes configurables et sélection persistante.</p></div></div>
     <div class="cg18-filters">
       <label>Mégathème<select id="cg18Mega"><option value="">Tous</option><option>Animaux et Plantes</option><option>Culture Classique</option><option>Culture Générale</option><option>Culture Moderne</option><option>Géographie</option><option>Histoire</option><option>Sciences et Techniques</option><option>Sport</option></select></label>
       <label>Thème contient<input id="cg18Theme" placeholder="Ex. capitales" title="Retrouve tous les thèmes dont l’intitulé contient ce terme."></label>
       <label>Statut<input id="cg18StatusFilter" placeholder="Tous"></label>
-      <label>Début de question<input id="cg18Prefix" placeholder="Préfixe"></label>
+      <label>La fiche contient<input id="cg18Prefix" placeholder="Question, détail, thème ou mégathème…"></label>
       <label>Image<select id="cg18Image"><option value="">Toutes</option><option value="1">Avec image</option><option value="0">Sans image</option></select></label>
       <label>Recherche image<select id="cg18Missing" title="Ce filtre correspond au champ non_trouve : il signale l’échec d’une recherche d’image, pas une question introuvable."><option value="">Tous les états</option><option value="1">Image signalée introuvable</option><option value="0">Non signalée introuvable</option></select></label>
       <label>Tri<select id="cg18Sort"><option value="id">ID</option><option value="question">Question</option><option value="megatheme">Mégathème</option><option value="theme">Thème</option><option value="status">Statut</option></select></label>

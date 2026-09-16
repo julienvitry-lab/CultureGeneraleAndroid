@@ -1,27 +1,42 @@
-/* CGWEB036 · UX_CONSOLIDATION001 */
+/* CGWEB036 FIX1 · UX_CONSOLIDATION002 */
 (()=>{"use strict";
-const n=s=>(s||"").replace(/\s+/g," ").trim().toLowerCase(),t=e=>n(e&&e.textContent);
-const all=()=>[...document.querySelectorAll("button,a")],by=x=>all().find(e=>t(e)===n(x));
+const n=s=>(s||"").replace(/\s+/g," ").trim().toLowerCase();
+const text=e=>n(e&&e.textContent);
 const hide=e=>e&&e.classList.add("cg36-hidden");
-const block=e=>e&&(e.closest("section,.card,.panel,[class*='card'],[class*='panel'],nav")||e);
-function home(){
- if(![...document.querySelectorAll("h1,h2")].some(e=>t(e)==="culture générale"))return;
- const q=[...document.querySelectorAll("h2,h3,h4")].find(e=>t(e)==="question surprise");if(q)hide(block(q));
- all().forEach(e=>{if(["rechercher","répertoire","listes fun","tableau de bord"].includes(t(e))&&!e.closest(".cg16-primary-nav,.cg16-primary-nav-fix3,.cg16-plus-nav,.cg16-plus-nav-fix3"))hide(e)})
+function cleanDevLabels(){
+  const rx=/\bCGWEB\d+\b|\bDIRECTORY\d+\b|\bHOME\d+\b|\bSEARCH\d+\b|\bLEARNING_HUB\d+\b|\bDUPLICATES\d+\b/i;
+  document.querySelectorAll("body *").forEach(e=>{
+    if(["SCRIPT","STYLE","OPTION"].includes(e.tagName))return;
+    const raw=(e.textContent||"").replace(/\s+/g," ").trim();
+    if(!raw||raw.length>140||!rx.test(raw))return;
+    if(e.querySelector("button,input,select,textarea,a"))return;
+    if(e.children.length===0||e.matches(".k,[class*='kicker'],small,[class*='badge']"))hide(e);
+  });
 }
-function learning(){
- if(![...document.querySelectorAll("h1,h2")].some(e=>t(e)==="apprentissage"))return;
- const v=by("Vue d'ensemble");
- if(v){const a=v.classList.contains("active")||v.getAttribute("aria-selected")==="true";hide(v);if(a){const h=by("Historique");if(h)setTimeout(()=>h.click(),0)}}
- document.body.classList.add("cg36-history-compact")
+function cleanHome(){
+  const title=[...document.querySelectorAll("h1,h2")].find(e=>text(e)==="culture générale");
+  if(!title)return;
+  [...document.querySelectorAll("button,a")].forEach(e=>{
+    const t=text(e);
+    if(["rechercher","répertoire","listes fun","tableau de bord"].some(x=>t.includes(x))){
+      if(!e.closest("nav"))hide(e);
+    }
+  });
+  const surprise=[...document.querySelectorAll("h2,h3,h4")].find(e=>text(e)==="question surprise");
+  if(surprise)hide(surprise.closest("section,.card,article,[class*='card']")||surprise);
 }
-function plus(){const p=document.querySelector(".cg16-plus-nav,.cg16-plus-nav-fix3");if(p)p.classList.add("cg36-plus-grid")}
-function search(){
- const q=[...document.querySelectorAll('input[type="search"],input[type="text"]')].find(i=>n(i.placeholder).includes("mots recherch"));
- if(!q)return;q.classList.add("cg36-question-search");q.placeholder="Mot(s) dans la question, le thème ou le mégathème";
- if(!q.nextElementSibling||!q.nextElementSibling.classList.contains("cg36-search-hint")){const d=document.createElement("div");d.className="cg36-search-hint";d.textContent="Recherche aussi le texte de la question.";q.after(d)}
+function cleanLearning(){
+  if(![...document.querySelectorAll("h1,h2")].some(e=>text(e)==="apprentissage"))return;
+  const v=[...document.querySelectorAll("button,a")].find(e=>text(e)==="vue d'ensemble");
+  if(v){const active=v.classList.contains("active")||v.getAttribute("aria-selected")==="true";hide(v);
+    if(active){const h=[...document.querySelectorAll("button,a")].find(e=>text(e)==="historique");if(h)setTimeout(()=>h.click(),0)}}
+  document.body.classList.add("cg36-history-compact");
 }
-function run(){home();learning();plus();search()}
+function plus(){
+  const p=[...document.querySelectorAll("nav")].find(e=>e.querySelector("[data-cg16-plus]"));
+  if(p)p.classList.add("cg36-plus-grid");
+}
+function run(){cleanDevLabels();cleanHome();cleanLearning();plus()}
 document.readyState==="loading"?document.addEventListener("DOMContentLoaded",run):run();
 new MutationObserver(run).observe(document.documentElement,{childList:true,subtree:true});
 })();

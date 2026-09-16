@@ -100,3 +100,12 @@
 .cg36-search-hint{font-size:.78rem;opacity:.7;margin-top:3px}
 @media(max-width:900px){.cg36-plus-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
 @media(max-width:600px){.cg36-plus-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+
+
+/* CGWEB036 FIX1 · UX_CONSOLIDATION002 */
+.cg16-primary-nav{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+.cg36-hidden{display:none!important}
+.cg36-plus-grid{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:8px!important;align-items:stretch!important;overflow:visible!important}
+.cg36-plus-grid>.cg16-plus-group-title{grid-column:1/-1!important;margin:8px 2px 1px!important;padding:2px 2px!important;min-height:0!important}
+.cg36-plus-grid>button{width:100%!important;min-width:0!important;min-height:46px!important;height:46px!important;padding:7px 9px!important;display:flex!important;align-items:center!important;justify-content:center!important;text-align:center!important;line-height:1.08!important;white-space:normal!important}
+@media(max-width:800px){.cg16-primary-nav{grid-template-columns:repeat(2,minmax(0,1fr))!important}.cg36-plus-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
