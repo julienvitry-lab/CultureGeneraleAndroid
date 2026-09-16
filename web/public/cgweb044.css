@@ -1,0 +1,197 @@
+/* CGWEB044 · UX_POLISH001 */
+
+/* ------------------------------------------------------------------
+   Variables d'harmonisation
+   ------------------------------------------------------------------ */
+:root{
+  --cg44-radius:11px;
+  --cg44-control-h:38px;
+  --cg44-gap:8px;
+  --cg44-border:rgba(125,190,227,.24);
+  --cg44-panel:rgba(7,35,54,.58);
+  --cg44-panel-soft:rgba(5,27,43,.42);
+}
+
+/* ------------------------------------------------------------------
+   Navigation principale : dimensions identiques, aucun chevauchement
+   ------------------------------------------------------------------ */
+.cgweb044-primary-nav{
+  display:grid!important;
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  gap:8px!important;
+  align-items:stretch!important;
+}
+.cgweb044-primary-nav-button{
+  width:100%!important;
+  min-width:0!important;
+  min-height:42px!important;
+  height:auto!important;
+  padding:7px 10px!important;
+  white-space:normal!important;
+  line-height:1.2!important;
+  text-align:center!important;
+}
+
+/* ------------------------------------------------------------------
+   Plus : grille propre et boutons de dimensions cohérentes
+   ------------------------------------------------------------------ */
+.cgweb044-plus-panel{
+  min-width:0!important;
+}
+.cgweb044-plus-panel .cgweb044-plus-button{
+  min-height:46px!important;
+  height:100%!important;
+  min-width:0!important;
+  padding:7px 10px!important;
+  white-space:normal!important;
+  line-height:1.15!important;
+  text-align:center!important;
+  border-radius:var(--cg44-radius)!important;
+}
+.cgweb044-plus-group-title{
+  display:block!important;
+  width:100%!important;
+  margin:13px 0 6px!important;
+  padding:0 2px!important;
+  font-size:.74rem!important;
+  font-weight:800!important;
+  letter-spacing:.055em!important;
+  text-transform:uppercase!important;
+  opacity:.68!important;
+}
+
+/* ------------------------------------------------------------------
+   Apprentissage : tabs homogènes et compactes
+   ------------------------------------------------------------------ */
+.cgweb044-learning-tabs{
+  display:grid!important;
+  grid-template-columns:repeat(auto-fit,minmax(128px,1fr))!important;
+  gap:7px!important;
+  align-items:stretch!important;
+}
+.cgweb044-learning-tab{
+  width:100%!important;
+  min-width:0!important;
+  min-height:38px!important;
+  height:auto!important;
+  padding:6px 9px!important;
+  white-space:normal!important;
+  line-height:1.15!important;
+  text-align:center!important;
+}
+
+/* ------------------------------------------------------------------
+   Boutons d'action : même rythme visuel
+   ------------------------------------------------------------------ */
+.cgweb044-action-row button{
+  min-height:var(--cg44-control-h)!important;
+  height:auto!important;
+  padding:6px 10px!important;
+  border-radius:9px!important;
+  line-height:1.15!important;
+}
+.cgweb044-action-row{
+  gap:7px!important;
+}
+
+/* ------------------------------------------------------------------
+   Cartes récentes : même rayon / bordure / espacement
+   ------------------------------------------------------------------ */
+#cgweb037Tools,
+#cgweb038Workspace,
+#cgweb039Toolbar,
+#cgweb040ControlCenter,
+#cgweb041Panel .cgweb041-section,
+#cgweb042Analysis .cgweb042-section,
+.cgweb040-history-card,
+.cgweb042-domain{
+  border-radius:var(--cg44-radius)!important;
+}
+#cgweb037Tools,
+#cgweb039Toolbar{
+  padding:10px 11px!important;
+}
+.cgweb040-stat,
+.cgweb041-stat,
+.cgweb042-global article,
+.cgweb042-metrics>div{
+  min-height:70px;
+  box-sizing:border-box;
+}
+
+/* ------------------------------------------------------------------
+   Titres : évite les marges incohérentes laissées par les modules
+   ------------------------------------------------------------------ */
+.cgweb044-heading{
+  line-height:1.15!important;
+}
+section>.cgweb044-heading:first-child,
+article>.cgweb044-heading:first-child{
+  margin-top:0!important;
+}
+
+/* ------------------------------------------------------------------
+   Tableaux : scroll propre sur petit écran
+   ------------------------------------------------------------------ */
+.cgweb044-table-wrap{
+  max-width:100%;
+  overflow-x:auto;
+  overscroll-behavior-inline:contain;
+  scrollbar-width:thin;
+}
+.cgweb044-table-wrap>table{
+  min-width:max-content;
+}
+
+/* ------------------------------------------------------------------
+   Les marqueurs de développement autonomes sont masqués par JS.
+   Règle de sécurité complémentaire.
+   ------------------------------------------------------------------ */
+[data-cgweb044-technical="1"]{
+  display:none!important;
+}
+
+/* ------------------------------------------------------------------
+   Responsive
+   ------------------------------------------------------------------ */
+@media(max-width:900px){
+  .cgweb044-primary-nav{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+  .cgweb044-learning-tabs{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  }
+}
+@media(max-width:620px){
+  .cgweb044-primary-nav{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:6px!important;
+  }
+  .cgweb044-primary-nav-button{
+    min-height:40px!important;
+    padding:6px 7px!important;
+  }
+  .cgweb044-learning-tabs{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+  .cgweb044-action-row{
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+  .cgweb044-action-row button{
+    width:100%!important;
+    min-width:0!important;
+  }
+}
+@media(max-width:420px){
+  .cgweb044-primary-nav{
+    grid-template-columns:1fr!important;
+  }
+  .cgweb044-learning-tabs{
+    grid-template-columns:1fr!important;
+  }
+  .cgweb044-action-row{
+    grid-template-columns:1fr!important;
+  }
+}
+
