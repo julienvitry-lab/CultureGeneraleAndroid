@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE = "cgweb050-shell-v1";
+const CACHE = "cgweb050-shell-v2-cgweb060";
 const PRECACHE = [
   "./",
   "./index.html",
@@ -13,7 +13,15 @@ const PRECACHE = [
   "./cgweb049.css","./cgweb049.js",
   "./cgweb050.css","./cgweb050.js",
   "./cgweb051.css","./cgweb051.js",
-  "./cgweb052.css","./cgweb052.js"
+  "./cgweb052.css","./cgweb052.js",
+  "./cgweb053.css","./cgweb053.js",
+  "./cgweb054.css","./cgweb054.js",
+  "./cgweb055.css","./cgweb055.js",
+  "./cgweb056.css","./cgweb056.js",
+  "./cgweb057.css","./cgweb057.js",
+  "./cgweb058.css","./cgweb058.js",
+  "./cgweb059.css","./cgweb059.js",
+  "./cgweb060.css","./cgweb060.js"
 ];
 
 self.addEventListener("install", (event) => {

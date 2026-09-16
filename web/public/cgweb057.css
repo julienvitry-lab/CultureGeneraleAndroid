@@ -1,0 +1,6 @@
+/* CGWEB057 · SMART_REVIEW_BRIDGE001 */
+.cgweb057-panel{margin-top:14px;padding:12px;border:1px solid rgba(125,190,227,.22);border-radius:12px;background:rgba(7,35,54,.42)}
+.cgweb057-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.cgweb057-head h3{margin:0}.cgweb057-head small{opacity:.62}
+.cgweb057-stats{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}.cgweb057-stats span{padding:6px 8px;border-radius:8px;background:rgba(255,255,255,.035);font-size:.78rem}
+.cgweb057-actions{display:flex;gap:8px;align-items:end;flex-wrap:wrap}.cgweb057-actions label{display:grid;gap:4px;font-size:.72rem}.cgweb057-status{font-size:.76rem;opacity:.66;margin:9px 0 0}
+@media(max-width:650px){.cgweb057-head{display:grid}}

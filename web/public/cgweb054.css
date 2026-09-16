@@ -1,0 +1,9 @@
+/* CGWEB054 · DUPLICATE_REVIEW002 */
+.cgweb054-summary{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:10px 0;padding:9px;border:1px solid rgba(125,190,227,.18);border-radius:10px;background:rgba(74,163,216,.06);font-size:.78rem}
+.cgweb054-summary span{opacity:.82}.cgweb054-triage{grid-column:1/-1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding-top:8px;border-top:1px dashed rgba(125,190,227,.2)}
+.cgweb054-triage>span{font-size:.72rem;opacity:.62;margin-right:3px}.cgweb054-triage button.active{outline:2px solid currentColor;outline-offset:1px}
+.cgweb054-overlay{position:fixed;inset:0;z-index:100015;background:rgba(0,8,14,.65);display:grid;place-items:center;padding:16px}.cgweb054-overlay[hidden]{display:none!important}
+.cgweb054-dialog{width:min(850px,96vw);max-height:84vh;overflow:auto;border:1px solid rgba(125,190,227,.32);border-radius:15px;background:rgba(5,28,44,.99);padding:13px}
+.cgweb054-dialog header{display:flex;justify-content:space-between;gap:12px}.cgweb054-dialog header>div{display:flex;flex-direction:column}.cgweb054-dialog header small{opacity:.62}
+.cgweb054-ledger-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.cgweb054-ledger-row{display:flex;justify-content:space-between;gap:12px;padding:9px;border-top:1px solid rgba(125,190,227,.14)}
+.cgweb054-ledger-row>div{display:flex;flex-direction:column}.cgweb054-ledger-row span,.cgweb054-ledger-row small{opacity:.66}.cgweb054-empty{text-align:center;opacity:.62;padding:18px}
