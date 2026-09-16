@@ -1,0 +1,11 @@
+/* CGWEB046 · SAVED_VIEWS001 */
+.cgweb046-overlay{position:fixed;inset:0;z-index:99990;background:rgba(0,8,14,.62);display:grid;place-items:center;padding:16px}
+.cgweb046-overlay[hidden]{display:none!important}
+.cgweb046-dialog{width:min(680px,96vw);max-height:80vh;overflow:auto;border:1px solid rgba(125,190,227,.32);border-radius:15px;background:rgba(5,28,44,.985);box-shadow:0 20px 60px rgba(0,0,0,.42);padding:12px}
+.cgweb046-dialog header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.cgweb046-dialog header div{display:flex;flex-direction:column}.cgweb046-dialog header small{opacity:.62;margin-top:2px}
+.cgweb046-actions{padding:10px 0}
+.cgweb046-view{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:10px;border:1px solid rgba(125,190,227,.18);border-radius:10px;margin:7px 0}
+.cgweb046-view>div:first-child{display:flex;flex-direction:column;min-width:0}.cgweb046-view small{opacity:.62}
+.cgweb046-view>div:last-child{display:flex;gap:6px;flex-wrap:wrap}
+.cgweb046-empty{opacity:.62;text-align:center;padding:20px}

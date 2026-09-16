@@ -1,0 +1,11 @@
+{
+  "name": "Culture Générale Web",
+  "short_name": "Culture G",
+  "lang": "fr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#071f30",
+  "theme_color": "#071f30",
+  "description": "Culture Générale Web"
+}

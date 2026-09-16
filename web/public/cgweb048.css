@@ -1,0 +1,9 @@
+/* CGWEB048 · STUDY_QUEUE001 */
+.cgweb048-panel{margin-top:14px;padding:12px;border:1px solid rgba(125,190,227,.22);border-radius:12px;background:rgba(7,35,54,.42)}
+.cgweb048-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.cgweb048-head h3{margin:0}.cgweb048-head small{opacity:.62}
+.cgweb048-head>div:last-child{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.cgweb048-row{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px;border-top:1px solid rgba(125,190,227,.13)}
+.cgweb048-row>div:nth-child(2){display:flex;flex-direction:column}.cgweb048-row small{opacity:.62}
+.cgweb048-order{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:rgba(74,163,216,.16);font-weight:700}
+.cgweb048-row-actions{display:flex;gap:5px}.cgweb048-empty{opacity:.62;text-align:center;padding:16px}
+@media(max-width:640px){.cgweb048-head{flex-direction:column}.cgweb048-row{grid-template-columns:30px 1fr}.cgweb048-row-actions{grid-column:1/-1;justify-content:flex-end}}

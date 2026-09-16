@@ -1,0 +1,13 @@
+/* CGWEB045 · COMMAND_PALETTE001 */
+.cgweb045-overlay{position:fixed;inset:0;z-index:100000;background:rgba(0,8,14,.64);display:grid;place-items:start center;padding:10vh 14px 20px}
+.cgweb045-overlay[hidden]{display:none!important}
+.cgweb045-dialog{width:min(720px,96vw);max-height:78vh;display:flex;flex-direction:column;border:1px solid rgba(125,190,227,.36);border-radius:16px;background:rgba(5,28,44,.985);box-shadow:0 24px 70px rgba(0,0,0,.48);overflow:hidden}
+.cgweb045-head{display:grid;grid-template-columns:1fr auto;gap:8px;padding:12px;border-bottom:1px solid rgba(125,190,227,.18)}
+#cgweb045Input{width:100%;min-height:44px;padding:0 14px;border-radius:11px;border:1px solid rgba(125,190,227,.32);background:rgba(255,255,255,.06);color:inherit;font:inherit}
+#cgweb045Close{min-width:44px;border-radius:11px;font-size:1.45rem}
+.cgweb045-list{overflow:auto;padding:8px}
+.cgweb045-item{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;padding:10px 12px;margin:2px 0;border-radius:10px;background:transparent;border:1px solid transparent;color:inherit}
+.cgweb045-item small{opacity:.62}
+.cgweb045-item.active{background:rgba(74,163,216,.17);border-color:rgba(125,190,227,.32)}
+.cgweb045-empty{padding:26px;text-align:center;opacity:.65}
+.cgweb045-help{padding:8px 12px;border-top:1px solid rgba(125,190,227,.14);font-size:.76rem;opacity:.6}
