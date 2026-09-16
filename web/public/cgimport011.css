@@ -1,0 +1,66 @@
+/* CGIMPORT011 · BULK_THEME_FILE001 */
+.cgimport011-bulk{
+  margin:14px 0;
+  padding:16px 18px;
+  border:1px solid rgba(102,180,225,.35);
+  border-radius:16px;
+  background:rgba(15,49,72,.86);
+}
+.cgimport011-bulk h3{margin:0 0 4px;font-size:1.25rem}
+.cgimport011-bulk p{margin:3px 0 8px}
+.cgimport011-fileline{
+  display:grid;
+  grid-template-columns:minmax(240px,1fr) auto;
+  gap:10px;
+  align-items:center;
+  margin:12px 0;
+}
+.cgimport011-fileline input[type=file]{
+  width:100%;
+  padding:9px;
+  border:1px solid rgba(126,181,217,.36);
+  border-radius:10px;
+  background:#071f31;
+  color:inherit;
+}
+.cgimport011-bulk button{
+  min-height:38px;
+  padding:7px 12px;
+  border-radius:10px;
+}
+.cgimport011-summary{margin:7px 0;font-weight:700}
+.cgimport011-bulk progress{width:100%;height:12px;margin:3px 0 10px}
+.cgimport011-actions{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.cgimport011-message{
+  min-height:22px;
+  margin:8px 0;
+  padding:6px 8px;
+  border-radius:8px;
+  background:rgba(4,24,38,.55);
+}
+.cgimport011-message[data-kind="ok"]{color:#73e6ad}
+.cgimport011-message[data-kind="warn"]{color:#ffd56b}
+.cgimport011-message[data-kind="error"]{color:#ff8b8b}
+.cgimport011-details{margin-top:8px}
+.cgimport011-details summary{cursor:pointer;font-weight:700}
+.cgimport011-tablewrap{overflow:auto;max-height:430px;margin-top:8px}
+.cgimport011-tablewrap table{width:100%;border-collapse:collapse;font-size:.84rem}
+.cgimport011-tablewrap th,.cgimport011-tablewrap td{
+  border-bottom:1px solid rgba(140,187,217,.18);
+  padding:6px 7px;
+  text-align:left;
+  vertical-align:top;
+}
+.cgimport011-url{min-width:300px;word-break:break-all}
+.cgimport011-msg{min-width:180px}
+.cgimport011-status{font-weight:800}
+.cgimport011-running{color:#ffd56b}
+.cgimport011-done{color:#73e6ad}
+.cgimport011-error{color:#ff8b8b}
+.cgimport011-pending{opacity:.72}
+.cgimport011-note{font-size:.82rem;opacity:.75;margin-top:10px!important}
+@media(max-width:700px){
+  .cgimport011-fileline{grid-template-columns:1fr}
+  .cgimport011-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
