@@ -127,3 +127,10 @@
 .cg35-smart-badge.due{background:rgba(210,55,55,.18);color:#ff9aa0}.cg35-smart-badge.weakness{background:rgba(219,176,55,.17);color:#f5d97d}.cg35-smart-badge.unseen{background:rgba(30,130,205,.17);color:#8ecfff}
 @media(max-width:1000px){.cg35-smart-grid{grid-template-columns:repeat(2,1fr)}.cg35-smart-summary{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:600px){.cg35-smart-grid,.cg35-smart-summary{grid-template-columns:1fr}}
+
+/* CGPLAY002 · SMART_BALANCE002 */
+.cg35-smart-summary small{display:block;margin-top:4px;opacity:.58;font-size:.72rem}
+.cg35-smart-balance{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;padding:9px 11px;border:1px solid rgba(130,160,190,.22);border-radius:10px;background:rgba(255,255,255,.035);font-size:.8rem}
+.cg35-smart-balance strong{white-space:nowrap}
+.cg35-smart-balance span{opacity:.76}
+.cg35-smart-balance.active{border-color:rgba(219,176,55,.35);background:rgba(219,176,55,.07)}

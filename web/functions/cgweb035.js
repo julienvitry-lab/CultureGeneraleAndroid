@@ -497,68 +497,334 @@ async function smartUnseenCandidates(uid,analysis,wanted,domain){
   return cg35Shuffle(out);
 }
 async function smartSession(uid,analysis,body){
-  const count=clamp(Math.floor(num(body.count)||20),5,50);
+
+  const count=clamp(
+    Math.floor(num(body.count)||20),
+    5,
+    50
+  );
+
   const duePct=clamp(num(body.duePct??40),0,100);
   const weakPct=clamp(num(body.weakPct??35),0,100);
   const unseenPct=clamp(num(body.unseenPct??25),0,100);
   const domain=one(body.domain);
-  const quota=smartQuota(count,duePct,weakPct,unseenPct);
-  const selected=[];
-  const ids=new Set();
 
-  const eligible=q=>!domain||one(q.domain)===domain;
-  const due=analysis.questions.filter(q=>q.due&&eligible(q))
-    .sort((a,b)=>b.overdueMs-a.overdueMs||a.successPercent-b.successPercent);
-  const weak=analysis.questions.filter(q=>q.priority&&eligible(q))
-    .sort((a,b)=>b.weakness-a.weakness||b.failures-a.failures);
+  const quota=smartQuota(
+    count,
+    duePct,
+    weakPct,
+    unseenPct
+  );
 
-  const addHistorical=(rows,max,source)=>{
-    let n=0;
-    for(const q of rows){
-      const id=one(q.questionId)||String(q.row||'');
-      if(!id||ids.has(id))continue;
-      selected.push(smartHistoricalRow(q,source));
-      ids.add(id);
-      n++;
-      if(n>=max)break;
+  const eligible=q=>
+    !domain || one(q.domain)===domain;
+
+  const idOf=q=>
+    one(q.questionId)||String(q.row||'');
+
+  const unique=(rows,getId)=>{
+    const seen=new Set();
+    const out=[];
+
+    for(const x of rows){
+      const id=getId(x);
+      if(!id || seen.has(id)) continue;
+      seen.add(id);
+      out.push(x);
     }
-    return n;
+
+    return out;
   };
 
-  const actual={due:0,weakness:0,unseen:0};
-  actual.due=addHistorical(due,quota.due,'due');
-  actual.weakness=addHistorical(weak,quota.weakness,'weakness');
 
-  const needUnseen=Math.max(quota.unseen,count-selected.length);
-  const unseen=await smartUnseenCandidates(uid,analysis,Math.max(needUnseen,20),domain);
-  const unseenPool=unseen.slice();
+  /*
+   * Priorité de classement :
+   * une question échue appartient d'abord à "À réviser".
+   */
+  const dueSource=unique(
+    analysis.questions
+      .filter(q=>q.due&&eligible(q))
+      .sort((a,b)=>
+        b.overdueMs-a.overdueMs ||
+        a.successPercent-b.successPercent
+      ),
+    idOf
+  );
 
-  while(actual.unseen<quota.unseen&&unseenPool.length&&selected.length<count){
-    const q=unseenPool.shift();
-    if(ids.has(q.id))continue;
-    selected.push(q);
-    ids.add(q.id);
-    actual.unseen++;
+  const dueIds=
+    new Set(dueSource.map(idOf));
+
+
+  /*
+   * Les points faibles déjà classés "À réviser"
+   * sont retirés de ce second stock.
+   */
+  const weakSource=unique(
+    analysis.questions
+      .filter(q=>
+        q.priority &&
+        eligible(q) &&
+        !dueIds.has(idOf(q))
+      )
+      .sort((a,b)=>
+        b.weakness-a.weakness ||
+        b.failures-a.failures
+      ),
+    idOf
+  );
+
+
+  /*
+   * Réserve Jamais vues suffisamment grande pour
+   * absorber une redistribution.
+   */
+  const unseenWanted=
+    Math.max(100,count*4);
+
+  const unseenSource=
+    await smartUnseenCandidates(
+      uid,
+      analysis,
+      unseenWanted,
+      domain
+    );
+
+
+  const pools={
+
+    due:
+      dueSource.map(
+        q=>smartHistoricalRow(q,'due')
+      ),
+
+    weakness:
+      weakSource.map(
+        q=>smartHistoricalRow(q,'weakness')
+      ),
+
+    unseen:
+      unique(
+        unseenSource,
+        q=>one(q.id)
+      )
+  };
+
+
+  const available={
+    due:pools.due.length,
+    weakness:pools.weakness.length,
+    unseen:pools.unseen.length
+  };
+
+
+  /*
+   * Si le moteur récupère exactement unseenWanted éléments,
+   * on sait seulement qu'il y en a AU MOINS ce nombre.
+   */
+  const availableCapped={
+    due:false,
+    weakness:false,
+    unseen:pools.unseen.length>=unseenWanted
+  };
+
+
+  const actual={
+    due:0,
+    weakness:0,
+    unseen:0
+  };
+
+  const primaryActual={
+    due:0,
+    weakness:0,
+    unseen:0
+  };
+
+  const redistributed={
+    due:0,
+    weakness:0,
+    unseen:0
+  };
+
+  const selected=[];
+
+
+  const take=(key,n,phase)=>{
+
+    let done=0;
+
+    while(
+      done<n &&
+      selected.length<count &&
+      pools[key].length
+    ){
+      selected.push(
+        pools[key].shift()
+      );
+
+      actual[key]++;
+
+      if(phase==='primary')
+        primaryActual[key]++;
+      else
+        redistributed[key]++;
+
+      done++;
+    }
+
+    return done;
+  };
+
+
+  /*
+   * Allocation primaire.
+   */
+  take('due',quota.due,'primary');
+  take('weakness',quota.weakness,'primary');
+  take('unseen',quota.unseen,'primary');
+
+
+  const shortage={
+
+    due:
+      Math.max(
+        0,
+        quota.due-primaryActual.due
+      ),
+
+    weakness:
+      Math.max(
+        0,
+        quota.weakness-primaryActual.weakness
+      ),
+
+    unseen:
+      Math.max(
+        0,
+        quota.unseen-primaryActual.unseen
+      )
+  };
+
+
+  /*
+   * Redistribue les places vacantes uniquement entre
+   * les catégories disposant encore d'un stock.
+   */
+  const weights={
+    due:Math.max(0,duePct),
+    weakness:Math.max(0,weakPct),
+    unseen:Math.max(0,unseenPct)
+  };
+
+  const tieOrder={
+    due:0,
+    weakness:1,
+    unseen:2
+  };
+
+
+  while(selected.length<count){
+
+    const availableKeys=
+      ['due','weakness','unseen']
+        .filter(k=>pools[k].length);
+
+    if(!availableKeys.length)
+      break;
+
+
+    const weighted=
+      availableKeys.filter(
+        k=>weights[k]>0
+      );
+
+    const candidates=
+      weighted.length
+        ? weighted
+        : availableKeys;
+
+
+    /*
+     * Round-robin pondéré sur les places redistribuées.
+     */
+    candidates.sort((a,b)=>{
+
+      const scoreA=
+        weights[a]>0
+          ? weights[a]/(redistributed[a]+1)
+          : 0;
+
+      const scoreB=
+        weights[b]>0
+          ? weights[b]/(redistributed[b]+1)
+          : 0;
+
+      return (
+        scoreB-scoreA ||
+        tieOrder[a]-tieOrder[b]
+      );
+    });
+
+
+    take(
+      candidates[0],
+      1,
+      'redistributed'
+    );
   }
 
-  if(selected.length<count)actual.due+=addHistorical(due,count-selected.length,'due');
-  if(selected.length<count)actual.weakness+=addHistorical(weak,count-selected.length,'weakness');
 
-  while(selected.length<count&&unseenPool.length){
-    const q=unseenPool.shift();
-    if(ids.has(q.id))continue;
-    selected.push(q);
-    ids.add(q.id);
-    actual.unseen++;
-  }
+  const shortageTotal=
+    shortage.due+
+    shortage.weakness+
+    shortage.unseen;
+
+
+  const redistributedTotal=
+    redistributed.due+
+    redistributed.weakness+
+    redistributed.unseen;
+
 
   return {
-    generatedAtMs:Date.now(),
-    requested:{count,duePct,weakPct,unseenPct,domain},
+
+    balanceVersion:
+      'CGPLAY002_SMART_BALANCE002',
+
+    generatedAtMs:
+      Date.now(),
+
+    requested:{
+      count,
+      duePct,
+      weakPct,
+      unseenPct,
+      domain
+    },
+
     quota,
+
+    available,
+    availableCapped,
+
+    primaryActual,
+
+    shortage,
+    shortageTotal,
+
+    redistributed,
+    redistributedTotal,
+
     actual,
-    count:selected.length,
-    rows:selected.slice(0,count)
+
+    count:
+      selected.length,
+
+    complete:
+      selected.length===count,
+
+    rows:
+      selected.slice(0,count)
   };
 }
 

@@ -1,4 +1,4 @@
-const CGWEB035_VERSION='CGWEB035_FIX2_LEARNING_HUB002_CGPLAY001_RECOVERY_FIX001';
+const CGWEB035_VERSION='CGPLAY002_SMART_BALANCE002';
 const CG35_END='https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb032Search';
 const cg35$=id=>document.getElementById(id);
 const cg35Esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
@@ -150,7 +150,7 @@ function cg35Smart(){
         <label>Domaine<select id="cg35SmartDomain">${domains.map(d=>`<option value="${cg35Esc(d)}" ${d===c.domain?'selected':''}>${cg35Esc(d||'Tous les domaines')}</option>`).join('')}</select></label>
       </div>
       <div class="cg35-actions"><button id="cg35SmartGenerate" class="cg35-smart-primary">Générer la séance</button></div>
-      <small>Le moteur privilégie les éléments urgents disponibles puis complète la séance avec les autres catégories, sans doublon.</small>
+      <small>Les pourcentages définissent des quotas cibles. Si un stock est insuffisant, SMART_BALANCE002 redistribue automatiquement les places entre les catégories encore disponibles, sans doublon.</small>
     </section>
     <section id="cg35SmartResults" class="cg35-smart-results">
       <div class="cg35-empty">Configure la séance puis clique sur « Générer la séance ».</div>
@@ -159,46 +159,402 @@ function cg35Smart(){
   cg35Status('Session intelligente prête.','ok');
 }
 async function cg35GenerateSmart(){
+
   try{
+
     const c={
-      count:Number(cg35$('cg35SmartCount').value)||20,
-      duePct:Number(cg35$('cg35SmartDue').value)||0,
-      weakPct:Number(cg35$('cg35SmartWeak').value)||0,
-      unseenPct:Number(cg35$('cg35SmartUnseen').value)||0,
-      domain:cg35$('cg35SmartDomain').value||''
+
+      count:
+        Number(
+          cg35$('cg35SmartCount').value
+        )||20,
+
+      duePct:
+        Number(
+          cg35$('cg35SmartDue').value
+        )||0,
+
+      weakPct:
+        Number(
+          cg35$('cg35SmartWeak').value
+        )||0,
+
+      unseenPct:
+        Number(
+          cg35$('cg35SmartUnseen').value
+        )||0,
+
+      domain:
+        cg35$('cg35SmartDomain').value||''
     };
+
+
     CG35.smartConfig=c;
-    cg35Status('Génération de la session intelligente…');
-    const d=await cg35Api({mode:'smartSession',...c});
+
+
+    cg35Status(
+      'Génération et équilibrage de la session intelligente…'
+    );
+
+
+    const d=
+      await cg35Api({
+        mode:'smartSession',
+        ...c
+      });
+
+
     const rows=d.rows||[];
+
     CG35.smartRows=rows;
+
+
     const a=d.actual||{};
-    const box=cg35$('cg35SmartResults');
-    box.innerHTML=`
-      <div class="cg35-smart-summary">
-        <div><strong>${cg35Fmt(rows.length)} question(s)</strong><span>${c.domain?cg35Esc(c.domain):'Tous domaines'}</span></div>
-        <div><b>${cg35Fmt(a.due||0)}</b><span>À réviser</span></div>
-        <div><b>${cg35Fmt(a.weakness||0)}</b><span>Points faibles</span></div>
-        <div><b>${cg35Fmt(a.unseen||0)}</b><span>Jamais vues</span></div>
-        <button id="cg35SmartCopy">Copier les ID</button>
-      </div>
-      <section class="cg35-list">
-        ${rows.map((q,i)=>`<article class="cg35-q cg35-smart-q">
-          <div class="cg35-smart-top"><span class="cg35-smart-order">${i+1}</span><span class="cg35-smart-badge ${cg35Esc(q.source)}">${cg35Esc(cg35SmartSourceLabel(q.source))}</span></div>
-          <small>${cg35Esc(cg35Path(q.domain,q.theme))}</small>
-          <h3>${cg35Esc(q.question||'(question sans texte)')}</h3>
-          ${q.source==='weakness'?`<p>Faiblesse ${cg35Fmt(q.weakness)}/100 · ${cg35Fmt(q.successPercent)} % réussite</p>`:''}
-          ${q.source==='due'?`<p>${cg35Fmt(q.successPercent)} % réussite · ${cg35Fmt(q.attempts)} tentative(s)</p>`:''}
-          ${q.source==='unseen'?'<p>Première exposition prévue.</p>':''}
-          ${cg35QuestionButton(q.id)}
-        </article>`).join('')||'<div class="cg35-empty">Aucune question disponible pour cette configuration.</div>'}
-      </section>`;
-    cg35$('cg35SmartCopy')?.addEventListener('click',()=>cg35Copy(rows.map(x=>x.id)));
-    cg35Status(`✅ Session intelligente générée : ${rows.length} question(s).`,'ok');
+    const q=d.quota||{};
+    const av=d.available||{};
+    const cap=d.availableCapped||{};
+    const miss=d.shortage||{};
+    const red=d.redistributed||{};
+
+
+    const stock=k=>{
+
+      return (
+        (cap[k]?'≥ ':'')+
+        cg35Fmt(av[k]||0)
+      );
+    };
+
+
+    const detail=k=>{
+
+      const parts=[
+        'demandé '+cg35Fmt(q[k]||0),
+        'stock '+stock(k)
+      ];
+
+      if(Number(miss[k]||0)>0){
+
+        parts.push(
+          'manque '+
+          cg35Fmt(miss[k])
+        );
+      }
+
+      if(Number(red[k]||0)>0){
+
+        parts.push(
+          '+'+
+          cg35Fmt(red[k])+
+          ' rééquilibré'
+        );
+      }
+
+      return parts.join(' · ');
+    };
+
+
+    const deficits=[];
+
+
+    if(miss.due){
+
+      deficits.push(
+        cg35Fmt(miss.due)+
+        ' À réviser'
+      );
+    }
+
+
+    if(miss.weakness){
+
+      deficits.push(
+        cg35Fmt(miss.weakness)+
+        ' Points faibles'
+      );
+    }
+
+
+    if(miss.unseen){
+
+      deficits.push(
+        cg35Fmt(miss.unseen)+
+        ' Jamais vues'
+      );
+    }
+
+
+    let balanceText=
+      'Répartition cible disponible : aucun rééquilibrage nécessaire.';
+
+
+    if(Number(d.redistributedTotal||0)>0){
+
+      balanceText=
+        'Rééquilibrage automatique : '+
+        cg35Fmt(d.redistributedTotal)+
+        ' place(s) redistribuée(s)';
+
+      if(deficits.length){
+
+        balanceText+=
+          ' après déficit de '+
+          deficits.join(' + ');
+      }
+
+      balanceText+='.';
+    }
+
+
+    if(!d.complete){
+
+      balanceText+=
+        ' Stock total insuffisant : '+
+        cg35Fmt(rows.length)+
+        ' question(s) disponibles sur '+
+        cg35Fmt(c.count)+
+        ' demandées.';
+    }
+
+
+    const summary=
+
+      '<div class="cg35-smart-summary">'+
+
+        '<div>'+
+          '<strong>'+
+            cg35Fmt(rows.length)+
+            ' question(s)'+
+          '</strong>'+
+          '<span>'+
+            (
+              c.domain
+                ? cg35Esc(c.domain)
+                : 'Tous domaines'
+            )+
+          '</span>'+
+          '<small>'+
+            'objectif '+
+            cg35Fmt(c.count)+
+          '</small>'+
+        '</div>'+
+
+        '<div>'+
+          '<b>'+
+            cg35Fmt(a.due||0)+
+          '</b>'+
+          '<span>À réviser</span>'+
+          '<small>'+
+            cg35Esc(detail('due'))+
+          '</small>'+
+        '</div>'+
+
+        '<div>'+
+          '<b>'+
+            cg35Fmt(a.weakness||0)+
+          '</b>'+
+          '<span>Points faibles</span>'+
+          '<small>'+
+            cg35Esc(detail('weakness'))+
+          '</small>'+
+        '</div>'+
+
+        '<div>'+
+          '<b>'+
+            cg35Fmt(a.unseen||0)+
+          '</b>'+
+          '<span>Jamais vues</span>'+
+          '<small>'+
+            cg35Esc(detail('unseen'))+
+          '</small>'+
+        '</div>'+
+
+        '<button id="cg35SmartCopy">'+
+          'Copier les ID'+
+        '</button>'+
+
+      '</div>';
+
+
+    const balance=
+
+      '<div class="cg35-smart-balance '+
+        (
+          Number(d.redistributedTotal||0)>0
+            ? 'active'
+            : ''
+        )+
+      '">'+
+
+        '<strong>'+
+          'SMART_BALANCE002'+
+        '</strong>'+
+
+        '<span>'+
+          cg35Esc(balanceText)+
+        '</span>'+
+
+      '</div>';
+
+
+    const cards=
+      rows.map(
+        (item,i)=>{
+
+          let metric='';
+
+
+          if(item.source==='weakness'){
+
+            metric=
+              '<p>'+
+                'Faiblesse '+
+                cg35Fmt(item.weakness)+
+                '/100 · '+
+                cg35Fmt(item.successPercent)+
+                ' % réussite'+
+              '</p>';
+          }
+
+
+          if(item.source==='due'){
+
+            metric=
+              '<p>'+
+                cg35Fmt(item.successPercent)+
+                ' % réussite · '+
+                cg35Fmt(item.attempts)+
+                ' tentative(s)'+
+              '</p>';
+          }
+
+
+          if(item.source==='unseen'){
+
+            metric=
+              '<p>'+
+                'Première exposition prévue.'+
+              '</p>';
+          }
+
+
+          return (
+
+            '<article class="cg35-q cg35-smart-q">'+
+
+              '<div class="cg35-smart-top">'+
+
+                '<span class="cg35-smart-order">'+
+                  (i+1)+
+                '</span>'+
+
+                '<span class="cg35-smart-badge '+
+                  cg35Esc(item.source)+
+                '">'+
+                  cg35Esc(
+                    cg35SmartSourceLabel(
+                      item.source
+                    )
+                  )+
+                '</span>'+
+
+              '</div>'+
+
+              '<small>'+
+                cg35Esc(
+                  cg35Path(
+                    item.domain,
+                    item.theme
+                  )
+                )+
+              '</small>'+
+
+              '<h3>'+
+                cg35Esc(
+                  item.question||
+                  '(question sans texte)'
+                )+
+              '</h3>'+
+
+              metric+
+
+              cg35QuestionButton(
+                item.id
+              )+
+
+            '</article>'
+          );
+        }
+      ).join('');
+
+
+    const box=
+      cg35$('cg35SmartResults');
+
+
+    box.innerHTML=
+
+      summary+
+      balance+
+
+      '<section class="cg35-list">'+
+
+        (
+          cards ||
+
+          '<div class="cg35-empty">'+
+            'Aucune question disponible pour cette configuration.'+
+          '</div>'
+        )+
+
+      '</section>';
+
+
+    cg35$('cg35SmartCopy')
+      ?.addEventListener(
+        'click',
+        ()=>
+          cg35Copy(
+            rows.map(x=>x.id)
+          )
+      );
+
+
+    cg35Status(
+      '✅ Session intelligente : '+
+      rows.length+
+      ' question(s)'+
+      (
+        Number(d.redistributedTotal||0)>0
+          ? ' · '+
+            d.redistributedTotal+
+            ' place(s) rééquilibrée(s)'
+          : ''
+      )+
+      '.',
+      'ok'
+    );
+
+
   }catch(e){
-    const box=cg35$('cg35SmartResults');
-    if(box)box.innerHTML=`<div class="cg35-error">${cg35Esc(e.message)}</div>`;
-    cg35Status(`❌ ${e.message}`,'bad');
+
+    const box=
+      cg35$('cg35SmartResults');
+
+
+    if(box){
+
+      box.innerHTML=
+        '<div class="cg35-error">'+
+          cg35Esc(e.message)+
+        '</div>';
+    }
+
+
+    cg35Status(
+      '❌ '+e.message,
+      'bad'
+    );
   }
 }
 
