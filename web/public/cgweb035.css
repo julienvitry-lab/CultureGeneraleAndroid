@@ -109,3 +109,21 @@
 .cg36-plus-grid>.cg16-plus-group-title{grid-column:1/-1!important;margin:8px 2px 1px!important;padding:2px 2px!important;min-height:0!important}
 .cg36-plus-grid>button{width:100%!important;min-width:0!important;min-height:46px!important;height:46px!important;padding:7px 9px!important;display:flex!important;align-items:center!important;justify-content:center!important;text-align:center!important;line-height:1.08!important;white-space:normal!important}
 @media(max-width:800px){.cg16-primary-nav{grid-template-columns:repeat(2,minmax(0,1fr))!important}.cg36-plus-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+
+/* CGPLAY001 · SMART_SESSION001 · RECOVERY_FIX001 */
+.cg35-smart-config{display:grid;gap:12px;border:1px solid rgba(130,160,190,.22);border-radius:14px;background:rgba(255,255,255,.03);padding:14px}
+.cg35-smart-config h3,.cg35-smart-config p{margin:0 0 4px}.cg35-smart-config>small{opacity:.65}
+.cg35-smart-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px}
+.cg35-smart-grid label{display:grid;gap:5px;font-size:.78rem;font-weight:750;opacity:.92}
+.cg35-smart-grid input,.cg35-smart-grid select{min-height:40px;box-sizing:border-box;border:1px solid rgba(140,165,190,.32);border-radius:9px;background:#0b2033;color:inherit;padding:8px;font:inherit}
+.cg35-smart-primary{background:#0e638e!important;color:#fff!important;font-weight:800!important}
+.cg35-smart-results{display:grid;gap:10px;margin-top:10px}
+.cg35-smart-summary{display:grid;grid-template-columns:minmax(180px,1.6fr) repeat(3,minmax(100px,.7fr)) auto;gap:8px;align-items:stretch}
+.cg35-smart-summary>div,.cg35-smart-summary>button{border:1px solid rgba(130,160,190,.22);border-radius:11px;background:rgba(255,255,255,.04);padding:9px 11px}
+.cg35-smart-summary strong,.cg35-smart-summary b,.cg35-smart-summary span{display:block}.cg35-smart-summary span{opacity:.65;font-size:.78rem}
+.cg35-smart-q{position:relative}.cg35-smart-top{display:flex;align-items:center;gap:7px;margin-bottom:5px}
+.cg35-smart-order{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.08);font-weight:800}
+.cg35-smart-badge{display:inline-block;padding:4px 8px;border-radius:999px;font-size:.75rem;font-weight:800}
+.cg35-smart-badge.due{background:rgba(210,55,55,.18);color:#ff9aa0}.cg35-smart-badge.weakness{background:rgba(219,176,55,.17);color:#f5d97d}.cg35-smart-badge.unseen{background:rgba(30,130,205,.17);color:#8ecfff}
+@media(max-width:1000px){.cg35-smart-grid{grid-template-columns:repeat(2,1fr)}.cg35-smart-summary{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.cg35-smart-grid,.cg35-smart-summary{grid-template-columns:1fr}}

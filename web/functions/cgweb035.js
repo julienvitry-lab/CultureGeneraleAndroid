@@ -1,6 +1,6 @@
 const {getApps,initializeApp}=require('firebase-admin/app');
 const {getAuth}=require('firebase-admin/auth');
-const {getFirestore}=require('firebase-admin/firestore');
+const {getFirestore,FieldPath}=require('firebase-admin/firestore');
 
 if(!getApps().length)initializeApp();
 
@@ -417,6 +417,151 @@ async function neverQuestions(uid,analysis,domain,theme,limit){
   return rows;
 }
 
+function cg35Shuffle(rows){
+  const a=(rows||[]).slice();
+  for(let i=a.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    const t=a[i];a[i]=a[j];a[j]=t;
+  }
+  return a;
+}
+function smartQuota(count,duePct,weakPct,unseenPct){
+  let weights=[Math.max(0,duePct),Math.max(0,weakPct),Math.max(0,unseenPct)];
+  let total=weights.reduce((a,b)=>a+b,0);
+  if(total<=0){weights=[40,35,25];total=100}
+  const raw=weights.map(w=>count*w/total);
+  const q=raw.map(Math.floor);
+  let left=count-q.reduce((a,b)=>a+b,0);
+  const order=raw.map((v,i)=>({i,frac:v-Math.floor(v)})).sort((a,b)=>b.frac-a.frac);
+  for(let k=0;k<left;k++)q[order[k%order.length].i]++;
+  return {due:q[0],weakness:q[1],unseen:q[2]};
+}
+function smartHistoricalRow(q,source){
+  return {
+    id:q.questionId||String(q.row||''),
+    row:q.row||0,
+    domain:q.domain||'',
+    theme:q.theme||'',
+    question:q.question||'',
+    detail:q.detail||'',
+    source,
+    reason:source==='due'?'À réviser':'Point faible',
+    due:Boolean(q.due),
+    weakness:q.weakness||0,
+    successPercent:q.successPercent||0,
+    attempts:q.attempts||0,
+    mastery:q.mastery||'',
+    medianResponseMs:q.medianResponseMs||0
+  };
+}
+async function smartUnseenCandidates(uid,analysis,wanted,domain){
+  const seen=new Set(analysis.questions.map(x=>one(x.questionId)).filter(Boolean));
+  const out=[];
+  const col=getFirestore().collection('users').doc(uid).collection('questions');
+  let last=null;
+  let scanned=0;
+  const maxScan=Math.max(1000,Math.min(10000,Math.max(1,wanted)*80));
+
+  while(out.length<wanted&&scanned<maxScan){
+    let q=col;
+    if(domain)q=q.where('megatheme','==',domain);
+    q=q.orderBy(FieldPath.documentId()).select('question','detail','megatheme','theme').limit(250);
+    if(last)q=q.startAfter(last);
+    const snap=await q.get();
+    if(snap.empty)break;
+    scanned+=snap.size;
+    for(const d of snap.docs){
+      if(seen.has(d.id))continue;
+      const x=d.data()||{};
+      out.push({
+        id:d.id,
+        row:num(d.id),
+        domain:one(x.megatheme),
+        theme:one(x.theme),
+        question:one(x.question),
+        detail:one(x.detail),
+        source:'unseen',
+        reason:'Jamais vue',
+        due:false,
+        weakness:0,
+        successPercent:null,
+        attempts:0,
+        mastery:'Jamais vue',
+        medianResponseMs:0
+      });
+      if(out.length>=wanted)break;
+    }
+    last=snap.docs[snap.docs.length-1];
+    if(snap.size<250)break;
+  }
+  return cg35Shuffle(out);
+}
+async function smartSession(uid,analysis,body){
+  const count=clamp(Math.floor(num(body.count)||20),5,50);
+  const duePct=clamp(num(body.duePct??40),0,100);
+  const weakPct=clamp(num(body.weakPct??35),0,100);
+  const unseenPct=clamp(num(body.unseenPct??25),0,100);
+  const domain=one(body.domain);
+  const quota=smartQuota(count,duePct,weakPct,unseenPct);
+  const selected=[];
+  const ids=new Set();
+
+  const eligible=q=>!domain||one(q.domain)===domain;
+  const due=analysis.questions.filter(q=>q.due&&eligible(q))
+    .sort((a,b)=>b.overdueMs-a.overdueMs||a.successPercent-b.successPercent);
+  const weak=analysis.questions.filter(q=>q.priority&&eligible(q))
+    .sort((a,b)=>b.weakness-a.weakness||b.failures-a.failures);
+
+  const addHistorical=(rows,max,source)=>{
+    let n=0;
+    for(const q of rows){
+      const id=one(q.questionId)||String(q.row||'');
+      if(!id||ids.has(id))continue;
+      selected.push(smartHistoricalRow(q,source));
+      ids.add(id);
+      n++;
+      if(n>=max)break;
+    }
+    return n;
+  };
+
+  const actual={due:0,weakness:0,unseen:0};
+  actual.due=addHistorical(due,quota.due,'due');
+  actual.weakness=addHistorical(weak,quota.weakness,'weakness');
+
+  const needUnseen=Math.max(quota.unseen,count-selected.length);
+  const unseen=await smartUnseenCandidates(uid,analysis,Math.max(needUnseen,20),domain);
+  const unseenPool=unseen.slice();
+
+  while(actual.unseen<quota.unseen&&unseenPool.length&&selected.length<count){
+    const q=unseenPool.shift();
+    if(ids.has(q.id))continue;
+    selected.push(q);
+    ids.add(q.id);
+    actual.unseen++;
+  }
+
+  if(selected.length<count)actual.due+=addHistorical(due,count-selected.length,'due');
+  if(selected.length<count)actual.weakness+=addHistorical(weak,count-selected.length,'weakness');
+
+  while(selected.length<count&&unseenPool.length){
+    const q=unseenPool.shift();
+    if(ids.has(q.id))continue;
+    selected.push(q);
+    ids.add(q.id);
+    actual.unseen++;
+  }
+
+  return {
+    generatedAtMs:Date.now(),
+    requested:{count,duePct,weakPct,unseenPct,domain},
+    quota,
+    actual,
+    count:selected.length,
+    rows:selected.slice(0,count)
+  };
+}
+
 async function handleLearningHub(req,res){
     if(cors(req,res))return;
     try{
@@ -460,6 +605,9 @@ async function handleLearningHub(req,res){
         if(!domain)return json(res,400,{ok:false,error:'Domaine manquant.'});
         const limit=clamp(Math.floor(num(body.limit)||100),1,300);
         return json(res,200,{ok:true,domain,theme,rows:await neverQuestions(user.uid,analysis,domain,theme,limit)});
+      }
+      if(mode==='smartSession'){
+        return json(res,200,{ok:true,...await smartSession(user.uid,analysis,body)});
       }
       return json(res,400,{ok:false,error:'Mode inconnu.'});
     }catch(error){

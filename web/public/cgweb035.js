@@ -1,4 +1,4 @@
-const CGWEB035_VERSION='CGWEB035_FIX2_LEARNING_HUB002';
+const CGWEB035_VERSION='CGWEB035_FIX2_LEARNING_HUB002_CGPLAY001_RECOVERY_FIX001';
 const CG35_END='https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb032Search';
 const cg35$=id=>document.getElementById(id);
 const cg35Esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
@@ -11,7 +11,7 @@ const cg35PriorityCount=n=>cg35Count(n,'prioritaire','prioritaires');
 const cg35DifficultyValue=v=>Number.isFinite(v)?`${cg35Fmt(v)}/100`:'—';
 const cg35Time=ms=>{const n=Number(ms||0);if(!n)return '—';if(n<60000)return `${(n/1000).toFixed(1).replace('.',',')} s`;return `${Math.floor(n/60000)} min ${Math.floor((n%60000)/1000)} s`};
 const cg35Date=ms=>ms?new Date(Number(ms)).toLocaleString('fr-FR'):'—';
-const CG35={tab:'overview',domain:'',theme:'',historyFilter:'all'};
+const CG35={tab:'overview',domain:'',theme:'',historyFilter:'all',smartConfig:{count:20,duePct:40,weakPct:35,unseenPct:25,domain:''},smartRows:[]};
 
 async function cg35Api(body){
   const u=window.CGWEB001?.getUser?.();
@@ -28,7 +28,7 @@ function cg35Path(domain='',theme=''){return [domain,theme].filter(Boolean).map(
 function cg35QuestionButton(id,label='Ouvrir'){return id?`<button class="cg35-open" data-open="${cg35Esc(id)}">${label}</button>`:''}
 function cg35Copy(ids){const text=(ids||[]).filter(Boolean).join('\n');if(!text)return;navigator.clipboard?.writeText(text);cg35Status(`✅ ${ids.length} ID copié(s).`,'ok')}
 function cg35Tabs(){document.querySelectorAll('[data-cg35-tab]').forEach(b=>b.classList.toggle('active',b.dataset.cg35Tab===CG35.tab))}
-async function cg35Load(tab=CG35.tab){CG35.tab=tab;CG35.domain='';CG35.theme='';cg35Tabs();cg35Status('Chargement…');if(tab==='overview')return cg35Overview();if(tab==='history')return cg35History();if(tab==='never')return cg35NeverOverview();return cg35Groups(tab,'')}
+async function cg35Load(tab=CG35.tab){CG35.tab=tab;CG35.domain='';CG35.theme='';cg35Tabs();cg35Status('Chargement…');if(tab==='overview')return cg35Overview();if(tab==='history')return cg35History();if(tab==='never')return cg35NeverOverview();if(tab==='smart')return cg35Smart();return cg35Groups(tab,'')}
 
 async function cg35Overview(){
   try{
@@ -133,6 +133,75 @@ async function cg35NeverQuestions(domain,theme){
     cg35$('cg35NeverThemeBack').onclick=()=>cg35NeverThemes(domain);cg35$('cg35CopyIds').onclick=()=>cg35Copy(rows.map(x=>x.id));cg35Status(`✅ ${rows.length} jamais vue${rows.length===1?'':'s'} affichée${rows.length===1?'':'s'}.`,'ok');
   }catch(e){cg35SetBody(`<div class="cg35-error">${cg35Esc(e.message)}</div>`);cg35Status(`❌ ${e.message}`,'bad')}
 }
+function cg35SmartSourceLabel(source){
+  return source==='due'?'À réviser':source==='weakness'?'Point faible':'Jamais vue';
+}
+function cg35Smart(){
+  const c=CG35.smartConfig||(CG35.smartConfig={count:20,duePct:40,weakPct:35,unseenPct:25,domain:''});
+  const domains=['','Animaux et Plantes','Culture Classique','Culture Générale','Culture Moderne','Géographie','Histoire','Sciences et Techniques','Sport'];
+  cg35SetBody(`
+    <section class="cg35-smart-config">
+      <div><h3>Session intelligente</h3><p>Compose automatiquement une séance à partir des révisions échues, points faibles et questions jamais vues.</p></div>
+      <div class="cg35-smart-grid">
+        <label>Taille de séance<input id="cg35SmartCount" type="number" min="5" max="50" value="${c.count}"></label>
+        <label>À réviser (%)<input id="cg35SmartDue" type="number" min="0" max="100" value="${c.duePct}"></label>
+        <label>Points faibles (%)<input id="cg35SmartWeak" type="number" min="0" max="100" value="${c.weakPct}"></label>
+        <label>Jamais vues (%)<input id="cg35SmartUnseen" type="number" min="0" max="100" value="${c.unseenPct}"></label>
+        <label>Domaine<select id="cg35SmartDomain">${domains.map(d=>`<option value="${cg35Esc(d)}" ${d===c.domain?'selected':''}>${cg35Esc(d||'Tous les domaines')}</option>`).join('')}</select></label>
+      </div>
+      <div class="cg35-actions"><button id="cg35SmartGenerate" class="cg35-smart-primary">Générer la séance</button></div>
+      <small>Le moteur privilégie les éléments urgents disponibles puis complète la séance avec les autres catégories, sans doublon.</small>
+    </section>
+    <section id="cg35SmartResults" class="cg35-smart-results">
+      <div class="cg35-empty">Configure la séance puis clique sur « Générer la séance ».</div>
+    </section>`);
+  cg35$('cg35SmartGenerate').onclick=cg35GenerateSmart;
+  cg35Status('Session intelligente prête.','ok');
+}
+async function cg35GenerateSmart(){
+  try{
+    const c={
+      count:Number(cg35$('cg35SmartCount').value)||20,
+      duePct:Number(cg35$('cg35SmartDue').value)||0,
+      weakPct:Number(cg35$('cg35SmartWeak').value)||0,
+      unseenPct:Number(cg35$('cg35SmartUnseen').value)||0,
+      domain:cg35$('cg35SmartDomain').value||''
+    };
+    CG35.smartConfig=c;
+    cg35Status('Génération de la session intelligente…');
+    const d=await cg35Api({mode:'smartSession',...c});
+    const rows=d.rows||[];
+    CG35.smartRows=rows;
+    const a=d.actual||{};
+    const box=cg35$('cg35SmartResults');
+    box.innerHTML=`
+      <div class="cg35-smart-summary">
+        <div><strong>${cg35Fmt(rows.length)} question(s)</strong><span>${c.domain?cg35Esc(c.domain):'Tous domaines'}</span></div>
+        <div><b>${cg35Fmt(a.due||0)}</b><span>À réviser</span></div>
+        <div><b>${cg35Fmt(a.weakness||0)}</b><span>Points faibles</span></div>
+        <div><b>${cg35Fmt(a.unseen||0)}</b><span>Jamais vues</span></div>
+        <button id="cg35SmartCopy">Copier les ID</button>
+      </div>
+      <section class="cg35-list">
+        ${rows.map((q,i)=>`<article class="cg35-q cg35-smart-q">
+          <div class="cg35-smart-top"><span class="cg35-smart-order">${i+1}</span><span class="cg35-smart-badge ${cg35Esc(q.source)}">${cg35Esc(cg35SmartSourceLabel(q.source))}</span></div>
+          <small>${cg35Esc(cg35Path(q.domain,q.theme))}</small>
+          <h3>${cg35Esc(q.question||'(question sans texte)')}</h3>
+          ${q.source==='weakness'?`<p>Faiblesse ${cg35Fmt(q.weakness)}/100 · ${cg35Fmt(q.successPercent)} % réussite</p>`:''}
+          ${q.source==='due'?`<p>${cg35Fmt(q.successPercent)} % réussite · ${cg35Fmt(q.attempts)} tentative(s)</p>`:''}
+          ${q.source==='unseen'?'<p>Première exposition prévue.</p>':''}
+          ${cg35QuestionButton(q.id)}
+        </article>`).join('')||'<div class="cg35-empty">Aucune question disponible pour cette configuration.</div>'}
+      </section>`;
+    cg35$('cg35SmartCopy')?.addEventListener('click',()=>cg35Copy(rows.map(x=>x.id)));
+    cg35Status(`✅ Session intelligente générée : ${rows.length} question(s).`,'ok');
+  }catch(e){
+    const box=cg35$('cg35SmartResults');
+    if(box)box.innerHTML=`<div class="cg35-error">${cg35Esc(e.message)}</div>`;
+    cg35Status(`❌ ${e.message}`,'bad');
+  }
+}
+
 function cg35Wire(){
   document.querySelectorAll('[data-cg35-tab]').forEach(b=>b.onclick=()=>cg35Load(b.dataset.cg35Tab));
   cg35$('cg35Refresh').onclick=()=>cg35Load(CG35.tab);
@@ -141,7 +210,7 @@ function cg35Wire(){
 function cg35Init(){
   if(cg35$('cgweb035Panel'))return;
   const p=document.createElement('section');p.id='cgweb035Panel';p.className='cg35-panel';p.innerHTML=`<header class="cg35-head"><div><div class="cg35-kicker">CGWEB035 FIX2 · LEARNING_HUB002</div><h2>Apprentissage</h2><p>Historique, maîtrise, révisions, points faibles, vitesse et difficulté.</p></div><button id="cg35Refresh">Actualiser</button></header>
-  <nav class="cg35-tabs" aria-label="Analyses d'apprentissage"><button data-cg35-tab="overview" class="active">Vue d’ensemble</button><button data-cg35-tab="history">Historique</button><button data-cg35-tab="mastery">Maîtrise</button><button data-cg35-tab="never">Jamais vues</button><button data-cg35-tab="due">À réviser</button><button data-cg35-tab="weakness">Points faibles</button><button data-cg35-tab="response">Temps de réponse</button><button data-cg35-tab="difficulty">Difficulté</button></nav>
+  <nav class="cg35-tabs" aria-label="Analyses d'apprentissage"><button data-cg35-tab="overview" class="active">Vue d’ensemble</button><button data-cg35-tab="history">Historique</button><button data-cg35-tab="mastery">Maîtrise</button><button data-cg35-tab="never">Jamais vues</button><button data-cg35-tab="due">À réviser</button><button data-cg35-tab="weakness">Points faibles</button><button data-cg35-tab="response">Temps de réponse</button><button data-cg35-tab="difficulty">Difficulté</button><button data-cg35-tab="smart">Session intelligente</button></nav>
   <div id="cg35Body" class="cg35-body"></div><div id="cg35Status" class="cg35-status">Initialisation…</div>`;
   (document.querySelector('main')||document.body).appendChild(p);cg35Wire();setTimeout(()=>{if(window.CGWEB001?.getUser?.())cg35Load('overview')},600);
 }
