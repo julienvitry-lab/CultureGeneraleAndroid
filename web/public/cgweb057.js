@@ -30,13 +30,41 @@
     b?.click();
   }
 
+  /* CGWEB057_FIX3_SMART_OPEN_SCROLL001 */
+  function cg57RestoreScroll(y) {
+    const max = Math.max(
+      0,
+      Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0)
+        - window.innerHeight
+    );
+    window.scrollTo({
+      top: Math.min(Math.max(0, Number(y) || 0), max),
+      left: 0,
+      behavior: "auto"
+    });
+  }
+
   function openSmart() {
-    openLearning();
-    setTimeout(() => {
-      const b = smartButton();
-      if (b) b.click();
-      else alert("Le sous-onglet « Session intelligente » CGPLAY001 n'est pas disponible dans cette version.");
-    }, 180);
+    // Le bouton CGWEB057 est deja dans Apprentissage :
+    // ne pas recliquer sur Apprentissage, sinon navigatePlus() remonte a top=0.
+    const y = window.scrollY;
+
+    try { document.activeElement?.blur?.(); } catch (_) {}
+
+    const b = smartButton();
+    if (!b) {
+      alert("Le sous-onglet « Session intelligente » CGPLAY001 n'est pas disponible dans cette version.");
+      return;
+    }
+
+    b.click();
+    try { b.blur?.(); } catch (_) {}
+
+    cg57RestoreScroll(y);
+    requestAnimationFrame(() => {
+      cg57RestoreScroll(y);
+      requestAnimationFrame(() => cg57RestoreScroll(y));
+    });
   }
 
   function addItems(items, max = 20) {
