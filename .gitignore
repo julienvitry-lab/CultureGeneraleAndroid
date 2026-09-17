@@ -8,3 +8,6 @@ CGTEST001_REPORT_*.txt
 tools/__pycache__/
 CGIMPORT001_checkpoint.json
 web/.firebase/
+
+# Firebase Functions dependencies
+web/functions/node_modules/
