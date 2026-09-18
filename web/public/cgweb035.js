@@ -1,4 +1,4 @@
-const CGWEB035_VERSION='CGPLAY002_SMART_BALANCE002';
+const CGWEB035_VERSION='CGPLAY003_X_ONLY001_LEARNING_MODEL002';
 const CG35_END='https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb032Search';
 const cg35$=id=>document.getElementById(id);
 const cg35Esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
@@ -150,7 +150,7 @@ function cg35Smart(){
         <label>Domaine<select id="cg35SmartDomain">${domains.map(d=>`<option value="${cg35Esc(d)}" ${d===c.domain?'selected':''}>${cg35Esc(d||'Tous les domaines')}</option>`).join('')}</select></label>
       </div>
       <div class="cg35-actions"><button id="cg35SmartGenerate" class="cg35-smart-primary">Générer la séance</button></div>
-      <small>Les pourcentages définissent des quotas cibles. Si un stock est insuffisant, SMART_BALANCE002 redistribue automatiquement les places entre les catégories encore disponibles, sans doublon.</small>
+      <small>LEARNING_MODEL002 : A/R/P/T ne pilotent plus la sélection. Seul X interdit définitivement une question ; SMART_BALANCE002 gère le reste depuis l’historique de jeu.</small>
     </section>
     <section id="cg35SmartResults" class="cg35-smart-results">
       <div class="cg35-empty">Configure la séance puis clique sur « Générer la séance ».</div>
@@ -215,6 +215,7 @@ async function cg35GenerateSmart(){
     const cap=d.availableCapped||{};
     const miss=d.shortage||{};
     const red=d.redistributed||{};
+    const lm=d.learningModel||{};
 
 
     const stock=k=>{
@@ -509,6 +510,18 @@ async function cg35GenerateSmart(){
 
       '</section>';
 
+
+    if(box&&lm.version){
+      box.insertAdjacentHTML(
+        'afterbegin',
+        '<div class="cg35-learning-model">'+
+          '<strong>'+cg35Esc(lm.version)+'</strong>'+
+          '<span>X exclus du jeu : '+cg35Fmt(lm.xExcluded||0)+' · A/R/P/T ignorés · mode cible QCM'+
+          (lm.legacyHistoryPreserved?' · ancien historique conservé':'')+
+          '</span>'+
+        '</div>'
+      );
+    }
 
     cg35$('cg35SmartCopy')
       ?.addEventListener(

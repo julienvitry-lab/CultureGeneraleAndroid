@@ -134,3 +134,8 @@
 .cg35-smart-balance strong{white-space:nowrap}
 .cg35-smart-balance span{opacity:.76}
 .cg35-smart-balance.active{border-color:rgba(219,176,55,.35);background:rgba(219,176,55,.07)}
+
+/* CGPLAY003 · X_ONLY001 · LEARNING_MODEL002 */
+.cg35-learning-model{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;padding:9px 11px;border:1px solid rgba(60,180,140,.30);border-radius:10px;background:rgba(60,180,140,.055);font-size:.8rem}
+.cg35-learning-model strong{white-space:nowrap}
+.cg35-learning-model span{opacity:.78}

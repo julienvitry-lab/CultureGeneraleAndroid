@@ -15,6 +15,9 @@ const DOMAINS=[
   'Géographie','Histoire','Sciences et Techniques','Sport'
 ];
 const CACHE=new Map();
+const X_POLICY_TTL_MS=15*1000;
+const X_POLICY_CACHE=new Map();
+const LEARNING_MODEL_VERSION='CGPLAY003_X_ONLY001_LEARNING_MODEL002';
 
 const one=v=>String(v??'').trim();
 const num=v=>Number.isFinite(Number(v))?Number(v):0;
@@ -99,6 +102,100 @@ async function loadHistory(uid,force=false){
   CACHE.set(uid,{at:Date.now(),events});
   return events;
 }
+async function loadXPolicy(uid,force=false){
+  const cached=X_POLICY_CACHE.get(uid);
+  if(!force&&cached&&Date.now()-cached.at<X_POLICY_TTL_MS)return cached.policy;
+
+  const db=getFirestore();
+  const userRef=db.collection('users').doc(uid);
+  const questions=userRef.collection('questions');
+
+  // Pendant la transition, X peut provenir de deux stockages :
+  // - questions/<id>.status = X
+  // - statusBuckets/*.statuses.<id> = X
+  // A/R/P/T sont volontairement ignorés.
+  const [buckets,upperX,lowerX]=await Promise.all([
+    userRef.collection('statusBuckets').get(),
+    questions.where('status','==','X').get(),
+    questions.where('status','==','x').get()
+  ]);
+
+  const ids=new Set();
+  const catalogIds=new Set();
+  const fromBuckets=new Set();
+  const fromQuestionStatus=new Set();
+  const docs=new Map();
+
+  for(const snap of [upperX,lowerX]){
+    for(const d of snap.docs){
+      ids.add(d.id);
+      catalogIds.add(d.id);
+      fromQuestionStatus.add(d.id);
+      docs.set(d.id,d);
+    }
+  }
+
+  for(const bucket of buckets.docs){
+    const statuses=bucket.get('statuses');
+    if(!statuses||typeof statuses!=='object')continue;
+    for(const [rawId,rawStatus] of Object.entries(statuses)){
+      if(String(rawStatus??'').trim().toUpperCase()!=='X')continue;
+      const id=String(rawId??'').trim();
+      if(!id)continue;
+      ids.add(id);
+      fromBuckets.add(id);
+    }
+  }
+
+  // Résout dans le catalogue les X hérités des statusBuckets.
+  // On peut alors les soustraire proprement des compteurs Jamais vues.
+  const missing=[...ids].filter(id=>!docs.has(id));
+  for(let i=0;i<missing.length;i+=200){
+    const refs=missing.slice(i,i+200).map(id=>questions.doc(id));
+    if(!refs.length)continue;
+    const snaps=await db.getAll(...refs);
+    for(const d of snaps){
+      if(!d.exists)continue;
+      docs.set(d.id,d);
+      catalogIds.add(d.id);
+    }
+  }
+
+  const byDomain=new Map();
+  for(const [id,d] of docs){
+    if(!d.exists)continue;
+    catalogIds.add(id);
+    const x=d.data()||{};
+    const domain=one(x.megatheme);
+    if(domain)byDomain.set(domain,(byDomain.get(domain)||0)+1);
+  }
+
+  const policy={
+    ids,
+    catalogIds,
+    fromBuckets,
+    fromQuestionStatus,
+    byDomain
+  };
+
+  X_POLICY_CACHE.set(uid,{at:Date.now(),policy});
+  return policy;
+}
+
+function learningModelMeta(xPolicy){
+  return {
+    version:LEARNING_MODEL_VERSION,
+    persistentStatuses:['X'],
+    ignoredLegacyStatuses:['A','R','P','T'],
+    targetPlayMode:'qcm',
+    legacyHistoryPreserved:true,
+    xExcluded:xPolicy?.ids?.size||0,
+    xResolvedInCatalog:xPolicy?.catalogIds?.size||0,
+    xFromLegacyBuckets:xPolicy?.fromBuckets?.size||0,
+    xFromQuestionStatus:xPolicy?.fromQuestionStatus?.size||0
+  };
+}
+
 function isEvaluable(e){
   return e.playType==='challenge_choice'||e.playType==='challenge_mental';
 }
@@ -361,57 +458,93 @@ function historyRows(events,filter,limit){
     return {...e,attemptNumber:numbers.get(e.id)||1,attemptTotal:grand.get(key)||1,positive:isEvaluable(e)?isPositive(e):null};
   });
 }
-async function neverOverview(uid,analysis){
-  const base=getFirestore().collection('users').doc(uid);
-  const q=base.collection('questions');
-  const countCalls=[q.count().get(),...DOMAINS.map(d=>q.where('megatheme','==',d).count().get())];
-  const snaps=await Promise.all(countCalls);
-  const seenIds=new Set(analysis.questions.map(x=>one(x.questionId)).filter(Boolean));
+async function neverOverview(uid,analysis,xPolicy){
+  const questions=getFirestore().collection('users').doc(uid).collection('questions');
+  const calls=[
+    questions.count().get(),
+    ...DOMAINS.map(domain=>questions.where('megatheme','==',domain).count().get())
+  ];
+  const snaps=await Promise.all(calls);
+
+  const seenIds=new Set(
+    analysis.questions.map(q=>one(q.questionId)).filter(Boolean)
+  );
+
   const seenByDomain=new Map();
-  for(const x of analysis.questions){
-    const d=one(x.domain);
-    if(!d)continue;
-    if(!seenByDomain.has(d))seenByDomain.set(d,new Set());
-    if(x.questionId)seenByDomain.get(d).add(one(x.questionId));
+  for(const q of analysis.questions){
+    const domain=one(q.domain);
+    const id=one(q.questionId);
+    if(!domain||!id)continue;
+    if(!seenByDomain.has(domain))seenByDomain.set(domain,new Set());
+    seenByDomain.get(domain).add(id);
   }
-  const rows=DOMAINS.map((d,i)=>{
-    const total=Number(snaps[i+1].data().count||0);
-    const seen=seenByDomain.get(d)?.size||0;
-    return {name:d,total,seen,unseen:Math.max(0,total-seen)};
+
+  const rows=DOMAINS.map((domain,i)=>{
+    const rawTotal=Number(snaps[i+1].data().count||0);
+    const excluded=xPolicy?.byDomain?.get(domain)||0;
+    const total=Math.max(0,rawTotal-excluded);
+    const seen=seenByDomain.get(domain)?.size||0;
+    return {name:domain,total,seen,unseen:Math.max(0,total-seen)};
   }).sort((a,b)=>b.unseen-a.unseen||a.name.localeCompare(b.name,'fr'));
-  const total=Number(snaps[0].data().count||0);
-  return {total,seen:seenIds.size,unseen:Math.max(0,total-seenIds.size),rows};
+
+  const rawTotal=Number(snaps[0].data().count||0);
+  const total=Math.max(0,rawTotal-(xPolicy?.catalogIds?.size||0));
+
+  return {
+    total,
+    seen:seenIds.size,
+    unseen:Math.max(0,total-seenIds.size),
+    excludedX:xPolicy?.ids?.size||0,
+    rows
+  };
 }
-async function neverThemes(uid,analysis,domain){
-  const q=getFirestore().collection('users').doc(uid).collection('questions');
-  const snap=await q.where('megatheme','==',domain).select('theme').get();
+
+async function neverThemes(uid,analysis,domain,xPolicy){
+  const questions=getFirestore().collection('users').doc(uid).collection('questions');
+  const snap=await questions.where('megatheme','==',domain).select('theme').get();
+
   const totals=new Map();
   for(const d of snap.docs){
-    const t=one(d.get('theme'));
-    totals.set(t,(totals.get(t)||0)+1);
+    if(xPolicy?.ids?.has(d.id))continue;
+    const theme=one(d.get('theme'));
+    totals.set(theme,(totals.get(theme)||0)+1);
   }
+
   const seen=new Map();
-  for(const x of analysis.questions){
-    if(one(x.domain)!==domain||!x.questionId)continue;
-    const t=one(x.theme);
-    if(!seen.has(t))seen.set(t,new Set());
-    seen.get(t).add(one(x.questionId));
+  for(const q of analysis.questions){
+    if(one(q.domain)!==domain)continue;
+    const id=one(q.questionId);
+    if(!id)continue;
+    const theme=one(q.theme);
+    if(!seen.has(theme))seen.set(theme,new Set());
+    seen.get(theme).add(id);
   }
+
   return [...totals.entries()].map(([theme,total])=>{
     const n=seen.get(theme)?.size||0;
     return {name:theme,total,seen:n,unseen:Math.max(0,total-n)};
-  }).filter(x=>x.unseen>0).sort((a,b)=>b.unseen-a.unseen||a.name.localeCompare(b.name,'fr',{numeric:true}));
+  }).filter(x=>x.unseen>0)
+    .sort((a,b)=>b.unseen-a.unseen||a.name.localeCompare(b.name,'fr',{numeric:true}));
 }
-async function neverQuestions(uid,analysis,domain,theme,limit){
-  const seen=new Set(analysis.questions.map(x=>one(x.questionId)).filter(Boolean));
-  const q=getFirestore().collection('users').doc(uid).collection('questions');
-  const snap=await q.where('megatheme','==',domain).select('question','detail','megatheme','theme').get();
+
+async function neverQuestions(uid,analysis,domain,theme,limit,xPolicy){
+  const seen=new Set(analysis.questions.map(q=>one(q.questionId)).filter(Boolean));
+  const questions=getFirestore().collection('users').doc(uid).collection('questions');
+  const snap=await questions.where('megatheme','==',domain)
+    .select('question','detail','megatheme','theme').get();
+
   const rows=[];
   for(const d of snap.docs){
-    if(seen.has(d.id))continue;
+    if(xPolicy?.ids?.has(d.id)||seen.has(d.id))continue;
     const x=d.data()||{};
     if(one(x.theme)!==theme)continue;
-    rows.push({id:d.id,question:one(x.question),detail:one(x.detail),domain:one(x.megatheme),theme:one(x.theme)});
+    rows.push({
+      id:d.id,
+      question:one(x.question),
+      detail:one(x.detail),
+      domain:one(x.megatheme),
+      theme:one(x.theme)
+    });
     if(rows.length>=limit)break;
   }
   return rows;
@@ -454,8 +587,8 @@ function smartHistoricalRow(q,source){
     medianResponseMs:q.medianResponseMs||0
   };
 }
-async function smartUnseenCandidates(uid,analysis,wanted,domain){
-  const seen=new Set(analysis.questions.map(x=>one(x.questionId)).filter(Boolean));
+async function smartUnseenCandidates(uid,analysis,wanted,domain,xPolicy){
+  const seen=new Set(analysis.questions.map(q=>one(q.questionId)).filter(Boolean));
   const out=[];
   const col=getFirestore().collection('users').doc(uid).collection('questions');
   let last=null;
@@ -465,13 +598,18 @@ async function smartUnseenCandidates(uid,analysis,wanted,domain){
   while(out.length<wanted&&scanned<maxScan){
     let q=col;
     if(domain)q=q.where('megatheme','==',domain);
-    q=q.orderBy(FieldPath.documentId()).select('question','detail','megatheme','theme').limit(250);
+    q=q.orderBy(FieldPath.documentId())
+      .select('question','detail','megatheme','theme')
+      .limit(250);
     if(last)q=q.startAfter(last);
+
     const snap=await q.get();
     if(snap.empty)break;
     scanned+=snap.size;
+
     for(const d of snap.docs){
-      if(seen.has(d.id))continue;
+      // X est rejeté avant la première exposition.
+      if(xPolicy?.ids?.has(d.id)||seen.has(d.id))continue;
       const x=d.data()||{};
       out.push({
         id:d.id,
@@ -491,12 +629,15 @@ async function smartUnseenCandidates(uid,analysis,wanted,domain){
       });
       if(out.length>=wanted)break;
     }
+
     last=snap.docs[snap.docs.length-1];
     if(snap.size<250)break;
   }
+
   return cg35Shuffle(out);
 }
-async function smartSession(uid,analysis,body){
+
+async function smartSession(uid,analysis,body,xPolicy){
 
   const count=clamp(
     Math.floor(num(body.count)||20),
@@ -586,7 +727,8 @@ async function smartSession(uid,analysis,body){
       uid,
       analysis,
       unseenWanted,
-      domain
+      domain,
+      xPolicy
     );
 
 
@@ -829,55 +971,126 @@ async function smartSession(uid,analysis,body){
 }
 
 async function handleLearningHub(req,res){
-    if(cors(req,res))return;
-    try{
-      if(req.method!=='POST')return json(res,405,{ok:false,error:'POST attendu.'});
-      const user=await requireUser(req);
-      const body=req.body&&typeof req.body==='object'?req.body:{};
-      const mode=one(body.mode)||'overview';
-      const events=await loadHistory(user.uid,Boolean(body.forceRefresh));
-      const analysis=buildAnalysis(events);
+  if(cors(req,res))return;
 
-      if(mode==='overview'){
-        return json(res,200,{ok:true,summary:summaryOf(analysis),domains:sortGroups(groupsFor(analysis,null),'mastery')});
-      }
-      if(mode==='history'){
-        const filter=['qcm','mental','revision'].includes(one(body.filter))?one(body.filter):'all';
-        const limit=clamp(Math.floor(num(body.limit)||100),1,500);
-        return json(res,200,{ok:true,total:events.length,filter,rows:historyRows(events,filter,limit)});
-      }
-      if(mode==='groups'){
-        const view=one(body.view)||'mastery';
-        const domain=body.domain===undefined||body.domain===null?'':one(body.domain);
-        let rows=groupsFor(analysis,domain||null);
-        rows=sortGroups(rows,view);
-        return json(res,200,{ok:true,view,domain,rows});
-      }
-      if(mode==='questions'){
-        const view=one(body.view)||'mastery';
-        const domain=one(body.domain),theme=one(body.theme);
-        let rows=analysis.questions.filter(q=>(one(q.domain)||'(Sans domaine)')===domain&&one(q.theme)===theme);
-        rows=sortQuestions(rows,view).slice(0,300).map(compactQuestion);
-        return json(res,200,{ok:true,view,domain,theme,rows});
-      }
-      if(mode==='neverOverview')return json(res,200,{ok:true,...await neverOverview(user.uid,analysis)});
-      if(mode==='neverThemes'){
-        const domain=one(body.domain);
-        if(!domain)return json(res,400,{ok:false,error:'Domaine manquant.'});
-        return json(res,200,{ok:true,domain,rows:await neverThemes(user.uid,analysis,domain)});
-      }
-      if(mode==='neverQuestions'){
-        const domain=one(body.domain),theme=one(body.theme);
-        if(!domain)return json(res,400,{ok:false,error:'Domaine manquant.'});
-        const limit=clamp(Math.floor(num(body.limit)||100),1,300);
-        return json(res,200,{ok:true,domain,theme,rows:await neverQuestions(user.uid,analysis,domain,theme,limit)});
-      }
-      if(mode==='smartSession'){
-        return json(res,200,{ok:true,...await smartSession(user.uid,analysis,body)});
-      }
-      return json(res,400,{ok:false,error:'Mode inconnu.'});
-    }catch(error){
-      return json(res,Number(error?.status)||500,{ok:false,error:error?.message||String(error)});
+  try{
+    if(req.method!=='POST')return json(res,405,{ok:false,error:'POST attendu.'});
+
+    const user=await requireUser(req);
+    const body=req.body&&typeof req.body==='object'?req.body:{};
+    const mode=one(body.mode)||'overview';
+    const events=await loadHistory(user.uid,Boolean(body.forceRefresh));
+
+    // L'historique brut reste intact, y compris les anciens événements Mental.
+    if(mode==='history'){
+      const filter=['qcm','mental','revision'].includes(one(body.filter))
+        ? one(body.filter)
+        : 'all';
+      const limit=clamp(Math.floor(num(body.limit)||100),1,500);
+      return json(res,200,{
+        ok:true,
+        total:events.length,
+        filter,
+        rows:historyRows(events,filter,limit)
+      });
     }
+
+    // Les modes susceptibles de proposer une question rechargent X immédiatement.
+    const forceX=
+      Boolean(body.forceRefresh)||
+      mode==='smartSession'||
+      mode==='neverOverview'||
+      mode==='neverThemes'||
+      mode==='neverQuestions';
+
+    const xPolicy=await loadXPolicy(user.uid,forceX);
+
+    // A/R/P/T ne sont jamais consultés.
+    // X est retiré avant buildAnalysis : ni révision, ni faiblesse, ni stats pédagogiques.
+    const learningEvents=events.filter(
+      e=>!xPolicy.ids.has(one(e.questionId))
+    );
+
+    const analysis=buildAnalysis(learningEvents);
+    const learningModel=learningModelMeta(xPolicy);
+
+    if(mode==='overview'){
+      return json(res,200,{
+        ok:true,
+        summary:summaryOf(analysis),
+        domains:sortGroups(groupsFor(analysis,null),'mastery'),
+        learningModel
+      });
+    }
+
+    if(mode==='groups'){
+      const view=one(body.view)||'mastery';
+      const domain=body.domain===undefined||body.domain===null?'':one(body.domain);
+      let rows=groupsFor(analysis,domain||null);
+      rows=sortGroups(rows,view);
+      return json(res,200,{ok:true,view,domain,rows,learningModel});
+    }
+
+    if(mode==='questions'){
+      const view=one(body.view)||'mastery';
+      const domain=one(body.domain);
+      const theme=one(body.theme);
+      let rows=analysis.questions.filter(
+        q=>(one(q.domain)||'(Sans domaine)')===domain&&one(q.theme)===theme
+      );
+      rows=sortQuestions(rows,view).slice(0,300).map(compactQuestion);
+      return json(res,200,{ok:true,view,domain,theme,rows,learningModel});
+    }
+
+    if(mode==='neverOverview'){
+      return json(res,200,{
+        ok:true,
+        ...await neverOverview(user.uid,analysis,xPolicy),
+        learningModel
+      });
+    }
+
+    if(mode==='neverThemes'){
+      const domain=one(body.domain);
+      if(!domain)return json(res,400,{ok:false,error:'Domaine manquant.'});
+      return json(res,200,{
+        ok:true,
+        domain,
+        rows:await neverThemes(user.uid,analysis,domain,xPolicy),
+        learningModel
+      });
+    }
+
+    if(mode==='neverQuestions'){
+      const domain=one(body.domain);
+      const theme=one(body.theme);
+      if(!domain)return json(res,400,{ok:false,error:'Domaine manquant.'});
+      const limit=clamp(Math.floor(num(body.limit)||100),1,300);
+      return json(res,200,{
+        ok:true,
+        domain,
+        theme,
+        rows:await neverQuestions(user.uid,analysis,domain,theme,limit,xPolicy),
+        learningModel
+      });
+    }
+
+    if(mode==='smartSession'){
+      return json(res,200,{
+        ok:true,
+        ...await smartSession(user.uid,analysis,body,xPolicy),
+        learningModel
+      });
+    }
+
+    return json(res,400,{ok:false,error:'Mode inconnu.'});
+
+  }catch(error){
+    return json(res,Number(error?.status)||500,{
+      ok:false,
+      error:error?.message||String(error)
+    });
+  }
 }
+
 module.exports={handleLearningHub};
