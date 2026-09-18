@@ -1,0 +1,655 @@
+name: CGPLAY003 X_ONLY001 LEARNING_MODEL002
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cgplay003-x-only-learning-model
+  cancel-in-progress: false
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install CGPLAY003 X_ONLY001 LEARNING_MODEL002
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          node <<'NODE'
+          const fs=require('fs');
+
+          const P={
+            backend:'web/functions/cgweb035.js',
+            front:'web/public/cgweb035.js',
+            css:'web/public/cgweb035.css',
+            index:'web/public/index.html'
+          };
+
+          const read=p=>{
+            if(!fs.existsSync(p))throw new Error('Fichier introuvable : '+p);
+            return fs.readFileSync(p,'utf8');
+          };
+
+          function once(src,needle,replacement,label){
+            const n=src.split(needle).length-1;
+            if(n!==1)throw new Error(label+' : ancre trouvée '+n+' fois');
+            return src.replace(needle,replacement);
+          }
+
+          function block(src,start,end,replacement,label){
+            const a=src.indexOf(start);
+            const b=src.indexOf(end,a);
+            if(a<0||b<0||b<=a)throw new Error(label+' : bornes introuvables');
+            return src.slice(0,a)+replacement.trimEnd()+'\n\n'+src.slice(b);
+          }
+
+          async function loadXPolicy(uid,force=false){
+            const cached=X_POLICY_CACHE.get(uid);
+            if(!force&&cached&&Date.now()-cached.at<X_POLICY_TTL_MS)return cached.policy;
+
+            const db=getFirestore();
+            const userRef=db.collection('users').doc(uid);
+            const questions=userRef.collection('questions');
+
+            // Pendant la transition, X peut provenir de deux stockages :
+            // - questions/<id>.status = X
+            // - statusBuckets/*.statuses.<id> = X
+            // A/R/P/T sont volontairement ignorés.
+            const [buckets,upperX,lowerX]=await Promise.all([
+              userRef.collection('statusBuckets').get(),
+              questions.where('status','==','X').get(),
+              questions.where('status','==','x').get()
+            ]);
+
+            const ids=new Set();
+            const catalogIds=new Set();
+            const fromBuckets=new Set();
+            const fromQuestionStatus=new Set();
+            const docs=new Map();
+
+            for(const snap of [upperX,lowerX]){
+              for(const d of snap.docs){
+                ids.add(d.id);
+                catalogIds.add(d.id);
+                fromQuestionStatus.add(d.id);
+                docs.set(d.id,d);
+              }
+            }
+
+            for(const bucket of buckets.docs){
+              const statuses=bucket.get('statuses');
+              if(!statuses||typeof statuses!=='object')continue;
+              for(const [rawId,rawStatus] of Object.entries(statuses)){
+                if(String(rawStatus??'').trim().toUpperCase()!=='X')continue;
+                const id=String(rawId??'').trim();
+                if(!id)continue;
+                ids.add(id);
+                fromBuckets.add(id);
+              }
+            }
+
+            // Résout dans le catalogue les X hérités des statusBuckets.
+            // On peut alors les soustraire proprement des compteurs Jamais vues.
+            const missing=[...ids].filter(id=>!docs.has(id));
+            for(let i=0;i<missing.length;i+=200){
+              const refs=missing.slice(i,i+200).map(id=>questions.doc(id));
+              if(!refs.length)continue;
+              const snaps=await db.getAll(...refs);
+              for(const d of snaps){
+                if(!d.exists)continue;
+                docs.set(d.id,d);
+                catalogIds.add(d.id);
+              }
+            }
+
+            const byDomain=new Map();
+            for(const [id,d] of docs){
+              if(!d.exists)continue;
+              catalogIds.add(id);
+              const x=d.data()||{};
+              const domain=one(x.megatheme);
+              if(domain)byDomain.set(domain,(byDomain.get(domain)||0)+1);
+            }
+
+            const policy={
+              ids,
+              catalogIds,
+              fromBuckets,
+              fromQuestionStatus,
+              byDomain
+            };
+
+            X_POLICY_CACHE.set(uid,{at:Date.now(),policy});
+            return policy;
+          }
+
+          function learningModelMeta(xPolicy){
+            return {
+              version:LEARNING_MODEL_VERSION,
+              persistentStatuses:['X'],
+              ignoredLegacyStatuses:['A','R','P','T'],
+              targetPlayMode:'qcm',
+              legacyHistoryPreserved:true,
+              xExcluded:xPolicy?.ids?.size||0,
+              xResolvedInCatalog:xPolicy?.catalogIds?.size||0,
+              xFromLegacyBuckets:xPolicy?.fromBuckets?.size||0,
+              xFromQuestionStatus:xPolicy?.fromQuestionStatus?.size||0
+            };
+          }
+
+          async function neverOverview(uid,analysis,xPolicy){
+            const questions=getFirestore().collection('users').doc(uid).collection('questions');
+            const calls=[
+              questions.count().get(),
+              ...DOMAINS.map(domain=>questions.where('megatheme','==',domain).count().get())
+            ];
+            const snaps=await Promise.all(calls);
+
+            const seenIds=new Set(
+              analysis.questions.map(q=>one(q.questionId)).filter(Boolean)
+            );
+
+            const seenByDomain=new Map();
+            for(const q of analysis.questions){
+              const domain=one(q.domain);
+              const id=one(q.questionId);
+              if(!domain||!id)continue;
+              if(!seenByDomain.has(domain))seenByDomain.set(domain,new Set());
+              seenByDomain.get(domain).add(id);
+            }
+
+            const rows=DOMAINS.map((domain,i)=>{
+              const rawTotal=Number(snaps[i+1].data().count||0);
+              const excluded=xPolicy?.byDomain?.get(domain)||0;
+              const total=Math.max(0,rawTotal-excluded);
+              const seen=seenByDomain.get(domain)?.size||0;
+              return {name:domain,total,seen,unseen:Math.max(0,total-seen)};
+            }).sort((a,b)=>b.unseen-a.unseen||a.name.localeCompare(b.name,'fr'));
+
+            const rawTotal=Number(snaps[0].data().count||0);
+            const total=Math.max(0,rawTotal-(xPolicy?.catalogIds?.size||0));
+
+            return {
+              total,
+              seen:seenIds.size,
+              unseen:Math.max(0,total-seenIds.size),
+              excludedX:xPolicy?.ids?.size||0,
+              rows
+            };
+          }
+
+          async function neverThemes(uid,analysis,domain,xPolicy){
+            const questions=getFirestore().collection('users').doc(uid).collection('questions');
+            const snap=await questions.where('megatheme','==',domain).select('theme').get();
+
+            const totals=new Map();
+            for(const d of snap.docs){
+              if(xPolicy?.ids?.has(d.id))continue;
+              const theme=one(d.get('theme'));
+              totals.set(theme,(totals.get(theme)||0)+1);
+            }
+
+            const seen=new Map();
+            for(const q of analysis.questions){
+              if(one(q.domain)!==domain)continue;
+              const id=one(q.questionId);
+              if(!id)continue;
+              const theme=one(q.theme);
+              if(!seen.has(theme))seen.set(theme,new Set());
+              seen.get(theme).add(id);
+            }
+
+            return [...totals.entries()].map(([theme,total])=>{
+              const n=seen.get(theme)?.size||0;
+              return {name:theme,total,seen:n,unseen:Math.max(0,total-n)};
+            }).filter(x=>x.unseen>0)
+              .sort((a,b)=>b.unseen-a.unseen||a.name.localeCompare(b.name,'fr',{numeric:true}));
+          }
+
+          async function neverQuestions(uid,analysis,domain,theme,limit,xPolicy){
+            const seen=new Set(analysis.questions.map(q=>one(q.questionId)).filter(Boolean));
+            const questions=getFirestore().collection('users').doc(uid).collection('questions');
+            const snap=await questions.where('megatheme','==',domain)
+              .select('question','detail','megatheme','theme').get();
+
+            const rows=[];
+            for(const d of snap.docs){
+              if(xPolicy?.ids?.has(d.id)||seen.has(d.id))continue;
+              const x=d.data()||{};
+              if(one(x.theme)!==theme)continue;
+              rows.push({
+                id:d.id,
+                question:one(x.question),
+                detail:one(x.detail),
+                domain:one(x.megatheme),
+                theme:one(x.theme)
+              });
+              if(rows.length>=limit)break;
+            }
+            return rows;
+          }
+
+          async function smartUnseenCandidates(uid,analysis,wanted,domain,xPolicy){
+            const seen=new Set(analysis.questions.map(q=>one(q.questionId)).filter(Boolean));
+            const out=[];
+            const col=getFirestore().collection('users').doc(uid).collection('questions');
+            let last=null;
+            let scanned=0;
+            const maxScan=Math.max(1000,Math.min(10000,Math.max(1,wanted)*80));
+
+            while(out.length<wanted&&scanned<maxScan){
+              let q=col;
+              if(domain)q=q.where('megatheme','==',domain);
+              q=q.orderBy(FieldPath.documentId())
+                .select('question','detail','megatheme','theme')
+                .limit(250);
+              if(last)q=q.startAfter(last);
+
+              const snap=await q.get();
+              if(snap.empty)break;
+              scanned+=snap.size;
+
+              for(const d of snap.docs){
+                // X est rejeté avant la première exposition.
+                if(xPolicy?.ids?.has(d.id)||seen.has(d.id))continue;
+                const x=d.data()||{};
+                out.push({
+                  id:d.id,
+                  row:num(d.id),
+                  domain:one(x.megatheme),
+                  theme:one(x.theme),
+                  question:one(x.question),
+                  detail:one(x.detail),
+                  source:'unseen',
+                  reason:'Jamais vue',
+                  due:false,
+                  weakness:0,
+                  successPercent:null,
+                  attempts:0,
+                  mastery:'Jamais vue',
+                  medianResponseMs:0
+                });
+                if(out.length>=wanted)break;
+              }
+
+              last=snap.docs[snap.docs.length-1];
+              if(snap.size<250)break;
+            }
+
+            return cg35Shuffle(out);
+          }
+
+          async function handleLearningHub(req,res){
+            if(cors(req,res))return;
+
+            try{
+              if(req.method!=='POST')return json(res,405,{ok:false,error:'POST attendu.'});
+
+              const user=await requireUser(req);
+              const body=req.body&&typeof req.body==='object'?req.body:{};
+              const mode=one(body.mode)||'overview';
+              const events=await loadHistory(user.uid,Boolean(body.forceRefresh));
+
+              // L'historique brut reste intact, y compris les anciens événements Mental.
+              if(mode==='history'){
+                const filter=['qcm','mental','revision'].includes(one(body.filter))
+                  ? one(body.filter)
+                  : 'all';
+                const limit=clamp(Math.floor(num(body.limit)||100),1,500);
+                return json(res,200,{
+                  ok:true,
+                  total:events.length,
+                  filter,
+                  rows:historyRows(events,filter,limit)
+                });
+              }
+
+              // Les modes susceptibles de proposer une question rechargent X immédiatement.
+              const forceX=
+                Boolean(body.forceRefresh)||
+                mode==='smartSession'||
+                mode==='neverOverview'||
+                mode==='neverThemes'||
+                mode==='neverQuestions';
+
+              const xPolicy=await loadXPolicy(user.uid,forceX);
+
+              // A/R/P/T ne sont jamais consultés.
+              // X est retiré avant buildAnalysis : ni révision, ni faiblesse, ni stats pédagogiques.
+              const learningEvents=events.filter(
+                e=>!xPolicy.ids.has(one(e.questionId))
+              );
+
+              const analysis=buildAnalysis(learningEvents);
+              const learningModel=learningModelMeta(xPolicy);
+
+              if(mode==='overview'){
+                return json(res,200,{
+                  ok:true,
+                  summary:summaryOf(analysis),
+                  domains:sortGroups(groupsFor(analysis,null),'mastery'),
+                  learningModel
+                });
+              }
+
+              if(mode==='groups'){
+                const view=one(body.view)||'mastery';
+                const domain=body.domain===undefined||body.domain===null?'':one(body.domain);
+                let rows=groupsFor(analysis,domain||null);
+                rows=sortGroups(rows,view);
+                return json(res,200,{ok:true,view,domain,rows,learningModel});
+              }
+
+              if(mode==='questions'){
+                const view=one(body.view)||'mastery';
+                const domain=one(body.domain);
+                const theme=one(body.theme);
+                let rows=analysis.questions.filter(
+                  q=>(one(q.domain)||'(Sans domaine)')===domain&&one(q.theme)===theme
+                );
+                rows=sortQuestions(rows,view).slice(0,300).map(compactQuestion);
+                return json(res,200,{ok:true,view,domain,theme,rows,learningModel});
+              }
+
+              if(mode==='neverOverview'){
+                return json(res,200,{
+                  ok:true,
+                  ...await neverOverview(user.uid,analysis,xPolicy),
+                  learningModel
+                });
+              }
+
+              if(mode==='neverThemes'){
+                const domain=one(body.domain);
+                if(!domain)return json(res,400,{ok:false,error:'Domaine manquant.'});
+                return json(res,200,{
+                  ok:true,
+                  domain,
+                  rows:await neverThemes(user.uid,analysis,domain,xPolicy),
+                  learningModel
+                });
+              }
+
+              if(mode==='neverQuestions'){
+                const domain=one(body.domain);
+                const theme=one(body.theme);
+                if(!domain)return json(res,400,{ok:false,error:'Domaine manquant.'});
+                const limit=clamp(Math.floor(num(body.limit)||100),1,300);
+                return json(res,200,{
+                  ok:true,
+                  domain,
+                  theme,
+                  rows:await neverQuestions(user.uid,analysis,domain,theme,limit,xPolicy),
+                  learningModel
+                });
+              }
+
+              if(mode==='smartSession'){
+                return json(res,200,{
+                  ok:true,
+                  ...await smartSession(user.uid,analysis,body,xPolicy),
+                  learningModel
+                });
+              }
+
+              return json(res,400,{ok:false,error:'Mode inconnu.'});
+
+            }catch(error){
+              return json(res,Number(error?.status)||500,{
+                ok:false,
+                error:error?.message||String(error)
+              });
+            }
+          }
+
+          let backend=read(P.backend);
+          let front=read(P.front);
+          let css=read(P.css);
+          let index=read(P.index);
+
+          if(backend.includes('CGPLAY003_X_ONLY001_LEARNING_MODEL002')){
+            throw new Error('CGPLAY003 semble déjà installé.');
+          }
+          if(!backend.includes('CGPLAY002_SMART_BALANCE002')){
+            throw new Error('Backend SMART_BALANCE002 absent.');
+          }
+          if(!front.includes('CGPLAY002_SMART_BALANCE002')){
+            throw new Error('Frontend SMART_BALANCE002 absent.');
+          }
+
+          // 1) Constantes + gate X.
+          backend=once(
+            backend,
+            'const CACHE=new Map();',
+            "const CACHE=new Map();\n"+
+            "const X_POLICY_TTL_MS=15*1000;\n"+
+            "const X_POLICY_CACHE=new Map();\n"+
+            "const LEARNING_MODEL_VERSION='CGPLAY003_X_ONLY001_LEARNING_MODEL002';",
+            'Constantes X_ONLY001'
+          );
+
+          backend=once(
+            backend,
+            'function isEvaluable(e){',
+            loadXPolicy.toString()+'\n\n'+
+            learningModelMeta.toString()+'\n\n'+
+            'function isEvaluable(e){',
+            'Insertion X_ONLY001'
+          );
+
+          // 2) Remplacement groupé des trois vues Jamais vues.
+          backend=block(
+            backend,
+            'async function neverOverview(uid,analysis){',
+            'function cg35Shuffle(rows){',
+            neverOverview.toString()+'\n\n'+
+            neverThemes.toString()+'\n\n'+
+            neverQuestions.toString(),
+            'Jamais vues X_ONLY001'
+          );
+
+          // 3) Pool SMART jamais vu.
+          backend=block(
+            backend,
+            'async function smartUnseenCandidates(uid,analysis,wanted,domain){',
+            'async function smartSession(uid,analysis,body){',
+            smartUnseenCandidates.toString(),
+            'SMART unseen X_ONLY001'
+          );
+
+          // 4) SMART reçoit xPolicy.
+          backend=once(
+            backend,
+            'async function smartSession(uid,analysis,body){',
+            'async function smartSession(uid,analysis,body,xPolicy){',
+            'Signature SMART'
+          );
+
+          const unseenCall=/await\s+smartUnseenCandidates\s*\(\s*uid\s*,\s*analysis\s*,\s*unseenWanted\s*,\s*domain\s*\)/;
+          if(!unseenCall.test(backend)){
+            throw new Error('Appel smartUnseenCandidates actuel introuvable.');
+          }
+          backend=backend.replace(
+            unseenCall,
+            "await smartUnseenCandidates(\n"+
+            "      uid,\n"+
+            "      analysis,\n"+
+            "      unseenWanted,\n"+
+            "      domain,\n"+
+            "      xPolicy\n"+
+            "    )"
+          );
+
+          // 5) Routeur X_ONLY001.
+          backend=block(
+            backend,
+            'async function handleLearningHub(req,res){',
+            'module.exports={handleLearningHub};',
+            handleLearningHub.toString(),
+            'Routeur LEARNING_MODEL002'
+          );
+
+          // 6) Frontend : version + texte.
+          front=front.replace(
+            /const CGWEB035_VERSION='[^']*';/,
+            "const CGWEB035_VERSION='CGPLAY003_X_ONLY001_LEARNING_MODEL002';"
+          );
+
+          const oldText='Les pourcentages définissent des quotas cibles. Si un stock est insuffisant, SMART_BALANCE002 redistribue automatiquement les places entre les catégories encore disponibles, sans doublon.';
+          if(!front.includes(oldText)){
+            throw new Error('Texte SMART_BALANCE002 attendu absent.');
+          }
+          front=front.replace(
+            oldText,
+            'LEARNING_MODEL002 : A/R/P/T ne pilotent plus la sélection. Seul X interdit définitivement une question ; SMART_BALANCE002 gère le reste depuis l’historique de jeu.'
+          );
+
+          // 7) Frontend : patch limité à cg35GenerateSmart().
+          const gs=front.indexOf('async function cg35GenerateSmart(){');
+          const ge=front.indexOf('function cg35Wire(){',gs);
+          if(gs<0||ge<0)throw new Error('cg35GenerateSmart introuvable.');
+
+          let generate=front.slice(gs,ge);
+
+          if(!generate.includes('const lm=d.learningModel||{};')){
+            generate=once(
+              generate,
+              '    const red=d.redistributed||{};',
+              "    const red=d.redistributed||{};\n"+
+              "    const lm=d.learningModel||{};",
+              'Learning model frontend'
+            );
+          }
+
+          const copyAnchor="    cg35$('cg35SmartCopy')";
+          if(!generate.includes('cg35-learning-model')){
+            generate=once(
+              generate,
+              copyAnchor,
+              "    if(box&&lm.version){\n"+
+              "      box.insertAdjacentHTML(\n"+
+              "        'afterbegin',\n"+
+              "        '<div class=\"cg35-learning-model\">'+\n"+
+              "          '<strong>'+cg35Esc(lm.version)+'</strong>'+\n"+
+              "          '<span>X exclus du jeu : '+cg35Fmt(lm.xExcluded||0)+' · A/R/P/T ignorés · mode cible QCM'+\n"+
+              "          (lm.legacyHistoryPreserved?' · ancien historique conservé':'')+\n"+
+              "          '</span>'+\n"+
+              "        '</div>'\n"+
+              "      );\n"+
+              "    }\n\n"+
+              copyAnchor,
+              'Bandeau LEARNING_MODEL002'
+            );
+          }
+
+          front=front.slice(0,gs)+generate+front.slice(ge);
+
+          // 8) CSS.
+          if(!css.includes('CGPLAY003 · X_ONLY001 · LEARNING_MODEL002')){
+            css=css.trimEnd()+
+              '\n\n/* CGPLAY003 · X_ONLY001 · LEARNING_MODEL002 */\n'+
+              '.cg35-learning-model{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;padding:9px 11px;border:1px solid rgba(60,180,140,.30);border-radius:10px;background:rgba(60,180,140,.055);font-size:.8rem}\n'+
+              '.cg35-learning-model strong{white-space:nowrap}\n'+
+              '.cg35-learning-model span{opacity:.78}\n';
+          }
+
+          // 9) Cache bust.
+          index=index.replace(
+            /(\.\/cgweb035\.css\?v=)[^"'<> ]+/,
+            '$1CGPLAY003_X_ONLY001_LEARNING_MODEL002'
+          );
+          index=index.replace(
+            /(\.\/cgweb035\.js\?v=)[^"'<> ]+/,
+            '$1CGPLAY003_X_ONLY001_LEARNING_MODEL002'
+          );
+
+          // 10) Contrôles avant écriture.
+          const checks=[
+            [backend.includes('CGPLAY003_X_ONLY001_LEARNING_MODEL002'),'version backend'],
+            [backend.includes('async function loadXPolicy'),'loadXPolicy'],
+            [backend.includes("ignoredLegacyStatuses: [")||backend.includes('ignoredLegacyStatuses'),'legacy statuses'],
+            [backend.includes("targetPlayMode: 'qcm'")||backend.includes("targetPlayMode:'qcm'"),'mode QCM'],
+            [backend.includes('xPolicy?.ids?.has'),'gate X Jamais vues'],
+            [backend.includes('async function smartSession(uid,analysis,body,xPolicy)'),'SMART xPolicy'],
+            [front.includes('CGPLAY003_X_ONLY001_LEARNING_MODEL002'),'version frontend'],
+            [front.includes('X exclus du jeu'),'diagnostic frontend'],
+            [css.includes('CGPLAY003 · X_ONLY001 · LEARNING_MODEL002'),'CSS'],
+            [index.includes('CGPLAY003_X_ONLY001_LEARNING_MODEL002'),'cache bust']
+          ];
+          for(const [ok,label] of checks){
+            if(!ok)throw new Error('Contrôle échoué : '+label);
+          }
+
+          // Parse JS avant écriture.
+          new Function(backend);
+          new Function(front);
+
+          fs.writeFileSync(P.backend,backend,'utf8');
+          fs.writeFileSync(P.front,front,'utf8');
+          fs.writeFileSync(P.css,css,'utf8');
+          fs.writeFileSync(P.index,index,'utf8');
+
+          console.log('✅ CGPLAY003 X_ONLY001 / LEARNING_MODEL002 installé');
+          console.log('✅ A/R/P/T ignorés');
+          console.log('✅ X filtré des historiques pédagogiques et des Jamais vues');
+          console.log('✅ X lu depuis statusBuckets + questions.status');
+          console.log('✅ Mode cible QCM');
+          NODE
+
+      - name: Validate JavaScript and diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check web/functions/cgweb035.js
+          node --check web/public/cgweb035.js
+          git diff --check
+
+          echo "=== DIFF STAT ==="
+          git diff --stat
+
+          echo "=== MARQUEURS BACKEND ==="
+          grep -nE "CGPLAY003_X_ONLY001_LEARNING_MODEL002|loadXPolicy|ignoredLegacyStatuses|targetPlayMode|statusBuckets|xExcluded" web/functions/cgweb035.js
+
+          echo "=== MARQUEURS FRONTEND ==="
+          grep -nE "CGPLAY003_X_ONLY001_LEARNING_MODEL002|LEARNING_MODEL002|X exclus du jeu|A/R/P/T" web/public/cgweb035.js
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add \
+            web/functions/cgweb035.js \
+            web/public/cgweb035.js \
+            web/public/cgweb035.css \
+            web/public/index.html
+
+          if git diff --cached --quiet; then
+            echo "Aucune modification à committer."
+            exit 0
+          fi
+
+          git commit -m "CGPLAY003 X_ONLY001 LEARNING_MODEL002"
+          git push origin HEAD:main
+
+          echo "✅ CGPLAY003 poussé sur main"
