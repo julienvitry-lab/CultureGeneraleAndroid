@@ -1,4 +1,4 @@
-const CGWEB035_VERSION='CGPLAY003_X_ONLY001_LEARNING_MODEL002';
+const CGWEB035_VERSION='CGPLAY003_FIX2_X_TRUTH001';
 const CG35_END='https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb032Search';
 const cg35$=id=>document.getElementById(id);
 const cg35Esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
@@ -511,14 +511,115 @@ async function cg35GenerateSmart(){
       '</section>';
 
 
+
     if(box&&lm.version){
+
+      const xKnown=
+        Number(
+          lm.xKnown ??
+          lm.xExcluded ??
+          0
+        );
+
+      const xActive=
+        Number(
+          lm.xActive ??
+          lm.xResolvedInCatalog ??
+          0
+        );
+
+      const xOrphaned=
+        Number(
+          lm.xOrphaned ??
+          Math.max(
+            0,
+            xKnown-xActive
+          )
+        );
+
+      const xBuckets=
+        Number(
+          lm.xFromLegacyBuckets ??
+          0
+        );
+
+      const xQuestionStatus=
+        Number(
+          lm.xFromQuestionStatus ??
+          0
+        );
+
+      const xBoth=
+        Number(
+          lm.xInBothSources ??
+          0
+        );
+
+      const diagnosticVersion=
+        lm.diagnosticVersion ||
+        'CGPLAY003_FIX2_X_TRUTH001';
+
       box.insertAdjacentHTML(
         'afterbegin',
-        '<div class="cg35-learning-model">'+
-          '<strong>'+cg35Esc(lm.version)+'</strong>'+
-          '<span>X exclus du jeu : '+cg35Fmt(lm.xExcluded||0)+' · A/R/P/T ignorés · mode cible QCM'+
-          (lm.legacyHistoryPreserved?' · ancien historique conservé':'')+
-          '</span>'+
+
+        '<div class="cg35-learning-model cg35-learning-model-truth">'+
+
+          '<div class="cg35-learning-truth-head">'+
+            '<strong>'+
+              cg35Esc(diagnosticVersion)+
+            '</strong>'+
+            '<span>'+
+              'Lecture exacte des exclusions X'+
+            '</span>'+
+          '</div>'+
+
+          '<div class="cg35-learning-truth-grid">'+
+
+            '<span>'+
+              '<b>X actifs</b>'+
+              '<strong>'+
+                cg35Fmt(xActive)+
+              '</strong>'+
+            '</span>'+
+
+            '<span>'+
+              '<b>Références X connues</b>'+
+              '<strong>'+
+                cg35Fmt(xKnown)+
+              '</strong>'+
+            '</span>'+
+
+            '<span>'+
+              '<b>X orphelins</b>'+
+              '<strong>'+
+                cg35Fmt(xOrphaned)+
+              '</strong>'+
+            '</span>'+
+
+          '</div>'+
+
+          '<div class="cg35-learning-truth-detail">'+
+            'Présents dans anciens statusBuckets : '+
+            cg35Fmt(xBuckets)+
+            ' · présents dans questions.status : '+
+            cg35Fmt(xQuestionStatus)+
+            ' · présents dans les deux sources : '+
+            cg35Fmt(xBoth)+
+          '</div>'+
+
+          '<div class="cg35-learning-truth-detail">'+
+            'A/R/P/T ignorés · mode cible QCM'+
+            (
+              lm.legacyHistoryPreserved
+                ? ' · ancien historique conservé'
+                : ''
+            )+
+          '</div>'+
+
+          '<div class="cg35-learning-truth-note">'+
+            'Les compteurs de provenance peuvent se chevaucher ; X actifs correspond uniquement aux exclusions rattachées au catalogue actuel.'+
+          '</div>'+
+
         '</div>'
       );
     }

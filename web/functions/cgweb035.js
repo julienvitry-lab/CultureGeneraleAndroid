@@ -18,6 +18,7 @@ const CACHE=new Map();
 const X_POLICY_TTL_MS=15*1000;
 const X_POLICY_CACHE=new Map();
 const LEARNING_MODEL_VERSION='CGPLAY003_X_ONLY001_LEARNING_MODEL002';
+const X_TRUTH_VERSION='CGPLAY003_FIX2_X_TRUTH001';
 
 const one=v=>String(v??'').trim();
 const num=v=>Number.isFinite(Number(v))?Number(v):0;
@@ -182,282 +183,91 @@ async function loadXPolicy(uid,force=false){
   return policy;
 }
 
+
 function learningModelMeta(xPolicy){
-  return {
-    version:LEARNING_MODEL_VERSION,
-    persistentStatuses:['X'],
-    ignoredLegacyStatuses:['A','R','P','T'],
-    targetPlayMode:'qcm',
-    legacyHistoryPreserved:true,
-    xExcluded:xPolicy?.ids?.size||0,
-    xResolvedInCatalog:xPolicy?.catalogIds?.size||0,
-    xFromLegacyBuckets:xPolicy?.fromBuckets?.size||0,
-    xFromQuestionStatus:xPolicy?.fromQuestionStatus?.size||0
-  };
-}
 
-function isEvaluable(e){
-  return e.playType==='challenge_choice'||e.playType==='challenge_mental';
-}
-function isPositive(e){
-  if(e.playType==='challenge_choice')return e.isCorrect===true;
-  if(e.playType==='challenge_mental')return e.result==='assimilated';
-  return false;
-}
-function questionKey(e){
-  return one(e.questionId)||one(e.question)||`${one(e.domain)}|${one(e.theme)}|${e.playedAtMs}`;
-}
-function longestFailureStreak(results){
-  let best=0,cur=0;
-  for(const r of results){if(!r.positive){cur++;best=Math.max(best,cur)}else cur=0}
-  return best;
-}
-function recentFailureScore(results){
-  const r=results.slice(-5);
-  if(!r.length)return 0;
-  let bad=0,total=0;
-  for(let i=0;i<r.length;i++){
-    const w=i+1;
-    total+=w;
-    if(!r[i].positive)bad+=w;
-  }
-  return total?bad/total:0;
-}
-function masteryOf(q,now){
-  if(q.attempts<=1)return 'Découverte';
-  const success=q.successPercent;
-  const stale=q.lastPlayedAtMs>0&&now-q.lastPlayedAtMs>30*DAY_MS;
-  const acquired=q.attempts>=3&&success>=60;
-  if((acquired&&!q.lastPositive)||(stale&&success>=60))return 'À réviser';
-  if(success<60)return 'Fragile';
-  if(q.attempts>=3&&success>=80&&q.lastTwoPositive)return 'Maîtrisée';
-  return 'Connue';
-}
-function spacedInterval(q){
-  if(!q.lastPositive)return 1;
-  if(q.attempts<=1)return 3;
-  if(q.successPercent<60)return 1;
-  if(q.attempts>=5&&q.successPercent>=90&&q.lastThreePositive)return 60;
-  if(q.attempts>=3&&q.successPercent>=80&&q.lastTwoPositive)return 30;
-  return 7;
-}
-function buildAnalysis(events){
-  const now=Date.now();
-  const chronological=events.slice().sort((a,b)=>a.playedAtMs-b.playedAtMs);
-  const byKey=new Map();
-  let totalAttempts=0,totalPositive=0;
-  const allTimes=[];
+  const xKnown=
+    xPolicy?.ids?.size||0;
 
-  for(const e of chronological){
-    const key=questionKey(e);
-    let q=byKey.get(key);
-    if(!q){
-      q={
-        key,questionId:e.questionId,row:e.row,domain:e.domain,theme:e.theme,
-        question:e.question,detail:e.detail,exposures:0,attempts:0,positive:0,
-        results:[],responseTimes:[],lastPlayedAtMs:0,lastPositive:true
-      };
-      byKey.set(key,q);
-    }
-    q.exposures++;
-    if(e.questionId)q.questionId=e.questionId;
-    if(e.row>0)q.row=e.row;
-    if(e.domain)q.domain=e.domain;
-    if(e.theme)q.theme=e.theme;
-    if(e.question)q.question=e.question;
-    if(e.detail)q.detail=e.detail;
-    q.lastPlayedAtMs=Math.max(q.lastPlayedAtMs,e.playedAtMs||0);
+  const xActive=
+    xPolicy?.catalogIds?.size||0;
 
-    if(isEvaluable(e)){
-      const positive=isPositive(e);
-      q.attempts++;
-      totalAttempts++;
-      if(positive){q.positive++;totalPositive++}
-      q.results.push({at:e.playedAtMs,positive,responseTimeMs:e.responseTimeMs});
-      q.lastPositive=positive;
-      if(e.responseTimeMs>0&&e.responseTimeMs<=MAX_RESPONSE_MS){
-        q.responseTimes.push(e.responseTimeMs);
-        allTimes.push(e.responseTimeMs);
+  const xOrphaned=
+    Math.max(
+      0,
+      xKnown-xActive
+    );
+
+  const xFromLegacyBuckets=
+    xPolicy?.fromBuckets?.size||0;
+
+  const xFromQuestionStatus=
+    xPolicy?.fromQuestionStatus?.size||0;
+
+  let xInBothSources=0;
+
+  if(
+    xPolicy?.fromBuckets &&
+    xPolicy?.fromQuestionStatus
+  ){
+    for(const id of xPolicy.fromBuckets){
+
+      if(
+        xPolicy
+          .fromQuestionStatus
+          .has(id)
+      ){
+        xInBothSources++;
       }
     }
   }
 
-  const globalMedian=median(allTimes);
-  const globalFailure=totalAttempts?1-totalPositive/totalAttempts:0;
-  const questions=[];
-
-  for(const q of byKey.values()){
-    q.successPercent=pct(q.positive,q.attempts);
-    q.failures=q.attempts-q.positive;
-    q.avgResponseMs=avg(q.responseTimes);
-    q.medianResponseMs=median(q.responseTimes);
-    q.timeCount=q.responseTimes.length;
-    q.lastTwoPositive=q.results.length>=2&&q.results[q.results.length-1].positive&&q.results[q.results.length-2].positive;
-    q.lastThreePositive=q.results.length>=3&&q.results.slice(-3).every(x=>x.positive);
-    q.mastery=masteryOf(q,now);
-
-    const failure=q.attempts?q.failures/q.attempts:0;
-    const recentFailure=recentFailureScore(q.results);
-    const repeatPenalty=clamp(longestFailureStreak(q.results)/3,0,1);
-    const ratio=globalMedian>0&&q.medianResponseMs>0?q.medianResponseMs/globalMedian:1;
-    const slowPenalty=clamp((ratio-1)/1.5,0,1);
-
-    q.weakness=Math.round(100*(0.45*failure+0.30*recentFailure+0.15*repeatPenalty+0.10*slowPenalty));
-    q.priority=q.weakness>=WEAK_THRESHOLD||(q.attempts>0&&!q.lastPositive);
-
-    if(q.attempts<=0){
-      q.difficulty=null;
-      q.difficultyLabel='Données insuffisantes';
-      q.confidence='Aucune réponse évaluée';
-    }else{
-      const adjustedFailure=(q.failures+globalFailure*PRIOR_WEIGHT)/(q.attempts+PRIOR_WEIGHT);
-      q.difficulty=Math.round(100*(0.80*adjustedFailure+0.20*slowPenalty));
-      q.difficultyLabel=q.difficulty<20?'Très facile':q.difficulty<40?'Facile':q.difficulty<60?'Moyenne':q.difficulty<80?'Difficile':'Très difficile';
-      q.confidence=q.attempts<=1?'Données insuffisantes':q.attempts<=4?'Échantillon limité':'Données suffisantes';
-    }
-
-    q.knownSlow=q.successPercent>=60&&q.timeCount>=2&&globalMedian>0&&q.medianResponseMs>=globalMedian*1.4;
-
-    q.intervalDays=spacedInterval(q);
-    q.dueAtMs=q.lastPlayedAtMs+q.intervalDays*DAY_MS;
-    q.due=q.attempts>0&&q.lastPlayedAtMs>0&&q.dueAtMs<=now;
-    q.overdueMs=q.due?now-q.dueAtMs:0;
-
-    delete q.results;
-    questions.push(q);
-  }
-
   return {
-    questions,totalAttempts,totalPositive,
-    globalSuccessPercent:pct(totalPositive,totalAttempts),
-    globalMedianResponseMs:globalMedian,
-    globalAverageResponseMs:avg(allTimes),
-    eventsCount:events.length
+
+    version:
+      LEARNING_MODEL_VERSION,
+
+    diagnosticVersion:
+      X_TRUTH_VERSION,
+
+    persistentStatuses:[
+      'X'
+    ],
+
+    ignoredLegacyStatuses:[
+      'A',
+      'R',
+      'P',
+      'T'
+    ],
+
+    targetPlayMode:
+      'qcm',
+
+    legacyHistoryPreserved:
+      true,
+
+    /*
+     * Noms X_TRUTH001.
+     */
+    xKnown,
+    xActive,
+    xOrphaned,
+    xFromLegacyBuckets,
+    xFromQuestionStatus,
+    xInBothSources,
+
+    /*
+     * Compatibilité CGPLAY003 initial.
+     */
+    xExcluded:
+      xKnown,
+
+    xResolvedInCatalog:
+      xActive
   };
 }
-function compactQuestion(q){
-  return {
-    id:q.questionId||String(q.row||''),row:q.row,domain:q.domain,theme:q.theme,
-    question:q.question,detail:q.detail,exposures:q.exposures,attempts:q.attempts,
-    positive:q.positive,failures:q.failures,successPercent:q.successPercent,
-    mastery:q.mastery,weakness:q.weakness,priority:q.priority,
-    avgResponseMs:q.avgResponseMs,medianResponseMs:q.medianResponseMs,timeCount:q.timeCount,
-    knownSlow:q.knownSlow,difficulty:q.difficulty,difficultyLabel:q.difficultyLabel,
-    confidence:q.confidence,intervalDays:q.intervalDays,dueAtMs:q.dueAtMs,
-    due:q.due,overdueMs:q.overdueMs,lastPlayedAtMs:q.lastPlayedAtMs,lastPositive:q.lastPositive
-  };
-}
-function groupQuestions(list,name='',domain=''){
-  const mastery={Découverte:0,Fragile:0,Connue:0,Maîtrisée:0,'À réviser':0};
-  let attempts=0,positive=0,weak=0,diffWeighted=0,diffWeight=0,due=0,priority=0,knownSlow=0;
-  const times=[];
-  for(const q of list){
-    attempts+=q.attempts;positive+=q.positive;weak+=q.weakness;
-    mastery[q.mastery]=(mastery[q.mastery]||0)+1;
-    if(q.attempts>0&&Number.isFinite(q.difficulty)){
-      const w=Math.max(1,Math.min(5,q.attempts));
-      diffWeighted+=q.difficulty*w;diffWeight+=w;
-    }
-    if(q.due)due++;
-    if(q.priority)priority++;
-    if(q.knownSlow)knownSlow++;
-    times.push(...q.responseTimes);
-  }
-  return {
-    name,domain,questionCount:list.length,attempts,successPercent:pct(positive,attempts),
-    mastery,weakness:list.length?Math.round(weak/list.length):0,
-    priorityCount:priority,dueCount:due,knownSlowCount:knownSlow,
-    medianResponseMs:median(times),averageResponseMs:avg(times),
-    difficulty:diffWeight?Math.round(diffWeighted/diffWeight):null,
-    difficultyQuestionCount:list.filter(q=>q.attempts>0&&Number.isFinite(q.difficulty)).length
-  };
-}
-function groupsFor(analysis,domain=null){
-  const map=new Map();
-  for(const q of analysis.questions){
-    const d=one(q.domain)||'(Sans domaine)';
-    if(domain!==null&&d!==domain)continue;
-    const key=domain===null?d:one(q.theme);
-    if(!map.has(key))map.set(key,[]);
-    map.get(key).push(q);
-  }
-  return [...map.entries()].map(([name,list])=>groupQuestions(list,name,domain||''));
-}
-function sortGroups(rows,view){
-  const r=rows.slice();
-  if(view==='weakness')return r.sort((a,b)=>b.weakness-a.weakness||b.priorityCount-a.priorityCount);
-  if(view==='response')return r.sort((a,b)=>b.medianResponseMs-a.medianResponseMs||b.knownSlowCount-a.knownSlowCount);
-  if(view==='difficulty')return r.sort((a,b)=>{
-    const ad=Number.isFinite(a.difficulty)?a.difficulty:-1;
-    const bd=Number.isFinite(b.difficulty)?b.difficulty:-1;
-    return bd-ad||b.attempts-a.attempts;
-  });
-  if(view==='due')return r.sort((a,b)=>b.dueCount-a.dueCount||b.priorityCount-a.priorityCount);
-  if(view==='mastery')return r.sort((a,b)=>(b.mastery['À réviser']*100+b.mastery.Fragile*10+b.mastery.Découverte)-(a.mastery['À réviser']*100+a.mastery.Fragile*10+a.mastery.Découverte));
-  return r.sort((a,b)=>a.name.localeCompare(b.name,'fr',{numeric:true,sensitivity:'base'}));
-}
-function sortQuestions(rows,view){
-  const r=rows.slice();
-  if(view==='weakness')return r.sort((a,b)=>b.weakness-a.weakness||b.failures-a.failures);
-  if(view==='response')return r.sort((a,b)=>b.medianResponseMs-a.medianResponseMs||b.timeCount-a.timeCount);
-  if(view==='difficulty')return r.sort((a,b)=>{
-    const ad=Number.isFinite(a.difficulty)?a.difficulty:-1;
-    const bd=Number.isFinite(b.difficulty)?b.difficulty:-1;
-    return bd-ad||b.attempts-a.attempts;
-  });
-  if(view==='due')return r.filter(x=>x.due).sort((a,b)=>b.overdueMs-a.overdueMs||a.successPercent-b.successPercent);
-  if(view==='mastery'){
-    const rank={'À réviser':0,'Fragile':1,'Découverte':2,'Connue':3,'Maîtrisée':4};
-    return r.sort((a,b)=>(rank[a.mastery]??9)-(rank[b.mastery]??9)||b.lastPlayedAtMs-a.lastPlayedAtMs);
-  }
-  return r;
-}
-function summaryOf(analysis){
-  const mastery={Découverte:0,Fragile:0,Connue:0,Maîtrisée:0,'À réviser':0};
-  let priority=0,due=0,knownSlow=0,weakSum=0,diffSum=0,diffCount=0;
-  for(const q of analysis.questions){
-    mastery[q.mastery]=(mastery[q.mastery]||0)+1;
-    if(q.priority)priority++;
-    if(q.due)due++;
-    if(q.knownSlow)knownSlow++;
-    weakSum+=q.weakness;
-    if(q.attempts>0&&Number.isFinite(q.difficulty)){diffSum+=q.difficulty;diffCount++}
-  }
-  return {
-    eventsCount:analysis.eventsCount,
-    seenQuestions:analysis.questions.length,
-    attempts:analysis.totalAttempts,
-    successPercent:analysis.globalSuccessPercent,
-    mastery,
-    priorityCount:priority,
-    dueCount:due,
-    knownSlowCount:knownSlow,
-    averageWeakness:analysis.questions.length?Math.round(weakSum/analysis.questions.length):0,
-    averageDifficulty:diffCount?Math.round(diffSum/diffCount):null,
-    difficultyQuestionCount:diffCount,
-    medianResponseMs:analysis.globalMedianResponseMs,
-    averageResponseMs:analysis.globalAverageResponseMs
-  };
-}
-function historyRows(events,filter,limit){
-  const mapType={qcm:'challenge_choice',mental:'challenge_mental',revision:'revision_reveal'};
-  const filtered=events.filter(e=>!mapType[filter]||e.playType===mapType[filter]);
-  const totals=new Map(),numbers=new Map(),ordered=filtered.slice().sort((a,b)=>a.playedAtMs-b.playedAtMs);
-  for(const e of ordered){
-    const key=`${e.playType}|${questionKey(e)}`;
-    totals.set(key,(totals.get(key)||0)+1);
-    numbers.set(e.id,totals.get(key));
-  }
-  const grand=new Map();
-  for(const e of filtered){
-    const key=`${e.playType}|${questionKey(e)}`;
-    grand.set(key,(grand.get(key)||0)+1);
-  }
-  return filtered.slice(0,limit).map(e=>{
-    const key=`${e.playType}|${questionKey(e)}`;
-    return {...e,attemptNumber:numbers.get(e.id)||1,attemptTotal:grand.get(key)||1,positive:isEvaluable(e)?isPositive(e):null};
-  });
-}
+
 async function neverOverview(uid,analysis,xPolicy){
   const questions=getFirestore().collection('users').doc(uid).collection('questions');
   const calls=[

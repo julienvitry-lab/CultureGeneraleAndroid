@@ -139,3 +139,66 @@
 .cg35-learning-model{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;padding:9px 11px;border:1px solid rgba(60,180,140,.30);border-radius:10px;background:rgba(60,180,140,.055);font-size:.8rem}
 .cg35-learning-model strong{white-space:nowrap}
 .cg35-learning-model span{opacity:.78}
+
+/* CGPLAY003 FIX2 · X_TRUTH001 */
+.cg35-learning-model-truth{
+  display:block;
+}
+
+.cg35-learning-truth-head{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-bottom:8px;
+}
+
+.cg35-learning-truth-head span{
+  opacity:.72;
+}
+
+.cg35-learning-truth-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:7px;
+  margin-bottom:7px;
+}
+
+.cg35-learning-truth-grid>span{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+  padding:7px 9px;
+  border:1px solid rgba(130,160,190,.22);
+  border-radius:8px;
+  background:rgba(255,255,255,.025);
+}
+
+.cg35-learning-truth-grid b{
+  font-weight:600;
+  opacity:.76;
+}
+
+.cg35-learning-truth-grid strong{
+  font-size:1.03rem;
+}
+
+.cg35-learning-truth-detail{
+  margin-top:4px;
+  opacity:.82;
+  line-height:1.35;
+}
+
+.cg35-learning-truth-note{
+  margin-top:5px;
+  opacity:.58;
+  font-size:.74rem;
+  line-height:1.3;
+}
+
+@media(max-width:700px){
+  .cg35-learning-truth-grid{
+    grid-template-columns:1fr;
+  }
+}
