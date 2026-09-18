@@ -1,4 +1,4 @@
-const CGWEB035_VERSION='CGPLAY003_FIX2_X_TRUTH001';
+const CGWEB035_VERSION='CGPLAY003_FIX4_X_SEMANTIC_AUDIT001';
 const CG35_END='https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb032Search';
 const cg35$=id=>document.getElementById(id);
 const cg35Esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
@@ -149,15 +149,422 @@ function cg35Smart(){
         <label>Jamais vues (%)<input id="cg35SmartUnseen" type="number" min="0" max="100" value="${c.unseenPct}"></label>
         <label>Domaine<select id="cg35SmartDomain">${domains.map(d=>`<option value="${cg35Esc(d)}" ${d===c.domain?'selected':''}>${cg35Esc(d||'Tous les domaines')}</option>`).join('')}</select></label>
       </div>
-      <div class="cg35-actions"><button id="cg35SmartGenerate" class="cg35-smart-primary">Générer la séance</button></div>
+      <div class="cg35-actions"><button id="cg35SmartGenerate" class="cg35-smart-primary">Générer la séance</button><button id="cg35XAudit" class="cg35-x-audit-button">Auditer les X</button></div>
       <small>LEARNING_MODEL002 : A/R/P/T ne pilotent plus la sélection. Seul X interdit définitivement une question ; SMART_BALANCE002 gère le reste depuis l’historique de jeu.</small>
     </section>
     <section id="cg35SmartResults" class="cg35-smart-results">
       <div class="cg35-empty">Configure la séance puis clique sur « Générer la séance ».</div>
     </section>`);
   cg35$('cg35SmartGenerate').onclick=cg35GenerateSmart;
+  cg35$('cg35XAudit').onclick=cg35RunXAudit;
   cg35Status('Session intelligente prête.','ok');
 }
+async function cg35RunXAudit(){
+
+  let box=
+    cg35$('cg35XAuditResults');
+
+
+  if(!box){
+
+    const smart=
+      cg35$('cg35SmartResults');
+
+    if(!smart){
+      return;
+    }
+
+    smart.insertAdjacentHTML(
+      'beforebegin',
+      '<section id="cg35XAuditResults" class="cg35-x-audit"></section>'
+    );
+
+    box=
+      cg35$('cg35XAuditResults');
+  }
+
+
+  box.innerHTML=
+    '<div class="cg35-empty">Analyse sémantique read-only des exclusions X…</div>';
+
+
+  cg35Status(
+    'Audit sémantique des exclusions X…'
+  );
+
+
+  try{
+
+    const d=
+      await cg35Api({
+        mode:'xSemanticAudit',
+        sampleLimit:3000
+      });
+
+
+    const a=
+      d.audit||{};
+
+
+    const pct=v=>
+      Number(v||0)
+        .toLocaleString(
+          'fr-FR',
+          {
+            maximumFractionDigits:2
+          }
+        )+
+      ' %';
+
+
+    const bar=(rows,max=12)=>
+      (rows||[])
+        .slice(0,max)
+        .map(
+          x=>
+            '<div class="cg35-x-audit-row">'+
+              '<span>'+
+                cg35Esc(x.name)+
+              '</span>'+
+              '<b>'+
+                cg35Fmt(x.count)+
+              '</b>'+
+            '</div>'
+        )
+        .join('') ||
+      '<div class="cg35-empty">Aucune donnée.</div>';
+
+
+    const exact=
+      (a.exactExamples||[])
+        .map(
+          g=>
+            '<article class="cg35-x-audit-example">'+
+              '<header>'+
+                '<b>'+
+                  cg35Fmt(g.count)+
+                  ' occurrences'+
+                '</b>'+
+                '<span>'+
+                  cg35Esc(
+                    cg35Path(
+                      g.domain,
+                      g.theme
+                    )
+                  )+
+                '</span>'+
+              '</header>'+
+              (g.rows||[])
+                .map(
+                  q=>
+                    '<div class="cg35-x-audit-question">'+
+                      '<span>'+
+                        cg35Esc(
+                          q.question||
+                          '(sans texte)'
+                        )+
+                      '</span>'+
+                      cg35QuestionButton(
+                        q.id
+                      )+
+                    '</div>'
+                )
+                .join('')+
+            '</article>'
+        )
+        .join('') ||
+      '<div class="cg35-empty">Aucun doublon exact dans l’échantillon.</div>';
+
+
+    const near=
+      (a.nearDuplicatePairs||[])
+        .map(
+          p=>
+            '<article class="cg35-x-audit-example">'+
+              '<header>'+
+                '<b>'+
+                  cg35Fmt(
+                    p.similarity
+                  )+
+                  ' % similaire'+
+                '</b>'+
+                '<span>'+
+                  cg35Esc(
+                    cg35Path(
+                      p.domain,
+                      p.theme
+                    )
+                  )+
+                '</span>'+
+              '</header>'+
+              '<div class="cg35-x-audit-question">'+
+                '<span>'+
+                  cg35Esc(
+                    p.a?.question||
+                    ''
+                  )+
+                '</span>'+
+                cg35QuestionButton(
+                  p.a?.id
+                )+
+              '</div>'+
+              '<div class="cg35-x-audit-question">'+
+                '<span>'+
+                  cg35Esc(
+                    p.b?.question||
+                    ''
+                  )+
+                '</span>'+
+                cg35QuestionButton(
+                  p.b?.id
+                )+
+              '</div>'+
+            '</article>'
+        )
+        .join('') ||
+      '<div class="cg35-empty">Aucun quasi-doublon détecté dans la limite d’analyse.</div>';
+
+
+    const unique=
+      (a.uniqueExamples||[])
+        .map(
+          q=>
+            '<article class="cg35-x-audit-unique">'+
+              '<small>'+
+                cg35Esc(
+                  cg35Path(
+                    q.domain,
+                    q.theme
+                  )
+                )+
+              '</small>'+
+              '<span>'+
+                cg35Esc(
+                  q.question||
+                  '(sans texte)'
+                )+
+              '</span>'+
+              cg35QuestionButton(
+                q.id
+              )+
+            '</article>'
+        )
+        .join('') ||
+      '<div class="cg35-empty">Aucun exemple disponible.</div>';
+
+
+    const nonX=
+      a.comparisonNonX||{};
+
+
+    box.innerHTML=
+      '<div class="cg35-x-audit-head">'+
+
+        '<div>'+
+          '<strong>'+
+            cg35Esc(
+              a.auditVersion||
+              'CGPLAY003_FIX4_X_SEMANTIC_AUDIT001'
+            )+
+          '</strong>'+
+          '<span>Audit read-only · aucune donnée modifiée</span>'+
+        '</div>'+
+
+        '<button id="cg35XAuditClose">Fermer l’audit</button>'+
+
+      '</div>'+
+
+      '<section class="cg35-x-audit-kpis">'+
+
+        '<article>'+
+          '<small>Catalogue</small>'+
+          '<b>'+
+            cg35Fmt(
+              a.totalQuestions
+            )+
+          '</b>'+
+          '<span>questions actuelles</span>'+
+        '</article>'+
+
+        '<article>'+
+          '<small>X actifs</small>'+
+          '<b>'+
+            cg35Fmt(
+              a.xActive
+            )+
+          '</b>'+
+          '<span>'+
+            pct(
+              a.xActivePct
+            )+
+            ' du catalogue'+
+          '</span>'+
+        '</article>'+
+
+        '<article>'+
+          '<small>Non-X</small>'+
+          '<b>'+
+            cg35Fmt(
+              a.nonX
+            )+
+          '</b>'+
+          '<span>questions non bannies</span>'+
+        '</article>'+
+
+        '<article>'+
+          '<small>Échantillon X</small>'+
+          '<b>'+
+            cg35Fmt(
+              a.sampleSize
+            )+
+          '</b>'+
+          '<span>'+
+            pct(
+              a.sampleCoveragePct
+            )+
+            ' des X actifs'+
+          '</span>'+
+        '</article>'+
+
+        '<article>'+
+          '<small>Doublons exacts X</small>'+
+          '<b>'+
+            pct(
+              a.exactDuplicateRatePct
+            )+
+          '</b>'+
+          '<span>'+
+            cg35Fmt(
+              a.exactDuplicateRows
+            )+
+            ' lignes · '+
+            cg35Fmt(
+              a.exactDuplicateGroups
+            )+
+            ' groupes'+
+          '</span>'+
+        '</article>'+
+
+        '<article>'+
+          '<small>Comparaison non-X</small>'+
+          '<b>'+
+            pct(
+              nonX.exactDuplicateRatePct
+            )+
+          '</b>'+
+          '<span>'+
+            cg35Fmt(
+              nonX.sampleSize
+            )+
+            ' questions échantillonnées'+
+          '</span>'+
+        '</article>'+
+
+      '</section>'+
+
+      '<div class="cg35-x-audit-warning">'+
+        'Les taux de doublons et les répartitions ci-dessous portent sur un échantillon réparti de '+
+        cg35Fmt(
+          a.sampleSize
+        )+
+        ' X actifs ; ils ne constituent pas un comptage exhaustif des doublons de la base entière.'+
+      '</div>'+
+
+      '<section class="cg35-x-audit-columns">'+
+
+        '<article>'+
+          '<h3>Principaux domaines X</h3>'+
+          bar(
+            a.topDomains,
+            12
+          )+
+        '</article>'+
+
+        '<article>'+
+          '<h3>Principaux thèmes X</h3>'+
+          bar(
+            a.topThemes,
+            20
+          )+
+        '</article>'+
+
+      '</section>'+
+
+      '<details open class="cg35-x-audit-details">'+
+        '<summary>Exemples de doublons exacts</summary>'+
+        exact+
+      '</details>'+
+
+      '<details class="cg35-x-audit-details">'+
+        '<summary>Quasi-doublons détectés ('+
+          cg35Fmt(
+            (a.nearDuplicatePairs||[]).length
+          )+
+          ')</summary>'+
+        near+
+      '</details>'+
+
+      '<details class="cg35-x-audit-details">'+
+        '<summary>X semblant uniques dans l’échantillon</summary>'+
+        '<div class="cg35-x-audit-warning">'+
+          'Ces questions sont uniques uniquement au regard de l’échantillon et de l’heuristique actuelle. Elles ne sont pas automatiquement réhabilitées.'+
+        '</div>'+
+        unique+
+      '</details>'+
+
+      '<div class="cg35-x-audit-foot">'+
+        'Provenance : '+
+        cg35Fmt(
+          a.provenance?.fromLegacyBuckets
+        )+
+        ' références dans statusBuckets · '+
+        cg35Fmt(
+          a.provenance?.fromQuestionStatus
+        )+
+        ' dans questions.status · '+
+        cg35Fmt(
+          a.semanticComparisons
+        )+
+        ' comparaisons sémantiques effectuées.'+
+      '</div>';
+
+
+    cg35$('cg35XAuditClose')
+      ?.addEventListener(
+        'click',
+        ()=>{
+          box.remove();
+        }
+      );
+
+
+    cg35Status(
+      '✅ Audit X terminé : '+
+      cg35Fmt(
+        a.sampleSize
+      )+
+      ' X analysés.',
+      'ok'
+    );
+
+
+  }catch(e){
+
+    box.innerHTML=
+      '<div class="cg35-error">'+
+        cg35Esc(
+          e.message
+        )+
+      '</div>';
+
+    cg35Status(
+      '❌ '+
+      e.message,
+      'bad'
+    );
+  }
+}
+
 async function cg35GenerateSmart(){
 
   try{

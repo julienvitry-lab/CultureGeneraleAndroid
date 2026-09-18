@@ -19,6 +19,7 @@ const X_POLICY_TTL_MS=15*1000;
 const X_POLICY_CACHE=new Map();
 const LEARNING_MODEL_VERSION='CGPLAY003_X_ONLY001_LEARNING_MODEL002';
 const X_TRUTH_VERSION='CGPLAY003_FIX3_X_TRUTH001_REPAIR001';
+const X_AUDIT_VERSION='CGPLAY003_FIX4_X_SEMANTIC_AUDIT001';
 
 const one=v=>String(v??'').trim();
 const num=v=>Number.isFinite(Number(v))?Number(v):0;
@@ -1040,6 +1041,859 @@ async function smartSession(uid,analysis,body,xPolicy){
   };
 }
 
+function xAuditNorm(value){
+
+  return one(value)
+    .normalize('NFD')
+    .replace(
+      /[\u0300-\u036f]/g,
+      ''
+    )
+    .replace(/œ/gi,'oe')
+    .replace(/æ/gi,'ae')
+    .toLowerCase()
+    .replace(
+      /[^a-z0-9]+/g,
+      ' '
+    )
+    .trim()
+    .replace(/\s+/g,' ');
+}
+
+function xAuditTokenSet(value){
+
+  return new Set(
+    xAuditNorm(value)
+      .split(' ')
+      .filter(
+        x=>x.length>=2
+      )
+  );
+}
+
+function xAuditSimilarity(a,b){
+
+  const A=
+    xAuditTokenSet(a);
+
+  const B=
+    xAuditTokenSet(b);
+
+  if(
+    A.size<3 ||
+    B.size<3
+  ){
+    return 0;
+  }
+
+  let common=0;
+
+  for(const x of A){
+
+    if(B.has(x)){
+      common++;
+    }
+  }
+
+  const union=
+    A.size+
+    B.size-
+    common;
+
+  return union
+    ? common/union
+    : 0;
+}
+
+function xAuditTop(map,limit=15){
+
+  return [...map.entries()]
+    .map(
+      ([name,count])=>({
+        name,
+        count
+      })
+    )
+    .sort(
+      (a,b)=>
+        b.count-a.count ||
+        a.name.localeCompare(
+          b.name,
+          'fr'
+        )
+    )
+    .slice(
+      0,
+      limit
+    );
+}
+
+function xAuditExactStats(rows){
+
+  const map=
+    new Map();
+
+  for(const row of rows){
+
+    const key=
+      xAuditNorm(
+        row.question
+      );
+
+    if(!key)continue;
+
+    if(!map.has(key)){
+      map.set(key,[]);
+    }
+
+    map
+      .get(key)
+      .push(row);
+  }
+
+  const groups=
+    [...map.values()]
+      .filter(
+        group=>group.length>1
+      )
+      .sort(
+        (a,b)=>
+          b.length-a.length
+      );
+
+  const duplicateRows=
+    groups.reduce(
+      (n,g)=>n+g.length,
+      0
+    );
+
+  return {
+    map,
+    groups,
+    duplicateRows
+  };
+}
+
+async function xSemanticAudit(
+  uid,
+  xPolicy,
+  body
+){
+
+  const db=
+    getFirestore();
+
+  const questions=
+    db
+      .collection('users')
+      .doc(uid)
+      .collection('questions');
+
+
+  /*
+   * Audit volontairement borné.
+   *
+   * On ne relit PAS les 49 657 documents :
+   * loadXPolicy connaît déjà tous leurs IDs.
+   *
+   * On sélectionne un échantillon réparti
+   * régulièrement sur l'ensemble des IDs.
+   */
+  const sampleLimit=
+    clamp(
+      Math.floor(
+        num(body.sampleLimit)||3000
+      ),
+      500,
+      5000
+    );
+
+
+  const totalSnap=
+    await questions
+      .count()
+      .get();
+
+
+  const totalQuestions=
+    Number(
+      totalSnap
+        .data()
+        .count||0
+    );
+
+
+  const xKnown=
+    xPolicy?.ids?.size||0;
+
+  const xActive=
+    xPolicy?.catalogIds?.size||0;
+
+  const nonX=
+    Math.max(
+      0,
+      totalQuestions-xActive
+    );
+
+
+  const activeIds=
+    [
+      ...(xPolicy?.catalogIds||[])
+    ]
+    .sort(
+      (a,b)=>
+        String(a)
+          .localeCompare(
+            String(b),
+            'fr',
+            {
+              numeric:true
+            }
+          )
+    );
+
+
+  const selectedIds=[];
+
+
+  if(
+    activeIds.length<=sampleLimit
+  ){
+
+    selectedIds.push(
+      ...activeIds
+    );
+
+  }else{
+
+    const used=
+      new Set();
+
+    for(
+      let i=0;
+      i<sampleLimit;
+      i++
+    ){
+
+      const index=
+        Math.floor(
+          i*
+          (activeIds.length-1)/
+          Math.max(
+            1,
+            sampleLimit-1
+          )
+        );
+
+      const id=
+        activeIds[index];
+
+      if(
+        !used.has(id)
+      ){
+
+        used.add(id);
+        selectedIds.push(id);
+      }
+    }
+  }
+
+
+  const sample=[];
+
+
+  for(
+    let i=0;
+    i<selectedIds.length;
+    i+=200
+  ){
+
+    const refs=
+      selectedIds
+        .slice(i,i+200)
+        .map(
+          id=>
+            questions.doc(id)
+        );
+
+
+    if(!refs.length)continue;
+
+
+    const snaps=
+      await db.getAll(...refs);
+
+
+    for(const d of snaps){
+
+      if(!d.exists)continue;
+
+      const x=
+        d.data()||{};
+
+      sample.push({
+
+        id:d.id,
+
+        domain:
+          one(x.megatheme)||
+          '(Sans domaine)',
+
+        theme:
+          one(x.theme)||
+          '(Sans thème)',
+
+        question:
+          one(x.question),
+
+        detail:
+          one(x.detail)
+      });
+    }
+  }
+
+
+  /*
+   * Répartition domaine / thème.
+   */
+  const domains=
+    new Map();
+
+  const themes=
+    new Map();
+
+
+  for(const row of sample){
+
+    domains.set(
+      row.domain,
+      (domains.get(row.domain)||0)+1
+    );
+
+    const themeKey=
+      row.domain+
+      ' › '+
+      row.theme;
+
+    themes.set(
+      themeKey,
+      (themes.get(themeKey)||0)+1
+    );
+  }
+
+
+  /*
+   * Doublons textuels exacts après normalisation.
+   */
+  const exact=
+    xAuditExactStats(sample);
+
+
+  const exactExamples=
+    exact.groups
+      .slice(0,15)
+      .map(
+        group=>({
+
+          count:
+            group.length,
+
+          domain:
+            group[0]?.domain||'',
+
+          theme:
+            group[0]?.theme||'',
+
+          normalized:
+            xAuditNorm(
+              group[0]?.question
+            ),
+
+          rows:
+            group
+              .slice(0,5)
+              .map(
+                x=>({
+                  id:x.id,
+                  question:x.question,
+                  domain:x.domain,
+                  theme:x.theme
+                })
+              )
+        })
+      );
+
+
+  /*
+   * Quasi-doublons :
+   *
+   * - uniquement parmi les textes non déjà identiques ;
+   * - même domaine + même thème ;
+   * - Jaccard >= 0,82 ;
+   * - nombre de comparaisons volontairement plafonné.
+   */
+  const uniqueRows=
+    sample.filter(
+      row=>{
+
+        const key=
+          xAuditNorm(
+            row.question
+          );
+
+        return (
+          key.length>=12 &&
+          (
+            exact.map
+              .get(key)
+              ?.length||0
+          )===1
+        );
+      }
+    );
+
+
+  const buckets=
+    new Map();
+
+
+  for(const row of uniqueRows){
+
+    const key=
+      row.domain+
+      '\u0000'+
+      row.theme;
+
+    if(!buckets.has(key)){
+      buckets.set(key,[]);
+    }
+
+    buckets
+      .get(key)
+      .push(row);
+  }
+
+
+  const nearPairs=[];
+
+  const nearIds=
+    new Set();
+
+  let comparisons=0;
+
+  const maxComparisons=
+    80000;
+
+
+  outer:
+  for(const rows of buckets.values()){
+
+    const capped=
+      rows.slice(0,350);
+
+    for(
+      let i=0;
+      i<capped.length;
+      i++
+    ){
+
+      for(
+        let j=i+1;
+        j<capped.length;
+        j++
+      ){
+
+        comparisons++;
+
+        if(
+          comparisons>maxComparisons
+        ){
+          break outer;
+        }
+
+
+        const a=
+          capped[i];
+
+        const b=
+          capped[j];
+
+
+        const la=
+          xAuditNorm(
+            a.question
+          ).length;
+
+        const lb=
+          xAuditNorm(
+            b.question
+          ).length;
+
+
+        if(
+          !la ||
+          !lb
+        ){
+          continue;
+        }
+
+
+        const lengthRatio=
+          Math.min(la,lb)/
+          Math.max(la,lb);
+
+
+        if(
+          lengthRatio<0.65
+        ){
+          continue;
+        }
+
+
+        const similarity=
+          xAuditSimilarity(
+            a.question,
+            b.question
+          );
+
+
+        if(
+          similarity>=0.82
+        ){
+
+          nearIds.add(a.id);
+          nearIds.add(b.id);
+
+          nearPairs.push({
+
+            similarity:
+              Math.round(
+                similarity*100
+              ),
+
+            domain:
+              a.domain,
+
+            theme:
+              a.theme,
+
+            a:{
+              id:a.id,
+              question:a.question
+            },
+
+            b:{
+              id:b.id,
+              question:b.question
+            }
+          });
+
+
+          if(
+            nearPairs.length>=25
+          ){
+            break outer;
+          }
+        }
+      }
+    }
+  }
+
+
+  /*
+   * Questions X qui semblent uniques
+   * dans l'échantillon.
+   *
+   * Ce n'est PAS une preuve qu'elles ne sont pas
+   * des doublons dans la base complète.
+   */
+  const uniqueCandidates=
+    uniqueRows.filter(
+      row=>
+        !nearIds.has(row.id)
+    );
+
+
+  const uniqueExamples=[];
+
+
+  if(uniqueCandidates.length){
+
+    const wanted=
+      Math.min(
+        25,
+        uniqueCandidates.length
+      );
+
+    for(
+      let i=0;
+      i<wanted;
+      i++
+    ){
+
+      const index=
+        Math.floor(
+          i*
+          (uniqueCandidates.length-1)/
+          Math.max(
+            1,
+            wanted-1
+          )
+        );
+
+      const row=
+        uniqueCandidates[index];
+
+      uniqueExamples.push({
+
+        id:row.id,
+
+        domain:row.domain,
+
+        theme:row.theme,
+
+        question:row.question
+      });
+    }
+  }
+
+
+  /*
+   * Petit échantillon non-X pour comparaison.
+   *
+   * Lecture plafonnée à 4 000 documents.
+   */
+  const nonXSample=[];
+
+  let last=null;
+  let scanned=0;
+
+
+  while(
+    nonXSample.length<300 &&
+    scanned<4000
+  ){
+
+    let q=
+      questions
+        .orderBy(
+          FieldPath.documentId()
+        )
+        .select(
+          'question',
+          'megatheme',
+          'theme'
+        )
+        .limit(500);
+
+
+    if(last){
+      q=q.startAfter(last);
+    }
+
+
+    const snap=
+      await q.get();
+
+
+    if(snap.empty)break;
+
+
+    scanned+=snap.size;
+
+
+    for(const d of snap.docs){
+
+      if(
+        xPolicy
+          ?.ids
+          ?.has(d.id)
+      ){
+        continue;
+      }
+
+
+      const x=
+        d.data()||{};
+
+
+      nonXSample.push({
+
+        id:d.id,
+
+        domain:
+          one(x.megatheme)||
+          '(Sans domaine)',
+
+        theme:
+          one(x.theme)||
+          '(Sans thème)',
+
+        question:
+          one(x.question)
+      });
+
+
+      if(
+        nonXSample.length>=300
+      ){
+        break;
+      }
+    }
+
+
+    last=
+      snap.docs[
+        snap.docs.length-1
+      ];
+
+
+    if(snap.size<500){
+      break;
+    }
+  }
+
+
+  const nonXExact=
+    xAuditExactStats(
+      nonXSample
+    );
+
+
+  const sampleWithText=
+    sample.filter(
+      x=>
+        xAuditNorm(
+          x.question
+        )
+    ).length;
+
+
+  const nonXWithText=
+    nonXSample.filter(
+      x=>
+        xAuditNorm(
+          x.question
+        )
+    ).length;
+
+
+  return {
+
+    auditVersion:
+      X_AUDIT_VERSION,
+
+    readOnly:true,
+
+    totalQuestions,
+
+    xKnown,
+
+    xActive,
+
+    nonX,
+
+    xActivePct:
+      totalQuestions
+        ? Math.round(
+            xActive/
+            totalQuestions*
+            10000
+          )/100
+        : 0,
+
+    sampleSize:
+      sample.length,
+
+    sampleLimit,
+
+    sampleCoveragePct:
+      xActive
+        ? Math.round(
+            sample.length/
+            xActive*
+            10000
+          )/100
+        : 0,
+
+    topDomains:
+      xAuditTop(
+        domains,
+        12
+      ),
+
+    topThemes:
+      xAuditTop(
+        themes,
+        20
+      ),
+
+    exactDuplicateGroups:
+      exact.groups.length,
+
+    exactDuplicateRows:
+      exact.duplicateRows,
+
+    exactDuplicateRatePct:
+      sampleWithText
+        ? Math.round(
+            exact.duplicateRows/
+            sampleWithText*
+            10000
+          )/100
+        : 0,
+
+    exactExamples,
+
+    nearDuplicatePairs:
+      nearPairs,
+
+    semanticComparisons:
+      comparisons,
+
+    uniqueCandidateCount:
+      uniqueCandidates.length,
+
+    uniqueExamples,
+
+    comparisonNonX:{
+
+      sampleSize:
+        nonXSample.length,
+
+      scanned,
+
+      exactDuplicateGroups:
+        nonXExact.groups.length,
+
+      exactDuplicateRows:
+        nonXExact.duplicateRows,
+
+      exactDuplicateRatePct:
+        nonXWithText
+          ? Math.round(
+              nonXExact.duplicateRows/
+              nonXWithText*
+              10000
+            )/100
+          : 0
+    },
+
+    provenance:{
+
+      fromLegacyBuckets:
+        xPolicy
+          ?.fromBuckets
+          ?.size||0,
+
+      fromQuestionStatus:
+        xPolicy
+          ?.fromQuestionStatus
+          ?.size||0
+    }
+  };
+}
+
 async function handleLearningHub(req,res){
   if(cors(req,res))return;
 
@@ -1071,9 +1925,33 @@ async function handleLearningHub(req,res){
       mode==='smartSession'||
       mode==='neverOverview'||
       mode==='neverThemes'||
-      mode==='neverQuestions';
+      mode==='neverQuestions'||
+                mode==='xSemanticAudit';
 
     const xPolicy=await loadXPolicy(user.uid,forceX);
+
+              if(mode==='xSemanticAudit'){
+
+                const audit=
+                  await xSemanticAudit(
+                    user.uid,
+                    xPolicy,
+                    body
+                  );
+
+                return json(
+                  res,
+                  200,
+                  {
+                    ok:true,
+                    audit,
+                    learningModel:
+                      learningModelMeta(
+                        xPolicy
+                      )
+                  }
+                );
+              }
 
     // A/R/P/T ne sont jamais consultés.
     // X est retiré avant buildAnalysis : ni révision, ni faiblesse, ni stats pédagogiques.
