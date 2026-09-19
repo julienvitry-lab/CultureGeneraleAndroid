@@ -23,6 +23,9 @@ const X_AUDIT_VERSION='CGPLAY003_FIX4_X_SEMANTIC_AUDIT001';
 const X_DUPLICATE_TRUTH_VERSION='CGPLAY003_FIX5_X_DUPLICATE_TRUTH002';
 const X_ORIGIN_VERSION='CGPLAY003_FIX6_X_ORIGIN_AUDIT001';
 const X_REHABILITATION_PREVIEW_VERSION='CGPLAY003_FIX6_REHABILITATION_PREVIEW001';
+const CGPLAY004_LONG_SESSION_VERSION='CGPLAY004_LONG_SESSION001';
+const CGPLAY004_ADAPTIVE_BATCH_VERSION='CGPLAY004_ADAPTIVE_BATCH001';
+const CGPLAY004_SESSION_RESUME_VERSION='CGPLAY004_SESSION_RESUME001';
 
 const one=v=>String(v??'').trim();
 const num=v=>Number.isFinite(Number(v))?Number(v):0;
@@ -4185,6 +4188,1299 @@ async function xOriginAudit(
   };
 }
 
+function smartLongConfig(body){
+
+  return {
+
+    count:
+      clamp(
+        Math.floor(
+          num(body?.count)||20
+        ),
+        5,
+        1000
+      ),
+
+    batchSize:
+      clamp(
+        Math.floor(
+          num(body?.batchSize)||50
+        ),
+        10,
+        100
+      ),
+
+    duePct:
+      clamp(
+        num(
+          body?.duePct??40
+        ),
+        0,
+        100
+      ),
+
+    weakPct:
+      clamp(
+        num(
+          body?.weakPct??35
+        ),
+        0,
+        100
+      ),
+
+    unseenPct:
+      clamp(
+        num(
+          body?.unseenPct??25
+        ),
+        0,
+        100
+      ),
+
+    domain:
+      one(body?.domain)
+  };
+}
+
+function smartLongCounts(value){
+
+  const v=
+    value&&
+    typeof value==='object'
+      ? value
+      : {};
+
+  return {
+
+    due:
+      Math.max(
+        0,
+        Math.floor(
+          num(v.due)
+        )
+      ),
+
+    weakness:
+      Math.max(
+        0,
+        Math.floor(
+          num(v.weakness)
+        )
+      ),
+
+    unseen:
+      Math.max(
+        0,
+        Math.floor(
+          num(v.unseen)
+        )
+      )
+  };
+}
+
+function smartLongRowId(row){
+
+  return (
+    one(row?.id) ||
+    one(row?.questionId) ||
+    (
+      row?.row
+        ? String(row.row)
+        : ''
+    )
+  );
+}
+
+async function smartLongUnseenPool(
+  uid,
+  analysis,
+  wanted,
+  domain,
+  xPolicy,
+  blocked
+){
+
+  const seen=
+    new Set(
+      analysis.questions
+        .map(
+          x=>
+            one(x.questionId)
+        )
+        .filter(Boolean)
+    );
+
+
+  for(const id of blocked||[]){
+    seen.add(
+      one(id)
+    );
+  }
+
+
+  const out=[];
+
+  const col=
+    getFirestore()
+      .collection('users')
+      .doc(uid)
+      .collection('questions');
+
+
+  let last=null;
+  let scanned=0;
+
+
+  /*
+   * Les lots longs peuvent avoir déjà consommé
+   * plusieurs centaines d'identifiants.
+   * Le scan reste borné.
+   */
+  const maxScan=
+    Math.max(
+      5000,
+      Math.min(
+        30000,
+        Math.max(
+          1,
+          wanted
+        )*200
+      )
+    );
+
+
+  while(
+    out.length<wanted &&
+    scanned<maxScan
+  ){
+
+    let q=col;
+
+
+    if(domain){
+
+      q=q.where(
+        'megatheme',
+        '==',
+        domain
+      );
+    }
+
+
+    q=q
+      .orderBy(
+        FieldPath.documentId()
+      )
+      .select(
+        'question',
+        'detail',
+        'megatheme',
+        'theme'
+      )
+      .limit(250);
+
+
+    if(last){
+
+      q=q.startAfter(last);
+    }
+
+
+    const snap=
+      await q.get();
+
+
+    if(snap.empty)break;
+
+
+    scanned+=snap.size;
+
+
+    for(const d of snap.docs){
+
+      if(
+        seen.has(d.id) ||
+        xPolicy?.ids?.has(d.id)
+      ){
+        continue;
+      }
+
+
+      const x=
+        d.data()||{};
+
+
+      out.push({
+
+        id:d.id,
+
+        row:
+          num(d.id),
+
+        domain:
+          one(x.megatheme),
+
+        theme:
+          one(x.theme),
+
+        question:
+          one(x.question),
+
+        detail:
+          one(x.detail),
+
+        source:'unseen',
+
+        reason:'Jamais vue',
+
+        due:false,
+
+        weakness:0,
+
+        successPercent:null,
+
+        attempts:0,
+
+        mastery:'Jamais vue',
+
+        medianResponseMs:0
+      });
+
+
+      seen.add(d.id);
+
+
+      if(
+        out.length>=wanted
+      ){
+        break;
+      }
+    }
+
+
+    last=
+      snap.docs[
+        snap.docs.length-1
+      ];
+
+
+    if(snap.size<250){
+      break;
+    }
+  }
+
+
+  return {
+    rows:
+      cg35Shuffle(out),
+
+    scanned
+  };
+}
+
+async function smartLongComposeBatch(
+  uid,
+  analysis,
+  body,
+  xPolicy
+){
+
+  const config=
+    smartLongConfig(body);
+
+
+  const servedCounts=
+    smartLongCounts(
+      body?.servedCounts
+    );
+
+
+  const blocked=
+    new Set(
+      (
+        Array.isArray(
+          body?.excludeIds
+        )
+          ? body.excludeIds
+          : []
+      )
+      .map(one)
+      .filter(Boolean)
+      .slice(0,1000)
+    );
+
+
+  const remainingTotal=
+    Math.max(
+      0,
+      config.count-
+      blocked.size
+    );
+
+
+  const batchCount=
+    Math.min(
+      config.batchSize,
+      remainingTotal
+    );
+
+
+  const targetQuota=
+    smartQuota(
+      config.count,
+      config.duePct,
+      config.weakPct,
+      config.unseenPct
+    );
+
+
+  if(batchCount<=0){
+
+    return {
+
+      rows:[],
+
+      requestedBatch:0,
+
+      desired:{
+        due:0,
+        weakness:0,
+        unseen:0
+      },
+
+      actual:{
+        due:0,
+        weakness:0,
+        unseen:0
+      },
+
+      targetQuota,
+
+      servedCountsAfter:
+        servedCounts,
+
+      redistributed:0,
+
+      scannedUnseen:0
+    };
+  }
+
+
+  /*
+   * ADAPTIVE_BATCH001 :
+   * le prochain lot cherche à rattraper les quotas
+   * globaux restant encore à servir.
+   */
+  const remainingTargets={
+
+    due:
+      Math.max(
+        0,
+        targetQuota.due-
+        servedCounts.due
+      ),
+
+    weakness:
+      Math.max(
+        0,
+        targetQuota.weakness-
+        servedCounts.weakness
+      ),
+
+    unseen:
+      Math.max(
+        0,
+        targetQuota.unseen-
+        servedCounts.unseen
+      )
+  };
+
+
+  const remainingWeight=
+    remainingTargets.due+
+    remainingTargets.weakness+
+    remainingTargets.unseen;
+
+
+  const desired=
+    remainingWeight>0
+
+      ? smartQuota(
+          batchCount,
+          remainingTargets.due,
+          remainingTargets.weakness,
+          remainingTargets.unseen
+        )
+
+      : smartQuota(
+          batchCount,
+          config.duePct,
+          config.weakPct,
+          config.unseenPct
+        );
+
+
+  const selected=[];
+
+  const selectedIds=
+    new Set(blocked);
+
+
+  const eligible=q=>{
+
+    const id=
+      one(q.questionId)||
+      String(q.row||'');
+
+
+    if(
+      !id ||
+      selectedIds.has(id) ||
+      xPolicy?.ids?.has(id)
+    ){
+      return false;
+    }
+
+
+    if(
+      config.domain &&
+      one(q.domain)!==config.domain
+    ){
+      return false;
+    }
+
+
+    return true;
+  };
+
+
+  const due=
+    analysis.questions
+      .filter(
+        q=>
+          q.due &&
+          eligible(q)
+      )
+      .sort(
+        (a,b)=>
+          b.overdueMs-a.overdueMs ||
+          a.successPercent-b.successPercent
+      );
+
+
+  const weak=
+    analysis.questions
+      .filter(
+        q=>
+          q.priority &&
+          eligible(q)
+      )
+      .sort(
+        (a,b)=>
+          b.weakness-a.weakness ||
+          b.failures-a.failures
+      );
+
+
+  const unseenWanted=
+    Math.min(
+      250,
+      Math.max(
+        batchCount*3,
+        desired.unseen+
+        batchCount
+      )
+    );
+
+
+  const unseenResult=
+    await smartLongUnseenPool(
+      uid,
+      analysis,
+      unseenWanted,
+      config.domain,
+      xPolicy,
+      selectedIds
+    );
+
+
+  const pools={
+
+    due,
+
+    weakness:weak,
+
+    unseen:
+      unseenResult.rows
+  };
+
+
+  const cursor={
+    due:0,
+    weakness:0,
+    unseen:0
+  };
+
+
+  const actual={
+    due:0,
+    weakness:0,
+    unseen:0
+  };
+
+
+  function pullOne(key){
+
+    const pool=
+      pools[key]||[];
+
+
+    while(
+      cursor[key]<
+      pool.length
+    ){
+
+      const q=
+        pool[
+          cursor[key]++
+        ];
+
+
+      const id=
+        key==='unseen'
+          ? one(q.id)
+          : (
+              one(q.questionId)||
+              String(q.row||'')
+            );
+
+
+      if(
+        !id ||
+        selectedIds.has(id) ||
+        xPolicy?.ids?.has(id)
+      ){
+        continue;
+      }
+
+
+      const row=
+        key==='unseen'
+          ? q
+          : smartHistoricalRow(
+              q,
+              key
+            );
+
+
+      selected.push(row);
+
+      selectedIds.add(id);
+
+      actual[key]++;
+
+      return true;
+    }
+
+
+    return false;
+  }
+
+
+  /*
+   * Quotas primaires.
+   */
+  for(
+    const key of [
+      'due',
+      'weakness',
+      'unseen'
+    ]
+  ){
+
+    while(
+      actual[key]<
+        desired[key] &&
+      selected.length<
+        batchCount
+    ){
+
+      if(
+        !pullOne(key)
+      ){
+        break;
+      }
+    }
+  }
+
+
+  /*
+   * SMART_BALANCE pour le lot :
+   * toute place manquante est redistribuée vers
+   * la catégorie ayant le plus grand déficit global.
+   */
+  while(
+    selected.length<
+    batchCount
+  ){
+
+    const keys=[
+      'due',
+      'weakness',
+      'unseen'
+    ];
+
+
+    keys.sort(
+      (a,b)=>{
+
+        const da=
+          targetQuota[a]-
+          (
+            servedCounts[a]+
+            actual[a]
+          );
+
+
+        const db=
+          targetQuota[b]-
+          (
+            servedCounts[b]+
+            actual[b]
+          );
+
+
+        return db-da;
+      }
+    );
+
+
+    let added=false;
+
+
+    for(const key of keys){
+
+      if(pullOne(key)){
+
+        added=true;
+        break;
+      }
+    }
+
+
+    if(!added){
+      break;
+    }
+  }
+
+
+  const servedCountsAfter={
+
+    due:
+      servedCounts.due+
+      actual.due,
+
+    weakness:
+      servedCounts.weakness+
+      actual.weakness,
+
+    unseen:
+      servedCounts.unseen+
+      actual.unseen
+  };
+
+
+  const redistributed=
+    ['due','weakness','unseen']
+      .reduce(
+        (sum,key)=>
+          sum+
+          Math.max(
+            0,
+            actual[key]-
+            desired[key]
+          ),
+        0
+      );
+
+
+  return {
+
+    rows:
+      selected.slice(
+        0,
+        batchCount
+      ),
+
+    requestedBatch:
+      batchCount,
+
+    desired,
+
+    actual,
+
+    targetQuota,
+
+    servedCountsAfter,
+
+    redistributed,
+
+    scannedUnseen:
+      unseenResult.scanned
+  };
+}
+
+function smartLongPublicState(
+  id,
+  state
+){
+
+  const s=
+    state||{};
+
+
+  return {
+
+    found:true,
+
+    sessionId:id,
+
+    version:
+      CGPLAY004_LONG_SESSION_VERSION,
+
+    adaptiveVersion:
+      CGPLAY004_ADAPTIVE_BATCH_VERSION,
+
+    resumeVersion:
+      CGPLAY004_SESSION_RESUME_VERSION,
+
+    status:
+      one(s.status)||
+      'active',
+
+    config:
+      s.config||{},
+
+    targetQuota:
+      s.targetQuota||{
+        due:0,
+        weakness:0,
+        unseen:0
+      },
+
+    servedCounts:
+      smartLongCounts(
+        s.servedCounts
+      ),
+
+    generatedCount:
+      Number(
+        s.generatedCount||0
+      )||0,
+
+    batchNo:
+      Number(
+        s.batchNo||0
+      )||0,
+
+    currentBatch:
+      Array.isArray(
+        s.currentBatch
+      )
+        ? s.currentBatch
+        : [],
+
+    lastBatchActual:
+      s.lastBatchActual||{
+        due:0,
+        weakness:0,
+        unseen:0
+      },
+
+    lastBatchDesired:
+      s.lastBatchDesired||{
+        due:0,
+        weakness:0,
+        unseen:0
+      },
+
+    lastRedistributed:
+      Number(
+        s.lastRedistributed||0
+      )||0,
+
+    createdAtMs:
+      Number(
+        s.createdAtMs||0
+      )||0,
+
+    updatedAtMs:
+      Number(
+        s.updatedAtMs||0
+      )||0,
+
+    complete:
+      one(s.status)!=='active'
+  };
+}
+
+async function smartLongStart(
+  uid,
+  analysis,
+  body,
+  xPolicy
+){
+
+  const db=
+    getFirestore();
+
+  const config=
+    smartLongConfig(body);
+
+
+  const sessions=
+    db
+      .collection('users')
+      .doc(uid)
+      .collection('smart_sessions');
+
+
+  const ref=
+    sessions.doc();
+
+
+  const batch=
+    await smartLongComposeBatch(
+      uid,
+      analysis,
+      {
+        ...config,
+        excludeIds:[],
+        servedCounts:{
+          due:0,
+          weakness:0,
+          unseen:0
+        }
+      },
+      xPolicy
+    );
+
+
+  const servedIds=
+    batch.rows
+      .map(smartLongRowId)
+      .filter(Boolean);
+
+
+  const now=
+    Date.now();
+
+
+  const generatedCount=
+    servedIds.length;
+
+
+  const status=
+    generatedCount>=config.count
+      ? 'completed'
+      : (
+          batch.rows.length
+            ? 'active'
+            : 'exhausted'
+        );
+
+
+  const state={
+
+    version:
+      CGPLAY004_LONG_SESSION_VERSION,
+
+    adaptiveVersion:
+      CGPLAY004_ADAPTIVE_BATCH_VERSION,
+
+    resumeVersion:
+      CGPLAY004_SESSION_RESUME_VERSION,
+
+    status,
+
+    config,
+
+    targetQuota:
+      batch.targetQuota,
+
+    servedCounts:
+      batch.servedCountsAfter,
+
+    servedIds,
+
+    generatedCount,
+
+    batchNo:
+      batch.rows.length
+        ? 1
+        : 0,
+
+    currentBatch:
+      batch.rows,
+
+    lastBatchActual:
+      batch.actual,
+
+    lastBatchDesired:
+      batch.desired,
+
+    lastRedistributed:
+      batch.redistributed,
+
+    createdAtMs:now,
+
+    updatedAtMs:now
+  };
+
+
+  await ref.set(state);
+
+
+  return smartLongPublicState(
+    ref.id,
+    state
+  );
+}
+
+async function smartLongNext(
+  uid,
+  analysis,
+  body,
+  xPolicy
+){
+
+  const id=
+    one(body?.sessionId);
+
+
+  if(!id){
+
+    const e=
+      new Error(
+        'Identifiant de séance manquant.'
+      );
+
+    e.status=400;
+
+    throw e;
+  }
+
+
+  const db=
+    getFirestore();
+
+
+  const ref=
+    db
+      .collection('users')
+      .doc(uid)
+      .collection('smart_sessions')
+      .doc(id);
+
+
+  const snap=
+    await ref.get();
+
+
+  if(!snap.exists){
+
+    const e=
+      new Error(
+        'Séance longue introuvable.'
+      );
+
+    e.status=404;
+
+    throw e;
+  }
+
+
+  const state=
+    snap.data()||{};
+
+
+  if(
+    one(state.status)!=='active'
+  ){
+
+    return smartLongPublicState(
+      id,
+      state
+    );
+  }
+
+
+  const config=
+    smartLongConfig(
+      state.config||{}
+    );
+
+
+  const excludeIds=
+    Array.isArray(
+      state.servedIds
+    )
+      ? state.servedIds
+      : [];
+
+
+  const batch=
+    await smartLongComposeBatch(
+      uid,
+      analysis,
+      {
+        ...config,
+        excludeIds,
+        servedCounts:
+          state.servedCounts||{}
+      },
+      xPolicy
+    );
+
+
+  const newIds=
+    batch.rows
+      .map(smartLongRowId)
+      .filter(Boolean);
+
+
+  const servedIds=[
+    ...excludeIds,
+    ...newIds
+  ]
+  .slice(0,1000);
+
+
+  const generatedCount=
+    servedIds.length;
+
+
+  const status=
+    generatedCount>=config.count
+      ? 'completed'
+      : (
+          batch.rows.length
+            ? 'active'
+            : 'exhausted'
+        );
+
+
+  const next={
+
+    ...state,
+
+    status,
+
+    config,
+
+    targetQuota:
+      batch.targetQuota,
+
+    servedCounts:
+      batch.servedCountsAfter,
+
+    servedIds,
+
+    generatedCount,
+
+    batchNo:
+      (
+        Number(
+          state.batchNo||0
+        )||0
+      )+
+      (
+        batch.rows.length
+          ? 1
+          : 0
+      ),
+
+    currentBatch:
+      batch.rows,
+
+    lastBatchActual:
+      batch.actual,
+
+    lastBatchDesired:
+      batch.desired,
+
+    lastRedistributed:
+      batch.redistributed,
+
+    updatedAtMs:
+      Date.now()
+  };
+
+
+  await ref.set(
+    next,
+    {
+      merge:true
+    }
+  );
+
+
+  return smartLongPublicState(
+    id,
+    next
+  );
+}
+
+async function smartLongResume(
+  uid,
+  body
+){
+
+  const db=
+    getFirestore();
+
+
+  const sessions=
+    db
+      .collection('users')
+      .doc(uid)
+      .collection('smart_sessions');
+
+
+  const requestedId=
+    one(body?.sessionId);
+
+
+  if(requestedId){
+
+    const snap=
+      await sessions
+        .doc(requestedId)
+        .get();
+
+
+    if(
+      snap.exists &&
+      one(
+        snap.data()?.status
+      )==='active'
+    ){
+
+      return smartLongPublicState(
+        snap.id,
+        snap.data()
+      );
+    }
+  }
+
+
+  /*
+   * Sans ID : recherche de la séance active
+   * la plus récente. Aucune requête composite.
+   */
+  const recent=
+    await sessions
+      .orderBy(
+        'updatedAtMs',
+        'desc'
+      )
+      .limit(10)
+      .get();
+
+
+  const active=
+    recent.docs.find(
+      d=>
+        one(
+          d.data()?.status
+        )==='active'
+    );
+
+
+  if(!active){
+
+    return {
+      found:false
+    };
+  }
+
+
+  return smartLongPublicState(
+    active.id,
+    active.data()
+  );
+}
+
+async function smartLongStop(
+  uid,
+  body
+){
+
+  const id=
+    one(body?.sessionId);
+
+
+  if(!id){
+
+    return {
+      found:false
+    };
+  }
+
+
+  const ref=
+    getFirestore()
+      .collection('users')
+      .doc(uid)
+      .collection('smart_sessions')
+      .doc(id);
+
+
+  const snap=
+    await ref.get();
+
+
+  if(!snap.exists){
+
+    return {
+      found:false
+    };
+  }
+
+
+  const state=
+    snap.data()||{};
+
+
+  const next={
+
+    ...state,
+
+    status:'stopped',
+
+    updatedAtMs:
+      Date.now()
+  };
+
+
+  await ref.set(
+    {
+      status:'stopped',
+      updatedAtMs:
+        next.updatedAtMs
+    },
+    {
+      merge:true
+    }
+  );
+
+
+  return smartLongPublicState(
+    id,
+    next
+  );
+}
+
 async function handleLearningHub(req,res){
   if(cors(req,res))return;
 
@@ -4219,9 +5515,85 @@ async function handleLearningHub(req,res){
       mode==='neverQuestions'||
                 mode==='xSemanticAudit'||
                 mode==='xDuplicateTruth'||
-                mode==='xOriginAudit';
+                mode==='xOriginAudit'||
+                mode==='smartLongStart'||
+                mode==='smartLongNext'||
+                mode==='smartLongResume'||
+                mode==='smartLongStop';
 
     const xPolicy=await loadXPolicy(user.uid,forceX);
+
+              if(mode==='smartLongStart'){
+
+                return json(
+                  res,
+                  200,
+                  {
+                    ok:true,
+                    session:
+                      await smartLongStart(
+                        user.uid,
+                        analysis,
+                        body,
+                        xPolicy
+                      )
+                  }
+                );
+              }
+
+
+              if(mode==='smartLongNext'){
+
+                return json(
+                  res,
+                  200,
+                  {
+                    ok:true,
+                    session:
+                      await smartLongNext(
+                        user.uid,
+                        analysis,
+                        body,
+                        xPolicy
+                      )
+                  }
+                );
+              }
+
+
+              if(mode==='smartLongResume'){
+
+                return json(
+                  res,
+                  200,
+                  {
+                    ok:true,
+                    session:
+                      await smartLongResume(
+                        user.uid,
+                        body
+                      )
+                  }
+                );
+              }
+
+
+              if(mode==='smartLongStop'){
+
+                return json(
+                  res,
+                  200,
+                  {
+                    ok:true,
+                    session:
+                      await smartLongStop(
+                        user.uid,
+                        body
+                      )
+                  }
+                );
+              }
+
 
               if(mode==='xOriginAudit'){
 

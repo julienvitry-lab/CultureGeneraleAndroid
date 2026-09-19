@@ -1,4 +1,4 @@
-const CGWEB035_VERSION='CGPLAY003_FIX6_X_ORIGIN_AUDIT001_REHABILITATION_PREVIEW001';
+const CGWEB035_VERSION='CGPLAY004_LONG_SESSION001_ADAPTIVE_BATCH001_SESSION_RESUME001';
 const CG35_END='https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb032Search';
 const cg35$=id=>document.getElementById(id);
 const cg35Esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
@@ -156,6 +156,7 @@ function cg35Smart(){
       <div class="cg35-empty">Configure la séance puis clique sur « Générer la séance ».</div>
     </section>`);
   cg35$('cg35SmartGenerate').onclick=cg35GenerateSmart;
+  cg35LongEnhanceSmart();
   cg35$('cg35XAudit').onclick=cg35RunXAudit;
   cg35$('cg35XOriginAudit').onclick=cg35RunXOriginAudit;
   cg35Status('Session intelligente prête.','ok');
@@ -1172,7 +1173,689 @@ async function cg35RunXOriginAudit(){
   }
 }
 
+function cg35LongStorageGet(){
+
+  try{
+
+    return (
+      localStorage.getItem(
+        'cgplay004.longSessionId'
+      )||
+      ''
+    );
+
+  }catch(_){
+
+    return '';
+  }
+}
+
+function cg35LongStorageSet(id){
+
+  try{
+
+    if(id){
+
+      localStorage.setItem(
+        'cgplay004.longSessionId',
+        id
+      );
+
+    }else{
+
+      localStorage.removeItem(
+        'cgplay004.longSessionId'
+      );
+    }
+
+  }catch(_){}
+}
+
+function cg35LongEnhanceSmart(){
+
+  const input=
+    cg35$('cg35SmartCount');
+
+
+  if(input){
+
+    input.max='1000';
+
+    input.min='5';
+  }
+
+
+  const config=
+    input?.closest(
+      '.cg35-smart-config'
+    );
+
+
+  if(!config)return;
+
+
+  /*
+   * Les audits X restent disponibles dans le code
+   * mais disparaissent de l'interface normale.
+   */
+  cg35$('cg35XAudit')?.remove();
+
+  cg35$('cg35XOriginAudit')?.remove();
+
+
+  const actions=
+    config.querySelector(
+      '.cg35-actions'
+    );
+
+
+  if(
+    actions &&
+    !cg35$('cg35LongResume')
+  ){
+
+    actions.insertAdjacentHTML(
+      'beforeend',
+
+      '<button id="cg35LongResume" class="cg35-long-resume">'+
+        'Reprendre une séance'+
+      '</button>'
+    );
+
+
+    cg35$('cg35LongResume')
+      .onclick=
+        cg35ResumeLongSession;
+  }
+
+
+  if(
+    !config.querySelector(
+      '.cg35-long-presets'
+    )
+  ){
+
+    config.insertAdjacentHTML(
+      'beforeend',
+
+      '<div class="cg35-long-presets">'+
+        '<span>Tailles rapides :</span>'+
+        [20,50,100,250,500,1000]
+          .map(
+            n=>
+              '<button type="button" data-cg35-long-size="'+n+'">'+
+                n+
+              '</button>'
+          )
+          .join('')+
+      '</div>'+
+      '<small class="cg35-long-help">'+
+        'Au-delà de 50 questions, LONG_SESSION001 prépare la séance par lots de 50. '+
+        'Le lot suivant est recalculé à partir de l’historique le plus récent et aucune question déjà servie dans la séance n’est reproposée.'+
+      '</small>'
+    );
+
+
+    config
+      .querySelectorAll(
+        '[data-cg35-long-size]'
+      )
+      .forEach(
+        b=>
+          b.onclick=()=>{
+
+            if(input){
+
+              input.value=
+                b.dataset.cg35LongSize;
+            }
+          }
+      );
+  }
+}
+
+function cg35LongStatusLabel(
+  status
+){
+
+  if(status==='completed'){
+    return 'Séance complète';
+  }
+
+  if(status==='exhausted'){
+    return 'Stock disponible épuisé';
+  }
+
+  if(status==='stopped'){
+    return 'Séance terminée';
+  }
+
+  return 'Séance en cours';
+}
+
+function cg35LongRender(state){
+
+  const s=
+    state||{};
+
+
+  const rows=
+    Array.isArray(
+      s.currentBatch
+    )
+      ? s.currentBatch
+      : [];
+
+
+  const c=
+    s.config||{};
+
+
+  const target=
+    s.targetQuota||{};
+
+
+  const served=
+    s.servedCounts||{};
+
+
+  const generated=
+    Number(
+      s.generatedCount||0
+    )||0;
+
+
+  const total=
+    Number(
+      c.count||0
+    )||0;
+
+
+  const batchNo=
+    Number(
+      s.batchNo||0
+    )||0;
+
+
+  const baseIndex=
+    Math.max(
+      0,
+      generated-
+      rows.length
+    );
+
+
+  const box=
+    cg35$('cg35SmartResults');
+
+
+  if(!box)return;
+
+
+  box.innerHTML=`
+
+    <section class="cg35-long-head">
+
+      <div class="cg35-long-progress-main">
+
+        <strong>
+          ${cg35Fmt(generated)} / ${cg35Fmt(total)}
+        </strong>
+
+        <span>
+          ${cg35Esc(cg35LongStatusLabel(s.status))}
+          · lot ${cg35Fmt(batchNo)}
+          · ${cg35Fmt(rows.length)} question(s) affichée(s)
+        </span>
+
+      </div>
+
+      <div class="cg35-long-bar">
+        <span style="width:${
+          total
+            ? Math.min(
+                100,
+                generated/total*100
+              )
+            : 0
+        }%"></span>
+      </div>
+
+      <div class="cg35-long-kpis">
+
+        <div>
+          <b>${cg35Fmt(served.due||0)} / ${cg35Fmt(target.due||0)}</b>
+          <span>À réviser</span>
+        </div>
+
+        <div>
+          <b>${cg35Fmt(served.weakness||0)} / ${cg35Fmt(target.weakness||0)}</b>
+          <span>Points faibles</span>
+        </div>
+
+        <div>
+          <b>${cg35Fmt(served.unseen||0)} / ${cg35Fmt(target.unseen||0)}</b>
+          <span>Jamais vues</span>
+        </div>
+
+        <div>
+          <b>${cg35Fmt(s.lastRedistributed||0)}</b>
+          <span>rééquilibrée(s) dans ce lot</span>
+        </div>
+
+      </div>
+
+      <div class="cg35-actions cg35-long-actions">
+
+        ${
+          s.status==='active'
+            ? '<button id="cg35LongNext" class="cg35-smart-primary">Lot suivant</button>'
+            : ''
+        }
+
+        ${
+          rows.length
+            ? '<button id="cg35LongCopy">Copier les ID du lot</button>'
+            : ''
+        }
+
+        ${
+          s.status==='active'
+            ? '<button id="cg35LongStop">Terminer la séance</button>'
+            : ''
+        }
+
+      </div>
+
+      <small>
+        ADAPTIVE_BATCH001 : chaque nouveau lot est recalculé.
+        Les X restent exclus et les questions déjà servies dans cette séance sont bloquées.
+      </small>
+
+    </section>
+
+    <section class="cg35-list">
+
+      ${
+        rows.length
+
+          ? rows.map(
+              (q,i)=>`
+
+                <article class="cg35-q cg35-smart-q">
+
+                  <div class="cg35-smart-top">
+
+                    <span class="cg35-smart-order">
+                      ${baseIndex+i+1}
+                    </span>
+
+                    <span class="cg35-smart-badge ${cg35Esc(q.source)}">
+                      ${cg35Esc(cg35SmartSourceLabel(q.source))}
+                    </span>
+
+                  </div>
+
+                  <small>
+                    ${cg35Esc(cg35Path(q.domain,q.theme))}
+                  </small>
+
+                  <h3>
+                    ${cg35Esc(q.question||'(question sans texte)')}
+                  </h3>
+
+                  ${
+                    q.source==='weakness'
+                      ? `<p>Faiblesse ${cg35Fmt(q.weakness)}/100 · ${cg35Fmt(q.successPercent)} % réussite</p>`
+                      : ''
+                  }
+
+                  ${
+                    q.source==='due'
+                      ? `<p>${cg35Fmt(q.successPercent)} % réussite · ${cg35Fmt(q.attempts)} tentative(s)</p>`
+                      : ''
+                  }
+
+                  ${
+                    q.source==='unseen'
+                      ? '<p>Première exposition prévue.</p>'
+                      : ''
+                  }
+
+                  ${cg35QuestionButton(q.id)}
+
+                </article>
+              `
+            ).join('')
+
+          : '<div class="cg35-empty">Aucune nouvelle question disponible pour poursuivre cette séance.</div>'
+      }
+
+    </section>
+  `;
+
+
+  cg35$('cg35LongNext')
+    ?.addEventListener(
+      'click',
+      cg35LongNext
+    );
+
+
+  cg35$('cg35LongCopy')
+    ?.addEventListener(
+      'click',
+      ()=>
+        cg35Copy(
+          rows
+            .map(
+              x=>x.id
+            )
+            .filter(Boolean)
+        )
+    );
+
+
+  cg35$('cg35LongStop')
+    ?.addEventListener(
+      'click',
+      cg35LongStop
+    );
+
+
+  CG35.longSession=s;
+
+
+  if(
+    s.sessionId &&
+    s.status==='active'
+  ){
+
+    cg35LongStorageSet(
+      s.sessionId
+    );
+
+  }else if(
+    s.status!=='active'
+  ){
+
+    cg35LongStorageSet('');
+  }
+
+
+  cg35Status(
+    '✅ LONG_SESSION001 · '+
+    cg35Fmt(generated)+
+    ' / '+
+    cg35Fmt(total)+
+    ' question(s) préparée(s).',
+    'ok'
+  );
+}
+
+async function cg35StartLongSession(){
+
+  try{
+
+    const c={
+
+      count:
+        Math.min(
+          1000,
+          Math.max(
+            5,
+            Number(
+              cg35$('cg35SmartCount')?.value
+            )||20
+          )
+        ),
+
+      duePct:
+        Number(
+          cg35$('cg35SmartDue')?.value
+        )||0,
+
+      weakPct:
+        Number(
+          cg35$('cg35SmartWeak')?.value
+        )||0,
+
+      unseenPct:
+        Number(
+          cg35$('cg35SmartUnseen')?.value
+        )||0,
+
+      domain:
+        cg35$('cg35SmartDomain')?.value||
+        '',
+
+      batchSize:50
+    };
+
+
+    CG35.smartConfig=c;
+
+
+    cg35Status(
+      'Création de la séance longue…'
+    );
+
+
+    const d=
+      await cg35Api({
+
+        mode:'smartLongStart',
+
+        forceRefresh:true,
+
+        ...c
+      });
+
+
+    cg35LongRender(
+      d.session
+    );
+
+
+  }catch(e){
+
+    const box=
+      cg35$('cg35SmartResults');
+
+
+    if(box){
+
+      box.innerHTML=
+        '<div class="cg35-error">'+
+          cg35Esc(e.message)+
+        '</div>';
+    }
+
+
+    cg35Status(
+      '❌ '+e.message,
+      'bad'
+    );
+  }
+}
+
+async function cg35LongNext(){
+
+  const id=
+    CG35.longSession?.sessionId||
+    cg35LongStorageGet();
+
+
+  if(!id){
+
+    cg35Status(
+      '❌ Aucune séance longue active.',
+      'bad'
+    );
+
+    return;
+  }
+
+
+  try{
+
+    cg35Status(
+      'ADAPTIVE_BATCH001 · génération du lot suivant…'
+    );
+
+
+    const d=
+      await cg35Api({
+
+        mode:'smartLongNext',
+
+        sessionId:id,
+
+        /*
+         * Important :
+         * le prochain lot doit tenir compte des réponses
+         * qui viennent éventuellement d'être enregistrées.
+         */
+        forceRefresh:true
+      });
+
+
+    cg35LongRender(
+      d.session
+    );
+
+
+  }catch(e){
+
+    cg35Status(
+      '❌ '+e.message,
+      'bad'
+    );
+  }
+}
+
+async function cg35ResumeLongSession(){
+
+  try{
+
+    cg35Status(
+      'Recherche de la dernière séance longue…'
+    );
+
+
+    const d=
+      await cg35Api({
+
+        mode:'smartLongResume',
+
+        sessionId:
+          cg35LongStorageGet()
+      });
+
+
+    if(
+      !d.session?.found
+    ){
+
+      cg35LongStorageSet('');
+
+      cg35Status(
+        'Aucune séance longue active à reprendre.'
+      );
+
+      return;
+    }
+
+
+    cg35LongRender(
+      d.session
+    );
+
+
+  }catch(e){
+
+    cg35Status(
+      '❌ '+e.message,
+      'bad'
+    );
+  }
+}
+
+async function cg35LongStop(){
+
+  const id=
+    CG35.longSession?.sessionId||
+    cg35LongStorageGet();
+
+
+  if(!id)return;
+
+
+  try{
+
+    const d=
+      await cg35Api({
+
+        mode:'smartLongStop',
+
+        sessionId:id
+      });
+
+
+    cg35LongStorageSet('');
+
+
+    if(d.session?.found){
+
+      cg35LongRender(
+        d.session
+      );
+    }
+
+
+    cg35Status(
+      '✅ Séance longue terminée.',
+      'ok'
+    );
+
+
+  }catch(e){
+
+    cg35Status(
+      '❌ '+e.message,
+      'bad'
+    );
+  }
+}
+
 async function cg35GenerateSmart(){
+
+  const count=
+    Math.min(
+      1000,
+      Math.max(
+        5,
+        Number(
+          cg35$('cg35SmartCount')?.value
+        )||20
+      )
+    );
+
+
+  /*
+   * Les séances courtes conservent strictement
+   * le moteur déjà validé.
+   */
+  if(count<=50){
+
+    return cg35GenerateSmartLegacy();
+  }
+
+
+  return cg35StartLongSession();
+}
+
+async function cg35GenerateSmartLegacy(){
 
   try{
 
