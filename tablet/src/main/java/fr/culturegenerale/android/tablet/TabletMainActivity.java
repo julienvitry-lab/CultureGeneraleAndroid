@@ -1,0 +1,1267 @@
+package fr.culturegenerale.android.tablet;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.text.InputType;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.WindowManager;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.Spinner;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+/**
+ * CGANDROID001
+ * - nouvelle APK indépendante de l'ancien module app/ ;
+ * - Session intelligente comme unique mode de jeu ;
+ * - QCM natif ;
+ * - Comfortaa systématique ;
+ * - P = signalement éditorial ;
+ * - T = exclusion analogue locale immédiate + file Cloud/pending ;
+ * - réponses QCM écrites dans play_history pour alimenter CGWEB035.
+ */
+public class TabletMainActivity extends Activity {
+
+    private static final String[] DOMAINS = new String[]{
+            "Tous les mégathèmes",
+            "Animaux et Plantes",
+            "Culture Classique",
+            "Culture Générale",
+            "Culture Moderne",
+            "Géographie",
+            "Histoire",
+            "Sciences et Techniques",
+            "Sport"
+    };
+    private static final int[] SIZES = new int[]{20, 50, 100, 250, 500, 1000};
+
+    private final int BLUE = Color.rgb(0, 86, 180);
+    private final int GREEN = Color.rgb(0, 135, 60);
+    private final int RED = Color.rgb(185, 0, 0);
+    private final int YELLOW = Color.rgb(245, 205, 40);
+    private final int DARK = Color.rgb(35, 35, 35);
+    private final int GREY = Color.rgb(85, 85, 85);
+    private final int LIGHT_GREY = Color.rgb(130, 130, 130);
+
+    private final ExecutorService io = Executors.newFixedThreadPool(4);
+    private final Handler main = new Handler(Looper.getMainLooper());
+
+    private Typeface appFont = Typeface.DEFAULT_BOLD;
+    private LinearLayout root;
+    private TextView statusView;
+
+    private CgAuth auth;
+    private CgSmartClient smart;
+    private CgFirestore firestore;
+    private CgFlags flags;
+    private CgGameState game;
+
+    private String selectedDomain = "";
+    private int selectedCount = 500;
+
+    private CgQuestion current;
+    private long currentShownAtMs = 0L;
+    private final List<Button> answerButtons = new ArrayList<>();
+    private boolean answering = false;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        loadFont();
+
+        auth = new CgAuth(this);
+        smart = new CgSmartClient();
+        firestore = new CgFirestore();
+        flags = new CgFlags(this);
+        game = new CgGameState(this);
+
+        if (auth.hasRefreshToken()) showHome();
+        else showLogin();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        io.shutdownNow();
+    }
+
+    private void loadFont() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                appFont = getResources().getFont(R.font.comfortaa_bold);
+            } else {
+                appFont = Typeface.DEFAULT_BOLD;
+            }
+        } catch (Exception ignored) {
+            appFont = Typeface.DEFAULT_BOLD;
+        }
+    }
+
+    private void showLogin() {
+        baseScreen();
+        addTitle("Culture Générale", 34, Color.WHITE);
+        addSub("Nouvelle version tablette · Session intelligente", 18, LIGHT_GREY);
+        gap(20);
+
+        TextView intro = cardText(
+                "Connexion au même compte que CGWEB. L’identification n’est demandée qu’une fois : le jeton de renouvellement est ensuite conservé sur la tablette.",
+                16, DARK, Color.WHITE);
+        add(intro, -1, -2, 0, 0, 0, dp(14));
+
+        EditText email = edit("Adresse e-mail", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        EditText password = edit("Mot de passe", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        add(email, -1, dp(54), dp(24), 0, dp(24), dp(10));
+        add(password, -1, dp(54), dp(24), 0, dp(24), dp(16));
+
+        Button connect = button("Se connecter", BLUE, 20);
+        add(connect, -1, dp(58), dp(80), 0, dp(80), dp(12));
+
+        statusView = text("", 14, LIGHT_GREY, Gravity.CENTER);
+        add(statusView, -1, -2, dp(20), 0, dp(20), 0);
+
+        connect.setOnClickListener(v -> {
+            final String e = email.getText().toString().trim();
+            final String p = password.getText().toString();
+            if (e.isEmpty() || p.isEmpty()) {
+                status("Adresse e-mail et mot de passe requis.", RED);
+                return;
+            }
+            connect.setEnabled(false);
+            status("Connexion…", YELLOW);
+            io.submit(() -> {
+                try {
+                    auth.signInSync(e, p);
+                    final String token = auth.tokenSync();
+                    flags.flushOutboxSync(firestore, token, auth.uid());
+                    main.post(this::showHome);
+                } catch (Exception ex) {
+                    main.post(() -> {
+                        connect.setEnabled(true);
+                        status("Connexion impossible : " + ex.getMessage(), RED);
+                    });
+                }
+            });
+        });
+    }
+
+    private void showHome() {
+        current = null;
+        answering = false;
+        baseScreen();
+
+        LinearLayout top = new LinearLayout(this);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView title = text("Culture Générale", 31, Color.WHITE, Gravity.START | Gravity.CENTER_VERTICAL);
+        top.addView(title, new LinearLayout.LayoutParams(0, dp(58), 1f));
+
+        Button logout = microButton("Déconnexion");
+        top.addView(logout, new LinearLayout.LayoutParams(dp(150), dp(42)));
+        logout.setOnClickListener(v -> {
+            auth.clear();
+            game.clear();
+            showLogin();
+        });
+        root.addView(top, new LinearLayout.LayoutParams(-1, -2));
+
+        TextView subtitle = cardText("SESSION INTELLIGENTE", 19, BLUE, Color.WHITE);
+        add(subtitle, -1, dp(52), 0, dp(8), 0, dp(18));
+
+        TextView megaLabel = text("Mégathème", 16, Color.WHITE, Gravity.START);
+        add(megaLabel, -1, -2, dp(10), 0, dp(10), dp(6));
+
+        Spinner spinner = new Spinner(this);
+        CgSpinnerAdapter adapter = new CgSpinnerAdapter(this, DOMAINS, appFont, Color.WHITE, DARK);
+        spinner.setAdapter(adapter);
+        spinner.setSelection(domainIndex(selectedDomain));
+        spinner.setBackground(rounded(DARK, 14));
+        spinner.setPadding(dp(12), 0, dp(12), 0);
+        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                selectedDomain = position <= 0 ? "" : DOMAINS[position];
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
+        });
+        add(spinner, -1, dp(56), dp(10), 0, dp(10), dp(20));
+
+        TextView sizeLabel = text("Taille de session", 16, Color.WHITE, Gravity.START);
+        add(sizeLabel, -1, -2, dp(10), 0, dp(10), dp(8));
+
+        LinearLayout sizeRow = new LinearLayout(this);
+        sizeRow.setOrientation(LinearLayout.HORIZONTAL);
+        sizeRow.setGravity(Gravity.CENTER);
+        for (int size : SIZES) {
+            Button b = button(String.valueOf(size), size == selectedCount ? BLUE : GREY, 18);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(54), 1f);
+            lp.setMargins(dp(4), 0, dp(4), 0);
+            sizeRow.addView(b, lp);
+            b.setOnClickListener(v -> {
+                selectedCount = size;
+                showHome();
+            });
+        }
+        add(sizeRow, -1, -2, dp(6), 0, dp(6), dp(24));
+
+        Button start = button("Démarrer une session", GREEN, 23);
+        add(start, -1, dp(66), dp(80), 0, dp(80), dp(14));
+        start.setOnClickListener(v -> startSmartSession());
+
+        if (game.hasActive()) {
+            Button resume = button("Reprendre la session en cours", DARK, 17);
+            add(resume, -1, dp(52), dp(130), 0, dp(130), dp(10));
+            resume.setOnClickListener(v -> resumeLocalSession());
+        }
+
+        statusView = text(
+                "P : signalement éditorial · T : exclusion analogue · " +
+                        flags.pendingCount() + " élément(s) en attente de synchronisation",
+                13, LIGHT_GREY, Gravity.CENTER);
+        add(statusView, -1, -2, dp(20), dp(8), dp(20), 0);
+    }
+
+    private int domainIndex(String domain) {
+        if (domain == null || domain.isEmpty()) return 0;
+        for (int i = 1; i < DOMAINS.length; i++) if (DOMAINS[i].equals(domain)) return i;
+        return 0;
+    }
+
+    private void startSmartSession() {
+        showLoading("Création de la session intelligente…");
+        final int target = selectedCount;
+        final String domain = selectedDomain;
+
+        io.submit(() -> {
+            try {
+                String token = auth.tokenSync();
+                flags.flushOutboxSync(firestore, token, auth.uid());
+                CgSmartSession session = smart.startSync(token, target, domain);
+                if (session.ids.isEmpty()) throw new Exception("Aucune question reçue du moteur SMART.");
+                game.start(session.sessionId, target, domain, session.status, session.ids);
+                main.post(this::loadNextPlayable);
+            } catch (Exception ex) {
+                main.post(() -> showFatal("Session impossible", ex.getMessage()));
+            }
+        });
+    }
+
+    private void resumeLocalSession() {
+        if (!game.hasActive()) {
+            showHome();
+            return;
+        }
+        showLoading("Reprise de la session…");
+        loadNextPlayable();
+    }
+
+    private void loadNextPlayable() {
+        if (!game.hasActive()) {
+            showHome();
+            return;
+        }
+
+        if (game.played() >= game.target()) {
+            showEnd();
+            return;
+        }
+
+        if (game.position() >= game.batchIds().size()) {
+            if (!"active".equals(game.serverStatus())) {
+                showEnd();
+                return;
+            }
+            requestNextBatch();
+            return;
+        }
+
+        final String id = game.batchIds().get(game.position());
+        showLoading("Chargement de la question " + (game.played() + 1) + " / " + game.target() + "…");
+
+        io.submit(() -> {
+            try {
+                String token = auth.tokenSync();
+                CgQuestion q = firestore.getQuestionSync(token, auth.uid(), id);
+                if (flags.isTExcluded(q)) {
+                    game.advanceWithoutPlaying();
+                    main.post(this::loadNextPlayable);
+                    return;
+                }
+                current = q;
+                main.post(() -> showQuestion(q));
+            } catch (Exception ex) {
+                game.advanceWithoutPlaying();
+                main.post(() -> {
+                    Toast.makeText(this, "Question " + id + " ignorée : " + ex.getMessage(), Toast.LENGTH_LONG).show();
+                    loadNextPlayable();
+                });
+            }
+        });
+    }
+
+    private void requestNextBatch() {
+        showLoading("Préparation du lot suivant…");
+        io.submit(() -> {
+            try {
+                String token = auth.tokenSync();
+                flags.flushOutboxSync(firestore, token, auth.uid());
+                CgSmartSession s = smart.nextSync(token, game.sessionId());
+                if (s.ids.isEmpty()) {
+                    game.setServerStatus(s.status);
+                    main.post(this::showEnd);
+                    return;
+                }
+                game.setBatch(s.status, s.ids);
+                main.post(this::loadNextPlayable);
+            } catch (Exception ex) {
+                main.post(() -> showFatal("Lot suivant impossible", ex.getMessage()));
+            }
+        });
+    }
+
+    private void showQuestion(CgQuestion q) {
+        answering = false;
+        answerButtons.clear();
+        currentShownAtMs = System.currentTimeMillis();
+        baseScreen();
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView progress = text(
+                "Question " + (game.played() + 1) + " / " + game.target(),
+                18, Color.WHITE, Gravity.START | Gravity.CENTER_VERTICAL);
+        header.addView(progress, new LinearLayout.LayoutParams(0, dp(48), 1f));
+
+        Button p = microButton("P");
+        Button t = microButton("T");
+        LinearLayout.LayoutParams microLp = new LinearLayout.LayoutParams(dp(48), dp(42));
+        microLp.setMargins(dp(6), 0, 0, 0);
+        header.addView(p, microLp);
+        header.addView(t, microLp);
+        root.addView(header, new LinearLayout.LayoutParams(-1, -2));
+
+        p.setOnClickListener(v -> reportProblem(q, p));
+        t.setOnClickListener(v -> confirmAnalogExclusion(q));
+
+        TextView path = cardText(
+                safe(q.megatheme) + (q.theme.isEmpty() ? "" : " › " + q.theme),
+                16, BLUE, Color.WHITE);
+        add(path, -1, dp(46), 0, dp(8), 0, dp(8));
+
+        TextView question = cardText(q.question, 24, DARK, Color.WHITE);
+        question.setMinHeight(dp(76));
+        add(question, -1, -2, 0, 0, 0, dp(8));
+
+        if (!q.detail.isEmpty()) {
+            TextView detail = cardText(q.detail, 16, DARK, Color.WHITE);
+            add(detail, -1, -2, 0, 0, 0, dp(8));
+        }
+
+        FrameLayout imageArea = new FrameLayout(this);
+        imageArea.setVisibility(View.GONE);
+        imageArea.setBackground(rounded(DARK, 14));
+        add(imageArea, -1, dp(210), 0, 0, 0, dp(8));
+
+        if (q.hasImage()) loadImageAsync(q, imageArea);
+
+        for (int i = 0; i < 4; i++) {
+            final int choice = i + 1;
+            Button b = button((char)('A' + i) + ".  " + q.options[i], GREY, 18);
+            b.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+            b.setPadding(dp(18), dp(8), dp(18), dp(8));
+            add(b, -1, dp(58), 0, 0, 0, dp(7));
+            answerButtons.add(b);
+            b.setOnClickListener(v -> answer(q, choice));
+        }
+
+        statusView = text("", 13, LIGHT_GREY, Gravity.CENTER);
+        add(statusView, -1, -2, dp(10), dp(2), dp(10), 0);
+    }
+
+    private void loadImageAsync(CgQuestion q, FrameLayout area) {
+        area.setVisibility(View.VISIBLE);
+        TextView loading = text("Chargement de l’image…", 15, LIGHT_GREY, Gravity.CENTER);
+        area.removeAllViews();
+        area.addView(loading, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+
+        io.submit(() -> {
+            try {
+                String token = auth.tokenSync();
+                Bitmap bitmap = firestore.loadImageSync(token, q.imageFile);
+                main.post(() -> {
+                    if (current != q) return;
+                    area.removeAllViews();
+                    ImageView iv = new ImageView(this);
+                    iv.setImageBitmap(bitmap);
+                    iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                    iv.setBackgroundColor(Color.BLACK);
+                    area.addView(iv, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+                });
+            } catch (Exception ex) {
+                main.post(() -> {
+                    if (current != q) return;
+                    area.removeAllViews();
+                    TextView missing = text("Image indisponible", 14, LIGHT_GREY, Gravity.CENTER);
+                    area.addView(missing, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+                });
+            }
+        });
+    }
+
+    private void answer(CgQuestion q, int choice) {
+        if (answering) return;
+        answering = true;
+        for (Button b : answerButtons) b.setEnabled(false);
+
+        boolean correct = choice == q.correctIndex;
+        for (int i = 0; i < answerButtons.size(); i++) {
+            Button b = answerButtons.get(i);
+            int idx = i + 1;
+            if (idx == q.correctIndex) b.setBackground(rounded(GREEN, 14));
+            else if (idx == choice) b.setBackground(rounded(RED, 14));
+            else b.setBackground(rounded(DARK, 14));
+        }
+
+        long responseMs = Math.max(0L, System.currentTimeMillis() - currentShownAtMs);
+        JSONObject event = historyPayload(q, choice, correct, responseMs);
+        game.recordAnswer(correct);
+
+        status(correct ? "Bonne réponse" : "Réponse incorrecte", correct ? GREEN : RED);
+
+        io.submit(() -> {
+            try {
+                String token = auth.tokenSync();
+                firestore.createDocumentSync(token, auth.uid(), "play_history", event);
+            } catch (Exception ex) {
+                flags.enqueue("play_history", event);
+            }
+            try { Thread.sleep(650); } catch (InterruptedException ignored) { }
+            main.post(this::loadNextPlayable);
+        });
+    }
+
+    private JSONObject historyPayload(CgQuestion q, int choice, boolean correct, long responseMs) {
+        JSONObject x = new JSONObject();
+        try {
+            x.put("question_id", q.id);
+            try { x.put("question_row_number", Long.parseLong(q.id)); } catch (Exception ignored) { }
+            x.put("client_played_at_ms", System.currentTimeMillis());
+            x.put("play_type", "challenge_choice");
+            x.put("game_mode", "qcm");
+            x.put("result", correct ? "correct" : "wrong");
+            x.put("is_correct", correct);
+            x.put("response_time_ms", responseMs);
+            x.put("domain", q.megatheme);
+            x.put("theme", q.theme);
+            x.put("selected_answer", q.options[Math.max(0, Math.min(3, choice - 1))]);
+            x.put("correct_answer", q.options[Math.max(0, Math.min(3, q.correctIndex - 1))]);
+            x.put("source", BuildConfig.CG_CHANNEL);
+            x.put("session_id", game.sessionId());
+            JSONObject snap = new JSONObject();
+            snap.put("domain", q.megatheme);
+            snap.put("theme", q.theme);
+            snap.put("question", q.question);
+            snap.put("detail", q.detail);
+            x.put("question_snapshot", snap);
+        } catch (Exception ignored) { }
+        return x;
+    }
+
+    private void reportProblem(CgQuestion q, Button button) {
+        final EditText note = edit("Précision facultative", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        note.setMinLines(3);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Signaler la question (P)")
+                .setMessage("Le signalement n’exclut pas la question du jeu. Il sera destiné au futur traitement en masse dans CGWEB.")
+                .setView(note)
+                .setNegativeButton("Annuler", null)
+                .setPositiveButton("Signaler", null)
+                .create();
+
+        dialog.setOnShowListener(v -> {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v2 -> {
+                JSONObject payload = new JSONObject();
+                try {
+                    payload.put("question_id", q.id);
+                    payload.put("megatheme", q.megatheme);
+                    payload.put("theme", q.theme);
+                    payload.put("question", q.question);
+                    payload.put("detail", q.detail);
+                    payload.put("note", note.getText().toString().trim());
+                    payload.put("session_id", game.sessionId());
+                    payload.put("created_ms", System.currentTimeMillis());
+                    payload.put("state", "pending");
+                    payload.put("source", BuildConfig.CG_CHANNEL);
+                } catch (Exception ignored) { }
+
+                flags.enqueue("problem_reports", payload);
+                button.setText("P✓");
+                button.setTextColor(YELLOW);
+                dialog.dismiss();
+                status("Signalement P enregistré.", YELLOW);
+                flushOutboxAsync();
+            });
+        });
+        dialog.show();
+    }
+
+    private void confirmAnalogExclusion(CgQuestion q) {
+        new AlertDialog.Builder(this)
+                .setTitle("Exclure ce contenu analogue (T) ?")
+                .setMessage("Toutes les questions ayant le même thème et le même libellé sont considérées analogues. Le détail n’entre pas dans la comparaison.")
+                .setNegativeButton("Annuler", null)
+                .setPositiveButton("Exclure", (d, which) -> {
+                    flags.addT(q);
+                    JSONObject payload = new JSONObject();
+                    try {
+                        payload.put("question_id", q.id);
+                        payload.put("theme", q.theme);
+                        payload.put("question", q.question);
+                        payload.put("theme_key", CgFlags.comparisonKey(q.theme));
+                        payload.put("question_key", CgFlags.comparisonKey(q.question));
+                        payload.put("group_key", CgFlags.analogKey(q.theme, q.question));
+                        payload.put("session_id", game.sessionId());
+                        payload.put("created_ms", System.currentTimeMillis());
+                        payload.put("state", "pending");
+                        payload.put("source", BuildConfig.CG_CHANNEL);
+                    } catch (Exception ignored) { }
+                    flags.enqueue("analog_exclusions", payload);
+                    game.advanceWithoutPlaying();
+                    Toast.makeText(this, "Contenu analogue T exclu sur cette tablette.", Toast.LENGTH_SHORT).show();
+                    flushOutboxAsync();
+                    loadNextPlayable();
+                })
+                .show();
+    }
+
+    private void flushOutboxAsync() {
+        io.submit(() -> {
+            try {
+                String token = auth.tokenSync();
+                flags.flushOutboxSync(firestore, token, auth.uid());
+            } catch (Exception ignored) { }
+        });
+    }
+
+    private void showEnd() {
+        game.finish();
+        baseScreen();
+        addTitle("Session terminée", 32, Color.WHITE);
+        gap(20);
+        TextView score = cardText(
+                game.correct() + " bonne(s) réponse(s) sur " + game.played() + " question(s) jouée(s).",
+                24, DARK, Color.WHITE);
+        add(score, -1, dp(100), dp(60), 0, dp(60), dp(22));
+
+        Button home = button("Nouvelle session", BLUE, 22);
+        add(home, -1, dp(62), dp(100), 0, dp(100), 0);
+        home.setOnClickListener(v -> {
+            game.clear();
+            showHome();
+        });
+    }
+
+    private void showLoading(String message) {
+        baseScreen();
+        gap(50);
+        TextView v = cardText(message, 22, DARK, Color.WHITE);
+        v.setGravity(Gravity.CENTER);
+        add(v, -1, dp(110), dp(80), 0, dp(80), 0);
+    }
+
+    private void showFatal(String title, String message) {
+        baseScreen();
+        addTitle(title, 28, Color.WHITE);
+        TextView err = cardText(message == null ? "Erreur inconnue" : message, 18, RED, Color.WHITE);
+        add(err, -1, -2, dp(30), dp(20), dp(30), dp(20));
+        Button back = button("Retour", BLUE, 20);
+        add(back, -1, dp(56), dp(100), 0, dp(100), 0);
+        back.setOnClickListener(v -> showHome());
+    }
+
+    private void baseScreen() {
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setBackgroundColor(Color.BLACK);
+        root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(18), dp(12), dp(18), dp(16));
+        root.setBackgroundColor(Color.BLACK);
+        scroll.addView(root, new ScrollView.LayoutParams(-1, -1));
+        setContentView(scroll);
+    }
+
+    private void addTitle(String value, int sp, int color) {
+        TextView t = text(value, sp, color, Gravity.CENTER);
+        t.setTypeface(appFont, Typeface.BOLD);
+        add(t, -1, -2, 0, 0, 0, dp(4));
+    }
+
+    private void addSub(String value, int sp, int color) {
+        TextView t = text(value, sp, color, Gravity.CENTER);
+        add(t, -1, -2, 0, 0, 0, dp(6));
+    }
+
+    private TextView text(String value, int sp, int color, int gravity) {
+        TextView v = new TextView(this);
+        v.setText(value == null ? "" : value);
+        v.setTextSize(sp);
+        v.setTextColor(color);
+        v.setGravity(gravity);
+        v.setTypeface(appFont);
+        v.setIncludeFontPadding(false);
+        return v;
+    }
+
+    private TextView cardText(String value, int sp, int bg, int fg) {
+        TextView v = text(value, sp, fg, Gravity.CENTER_VERTICAL);
+        v.setPadding(dp(16), dp(10), dp(16), dp(10));
+        v.setBackground(rounded(bg, 14));
+        return v;
+    }
+
+    private EditText edit(String hint, int inputType) {
+        EditText e = new EditText(this);
+        e.setHint(hint);
+        e.setHintTextColor(LIGHT_GREY);
+        e.setTextColor(Color.WHITE);
+        e.setTextSize(17);
+        e.setTypeface(appFont);
+        e.setInputType(inputType);
+        e.setPadding(dp(14), dp(8), dp(14), dp(8));
+        e.setBackground(rounded(DARK, 14));
+        return e;
+    }
+
+    private Button button(String label, int color, int sp) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setAllCaps(false);
+        b.setTextColor(Color.WHITE);
+        b.setTextSize(sp);
+        b.setTypeface(appFont);
+        b.setGravity(Gravity.CENTER);
+        b.setPadding(dp(10), dp(8), dp(10), dp(8));
+        b.setBackground(rounded(color, 14));
+        return b;
+    }
+
+    private Button microButton(String label) {
+        Button b = button(label, DARK, 15);
+        b.setTextColor(LIGHT_GREY);
+        b.setPadding(0, 0, 0, 0);
+        return b;
+    }
+
+    private GradientDrawable rounded(int color, int radiusDp) {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(color);
+        g.setCornerRadius(dp(radiusDp));
+        return g;
+    }
+
+    private void add(View v, int w, int h, int ml, int mt, int mr, int mb) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(w, h);
+        lp.setMargins(ml, mt, mr, mb);
+        root.addView(v, lp);
+    }
+
+    private void gap(int px) {
+        View v = new View(this);
+        root.addView(v, new LinearLayout.LayoutParams(1, dp(px)));
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private void status(String message, int color) {
+        if (statusView != null) {
+            statusView.setText(message);
+            statusView.setTextColor(color);
+        } else {
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private static String safe(String s) { return s == null ? "" : s; }
+
+    private static final class CgSpinnerAdapter extends ArrayAdapter<String> {
+        private final Typeface font;
+        private final int fg;
+        private final int bg;
+        CgSpinnerAdapter(Context context, String[] items, Typeface font, int fg, int bg) {
+            super(context, android.R.layout.simple_spinner_item, items);
+            this.font = font; this.fg = fg; this.bg = bg;
+        }
+        @Override public View getView(int position, View convertView, ViewGroup parent) {
+            TextView v = (TextView) super.getView(position, convertView, parent);
+            tune(v); return v;
+        }
+        @Override public View getDropDownView(int position, View convertView, ViewGroup parent) {
+            TextView v = (TextView) super.getDropDownView(position, convertView, parent);
+            tune(v); return v;
+        }
+        private void tune(TextView v) {
+            v.setTypeface(font); v.setTextColor(fg); v.setTextSize(17); v.setBackgroundColor(bg);
+            v.setPadding(18, 14, 18, 14);
+        }
+    }
+}
+
+/* ========================================================================== */
+/* Réseau / Auth / API                                                        */
+/* ========================================================================== */
+
+final class CgHttp {
+    private CgHttp() { }
+
+    static JSONObject json(String method, String url, String token, JSONObject body) throws Exception {
+        HttpURLConnection c = open(method, url, token, "Bearer ");
+        c.setRequestProperty("Accept", "application/json");
+        if (body != null) {
+            c.setDoOutput(true);
+            c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            try (OutputStream os = c.getOutputStream()) {
+                os.write(body.toString().getBytes(StandardCharsets.UTF_8));
+            }
+        }
+        int code = c.getResponseCode();
+        String text = readText(code >= 200 && code < 300 ? c.getInputStream() : c.getErrorStream());
+        c.disconnect();
+        if (code < 200 || code >= 300) throw new Exception(errorMessage(code, text));
+        return text == null || text.trim().isEmpty() ? new JSONObject() : new JSONObject(text);
+    }
+
+    static JSONObject form(String url, Map<String,String> fields) throws Exception {
+        HttpURLConnection c = open("POST", url, null, "Bearer ");
+        c.setDoOutput(true);
+        c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+        StringBuilder body = new StringBuilder();
+        for (Map.Entry<String,String> e : fields.entrySet()) {
+            if (body.length() > 0) body.append('&');
+            body.append(URLEncoder.encode(e.getKey(), "UTF-8"));
+            body.append('=');
+            body.append(URLEncoder.encode(e.getValue(), "UTF-8"));
+        }
+        try (OutputStream os = c.getOutputStream()) {
+            os.write(body.toString().getBytes(StandardCharsets.UTF_8));
+        }
+        int code = c.getResponseCode();
+        String text = readText(code >= 200 && code < 300 ? c.getInputStream() : c.getErrorStream());
+        c.disconnect();
+        if (code < 200 || code >= 300) throw new Exception(errorMessage(code, text));
+        return new JSONObject(text);
+    }
+
+    static byte[] bytes(String url, String token, boolean firebaseStorage) throws Exception {
+        HttpURLConnection c = open("GET", url, null, "Bearer ");
+        if (token != null && !token.isEmpty()) {
+            c.setRequestProperty("Authorization", (firebaseStorage ? "Firebase " : "Bearer ") + token);
+        }
+        int code = c.getResponseCode();
+        if (code < 200 || code >= 300) {
+            String text = readText(c.getErrorStream());
+            c.disconnect();
+            throw new Exception(errorMessage(code, text));
+        }
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (InputStream in = c.getInputStream()) {
+            byte[] buffer = new byte[8192];
+            int n;
+            while ((n = in.read(buffer)) >= 0) out.write(buffer, 0, n);
+        }
+        c.disconnect();
+        return out.toByteArray();
+    }
+
+    private static HttpURLConnection open(String method, String url, String token, String authPrefix) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        c.setRequestMethod(method);
+        c.setConnectTimeout(20000);
+        c.setReadTimeout(45000);
+        c.setUseCaches(false);
+        if (token != null && !token.isEmpty()) c.setRequestProperty("Authorization", authPrefix + token);
+        return c;
+    }
+
+    private static String readText(InputStream in) throws Exception {
+        if (in == null) return "";
+        StringBuilder sb = new StringBuilder();
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = br.readLine()) != null) sb.append(line).append('\n');
+        }
+        return sb.toString();
+    }
+
+    private static String errorMessage(int code, String text) {
+        try {
+            JSONObject x = new JSONObject(text == null ? "{}" : text);
+            JSONObject err = x.optJSONObject("error");
+            if (err != null) {
+                String msg = err.optString("message", "");
+                if (!msg.isEmpty()) return "HTTP " + code + " · " + msg;
+            }
+            String msg = x.optString("error", "");
+            if (!msg.isEmpty()) return "HTTP " + code + " · " + msg;
+        } catch (Exception ignored) { }
+        return "HTTP " + code + (text == null || text.trim().isEmpty() ? "" : " · " + text.trim());
+    }
+}
+
+final class CgAuth {
+    private static final String PREF = "cgandroid001_auth";
+    private static final String K_TOKEN = "id_token";
+    private static final String K_REFRESH = "refresh_token";
+    private static final String K_UID = "uid";
+    private static final String K_EXPIRES = "expires_at";
+    private static final String K_EMAIL = "email";
+
+    private final SharedPreferences prefs;
+
+    CgAuth(Context context) {
+        prefs = context.getSharedPreferences(PREF, Context.MODE_PRIVATE);
+    }
+
+    boolean hasRefreshToken() { return !prefs.getString(K_REFRESH, "").isEmpty(); }
+    String uid() { return prefs.getString(K_UID, ""); }
+
+    void signInSync(String email, String password) throws Exception {
+        JSONObject body = new JSONObject();
+        body.put("email", email);
+        body.put("password", password);
+        body.put("returnSecureToken", true);
+        JSONObject r = CgHttp.json(
+                "POST",
+                "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=" + BuildConfig.FIREBASE_API_KEY,
+                null,
+                body);
+        save(r.optString("idToken"), r.optString("refreshToken"), r.optString("localId"),
+                parseLong(r.optString("expiresIn"), 3600L), email);
+        if (uid().isEmpty()) throw new Exception("UID Firebase absent après connexion.");
+    }
+
+    synchronized String tokenSync() throws Exception {
+        String token = prefs.getString(K_TOKEN, "");
+        long expires = prefs.getLong(K_EXPIRES, 0L);
+        if (!token.isEmpty() && System.currentTimeMillis() < expires - 60000L) return token;
+
+        String refresh = prefs.getString(K_REFRESH, "");
+        if (refresh.isEmpty()) throw new Exception("Session Firebase expirée : reconnecte-toi.");
+
+        Map<String,String> form = new HashMap<>();
+        form.put("grant_type", "refresh_token");
+        form.put("refresh_token", refresh);
+        JSONObject r = CgHttp.form(
+                "https://securetoken.googleapis.com/v1/token?key=" + BuildConfig.FIREBASE_API_KEY,
+                form);
+        String newToken = r.optString("id_token");
+        String newRefresh = r.optString("refresh_token", refresh);
+        String newUid = r.optString("user_id", uid());
+        long seconds = parseLong(r.optString("expires_in"), 3600L);
+        save(newToken, newRefresh, newUid, seconds, prefs.getString(K_EMAIL, ""));
+        return newToken;
+    }
+
+    void clear() { prefs.edit().clear().apply(); }
+
+    private void save(String token, String refresh, String uid, long expiresSeconds, String email) {
+        prefs.edit()
+                .putString(K_TOKEN, token == null ? "" : token)
+                .putString(K_REFRESH, refresh == null ? "" : refresh)
+                .putString(K_UID, uid == null ? "" : uid)
+                .putString(K_EMAIL, email == null ? "" : email)
+                .putLong(K_EXPIRES, System.currentTimeMillis() + Math.max(60L, expiresSeconds) * 1000L)
+                .apply();
+    }
+
+    private static long parseLong(String value, long fallback) {
+        try { return Long.parseLong(value); } catch (Exception ignored) { return fallback; }
+    }
+}
+
+final class CgSmartClient {
+    CgSmartSession startSync(String token, int count, String domain) throws Exception {
+        JSONObject body = new JSONObject();
+        body.put("mode", "smartLongStart");
+        body.put("count", count);
+        body.put("batchSize", 50);
+        body.put("duePct", 40);
+        body.put("weakPct", 35);
+        body.put("unseenPct", 25);
+        body.put("domain", domain == null ? "" : domain);
+        body.put("forceRefresh", true);
+        return parse(CgHttp.json("POST", BuildConfig.SMART_API_URL, token, body));
+    }
+
+    CgSmartSession nextSync(String token, String sessionId) throws Exception {
+        JSONObject body = new JSONObject();
+        body.put("mode", "smartLongNext");
+        body.put("sessionId", sessionId);
+        body.put("forceRefresh", true);
+        return parse(CgHttp.json("POST", BuildConfig.SMART_API_URL, token, body));
+    }
+
+    private CgSmartSession parse(JSONObject response) throws Exception {
+        if (!response.optBoolean("ok", false)) throw new Exception(response.optString("error", "Réponse SMART invalide."));
+        JSONObject s = response.optJSONObject("session");
+        if (s == null) throw new Exception("Objet session absent.");
+        CgSmartSession out = new CgSmartSession();
+        out.sessionId = s.optString("sessionId", "");
+        out.status = s.optString("status", "active");
+        JSONArray rows = s.optJSONArray("currentBatch");
+        if (rows != null) {
+            for (int i = 0; i < rows.length(); i++) {
+                JSONObject q = rows.optJSONObject(i);
+                if (q == null) continue;
+                String id = q.optString("id", "");
+                if (id.isEmpty()) id = q.optString("questionId", "");
+                if (id.isEmpty()) {
+                    long row = q.optLong("row", 0L);
+                    if (row > 0L) id = String.valueOf(row);
+                }
+                if (!id.isEmpty() && !out.ids.contains(id)) out.ids.add(id);
+            }
+        }
+        return out;
+    }
+}
+
+final class CgSmartSession {
+    String sessionId = "";
+    String status = "active";
+    final ArrayList<String> ids = new ArrayList<>();
+}
+
+/* ========================================================================== */
+/* Firestore REST                                                             */
+/* ========================================================================== */
+
+final class CgFirestore {
+
+    CgQuestion getQuestionSync(String token, String uid, String id) throws Exception {
+        String url = "https://firestore.googleapis.com/v1/projects/" + enc(BuildConfig.FIREBASE_PROJECT_ID) +
+                "/databases/(default)/documents/users/" + enc(uid) + "/questions/" + enc(id);
+        JSONObject doc = CgHttp.json("GET", url, token, null);
+        JSONObject f = doc.optJSONObject("fields");
+        if (f == null) throw new Exception("Question Firestore sans fields.");
+
+        CgQuestion q = new CgQuestion();
+        q.id = id;
+        q.megatheme = str(f, "megatheme");
+        q.theme = str(f, "theme");
+        q.question = str(f, "question");
+        q.detail = str(f, "detail");
+        q.options[0] = str(f, "proposition_a");
+        q.options[1] = str(f, "proposition_b");
+        q.options[2] = str(f, "proposition_c");
+        q.options[3] = str(f, "proposition_d");
+        q.correctIndex = integer(f, "correct_index");
+        q.imageFile = str(f, "image_file");
+        q.isImage = boolish(f, "is_image") || !q.imageFile.isEmpty();
+        if (q.question.isEmpty()) throw new Exception("Libellé de question vide.");
+        if (q.correctIndex < 1 || q.correctIndex > 4) throw new Exception("correct_index invalide.");
+        return q;
+    }
+
+    void createDocumentSync(String token, String uid, String collection, JSONObject payload) throws Exception {
+        String url = "https://firestore.googleapis.com/v1/projects/" + enc(BuildConfig.FIREBASE_PROJECT_ID) +
+                "/databases/(default)/documents/users/" + enc(uid) + "/" + enc(collection);
+        JSONObject body = new JSONObject();
+        body.put("fields", encodeMap(payload));
+        CgHttp.json("POST", url, token, body);
+    }
+
+    Bitmap loadImageSync(String token, String raw) throws Exception {
+        if (raw == null || raw.trim().isEmpty()) throw new Exception("image_file vide");
+        String value = raw.trim();
+        byte[] data;
+        if (value.startsWith("http://") || value.startsWith("https://")) {
+            data = CgHttp.bytes(value, null, false);
+        } else {
+            String bucket = BuildConfig.FIREBASE_STORAGE_BUCKET;
+            String path = value;
+            if (value.startsWith("gs://")) {
+                String rest = value.substring(5);
+                int slash = rest.indexOf('/');
+                if (slash > 0) {
+                    bucket = rest.substring(0, slash);
+                    path = rest.substring(slash + 1);
+                }
+            }
+            String url = "https://firebasestorage.googleapis.com/v0/b/" + enc(bucket) + "/o/" + enc(path) + "?alt=media";
+            data = CgHttp.bytes(url, token, true);
+        }
+        Bitmap bitmap = BitmapFactory.decodeByteArray(data, 0, data.length);
+        if (bitmap == null) throw new Exception("Image illisible.");
+        return bitmap;
+    }
+
+    private static String str(JSONObject fields, String key) {
+        JSONObject v = fields.optJSONObject(key);
+        if (v == null) return "";
+        if (v.has("stringValue")) return v.optString("stringValue", "");
+        if (v.has("integerValue")) return v.optString("integerValue", "");
+        if (v.has("doubleValue")) return String.valueOf(v.optDouble("doubleValue", 0));
+        if (v.has("booleanValue")) return String.valueOf(v.optBoolean("booleanValue", false));
+        return "";
+    }
+
+    private static int integer(JSONObject fields, String key) {
+        String s = str(fields, key);
+        try { return Integer.parseInt(s); } catch (Exception ignored) { return 0; }
+    }
+
+    private static boolean boolish(JSONObject fields, String key) {
+        JSONObject v = fields.optJSONObject(key);
+        if (v == null) return false;
+        if (v.has("booleanValue")) return v.optBoolean("booleanValue", false);
+        String s = str(fields, key);
+        return "1".equals(s) || "true".equalsIgnoreCase(s);
+    }
+
+    private static JSONObject encodeMap(JSONObject input) throws Exception {
+        JSONObject out = new JSONObject();
+        Iterator<String> keys = input.keys();
+        while (keys.hasNext()) {
+            String key = keys.next();
+            out.put(key, encodeValue(input.opt(key)));
+        }
+        return out;
+    }
+
+    private static JSONObject encodeValue(Object value) throws Exception {
+        JSONObject out = new JSONObject();
+        if (value == null || value == JSONObject.NULL) {
+            out.put("nullValue", "NULL_VALUE");
+        } else if (value instanceof Boolean) {
+            out.put("booleanValue", value);
+        } else if (value instanceof Byte || value instanceof Short || value instanceof Integer || value instanceof Long) {
+            out.put("integerValue", String.valueOf(value));
+        } else if (value instanceof Float || value instanceof Double) {
+            out.put("doubleValue", ((Number) value).doubleValue());
+        } else if (value instanceof JSONObject) {
+            JSONObject map = new JSONObject();
+            map.put("fields", encodeMap((JSONObject) value));
+            out.put("mapValue", map);
+        } else {
+            out.put("stringValue", String.valueOf(value));
+        }
+        return out;
+    }
+
+    private static String enc(String value) { return Uri.encode(value == null ? "" : value, ""); }
+}
+
+final class CgQuestion {
+    String id = "";
+    String megatheme = "";
+    String theme = "";
+    String question = "";
+    String detail = "";
+    final String[] options = new String[]{"", "", "", ""};
+    int correctIndex = 0;
+    String imageFile = "";
+    boolean isImage = false;
+    boolean hasImage() { return isImage && imageFile != null && !imageFile.trim().isEmpty(); }
+}
+
+/* ========================================================================== */
+/* P / T / Outbox                                                             */
+/* ========================================================================== */
+
+final class CgFlags {
+    private static final String PREF = "cgandroid001_flags";
+    private static final String K_T = "analog_t_keys";
+    private static final String K_OUTBOX = "outbox";
+    private final SharedPreferences prefs;
+
+    CgFlags(Context context) { prefs = context.getSharedPreferences(PREF, Context.MODE_PRIVATE); }
+
+    static String comparisonKey(String value) {
+        String s = value == null ? "" : value;
+        s = s.replace('\u00A0', ' ')
+                .replace('\r', ' ')
+                .replace('\n', ' ')
+                .replace('\t', ' ')
+                .trim()
+                .toLowerCase(Locale.ROOT);
+        while (s.contains("  ")) s = s.replace("  ", " ");
+        return s;
+    }
+
+    static String analogKey(String theme, String question) {
+        return comparisonKey(theme) + "\n" + comparisonKey(question);
+    }
+
+    void addT(CgQuestion q) {
+        Set<String> existing = new HashSet<>(prefs.getStringSet(K_T, new HashSet<>()));
+        existing.add(analogKey(q.theme, q.question));
+        prefs.edit().putStringSet(K_T, existing).apply();
+    }
+
+    boolean isTExcluded(CgQuestion q) {
+        Set<String> set = prefs.getStringSet(K_T, new HashSet<>());
+        return set.contains(analogKey(q.theme, q.question));
+    }
+
+    synchronized void enqueue(String collection, JSONObject payload) {
+        try {
+            JSONArray a = new JSONArray(prefs.getString(K_OUTBOX, "[]"));
+            JSONObject item = new JSONObject();
+            item.put("collection", collection);
+            item.put("payload", payload);
+            a.put(item);
+            prefs.edit().putString(K_OUTBOX, a.toString()).apply();
+        } catch (Exception ignored) { }
+    }
+
+    int pendingCount() {
+        try { return new JSONArray(prefs.getString(K_OUTBOX, "[]")).length(); }
+        catch (Exception ignored) { return 0; }
+    }
+
+    synchronized void flushOutboxSync(CgFirestore firestore, String token, String uid) {
+        try {
+            JSONArray source = new JSONArray(prefs.getString(K_OUTBOX, "[]"));
+            JSONArray remaining = new JSONArray();
+            for (int i = 0; i < source.length(); i++) {
+                JSONObject item = source.optJSONObject(i);
+                if (item == null) continue;
+                try {
+                    firestore.createDocumentSync(
+                            token,
+                            uid,
+                            item.optString("collection", ""),
+                            item.optJSONObject("payload") == null ? new JSONObject() : item.optJSONObject("payload"));
+                } catch (Exception ex) {
+                    remaining.put(item);
+                }
+            }
+            prefs.edit().putString(K_OUTBOX, remaining.toString()).apply();
+        } catch (Exception ignored) { }
+    }
+}
+
+/* ========================================================================== */
+/* Reprise locale                                                             */
+/* ========================================================================== */
+
+final class CgGameState {
+    private static final String PREF = "cgandroid001_game";
+    private final SharedPreferences prefs;
+
+    CgGameState(Context context) { prefs = context.getSharedPreferences(PREF, Context.MODE_PRIVATE); }
+
+    void start(String sessionId, int target, String domain, String status, List<String> ids) {
+        prefs.edit().clear()
+                .putBoolean("active", true)
+                .putString("session", sessionId == null ? "" : sessionId)
+                .putInt("target", target)
+                .putString("domain", domain == null ? "" : domain)
+                .putString("server_status", status == null ? "active" : status)
+                .putInt("played", 0)
+                .putInt("correct", 0)
+                .putInt("position", 0)
+                .putString("batch", toJson(ids))
+                .apply();
+    }
+
+    boolean hasActive() { return prefs.getBoolean("active", false); }
+    String sessionId() { return prefs.getString("session", ""); }
+    int target() { return prefs.getInt("target", 0); }
+    int played() { return prefs.getInt("played", 0); }
+    int correct() { return prefs.getInt("correct", 0); }
+    int position() { return prefs.getInt("position", 0); }
+    String serverStatus() { return prefs.getString("server_status", "active"); }
+    void setServerStatus(String status) { prefs.edit().putString("server_status", status == null ? "" : status).apply(); }
+
+    ArrayList<String> batchIds() {
+        ArrayList<String> out = new ArrayList<>();
+        try {
+            JSONArray a = new JSONArray(prefs.getString("batch", "[]"));
+            for (int i = 0; i < a.length(); i++) {
+                String x = a.optString(i, "");
+                if (!x.isEmpty()) out.add(x);
+            }
+        } catch (Exception ignored) { }
+        return out;
+    }
+
+    void setBatch(String status, List<String> ids) {
+        prefs.edit()
+                .putString("server_status", status == null ? "active" : status)
+                .putString("batch", toJson(ids))
+                .putInt("position", 0)
+                .apply();
+    }
+
+    void recordAnswer(boolean correct) {
+        prefs.edit()
+                .putInt("played", played() + 1)
+                .putInt("correct", correct() + (correct ? 1 : 0))
+                .putInt("position", position() + 1)
+                .apply();
+    }
+
+    void advanceWithoutPlaying() {
+        prefs.edit().putInt("position", position() + 1).apply();
+    }
+
+    void finish() { prefs.edit().putBoolean("active", false).apply(); }
+    void clear() { prefs.edit().clear().apply(); }
+
+    private static String toJson(List<String> ids) {
+        JSONArray a = new JSONArray();
+        if (ids != null) for (String id : ids) a.put(id);
+        return a.toString();
+    }
+}

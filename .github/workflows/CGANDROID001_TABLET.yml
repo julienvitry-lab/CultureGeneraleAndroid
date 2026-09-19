@@ -1,0 +1,46 @@
+name: CGANDROID001 Tablet APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "tablet/**"
+      - "settings.gradle"
+      - ".github/workflows/CGANDROID001_TABLET.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Conserver la même clé debug entre les builds
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: cgandroid-tablet-debug-keystore-v1
+
+      - name: Préparer Gradle
+        run: chmod +x gradlew
+
+      - name: Compiler la nouvelle APK tablette
+        run: ./gradlew :tablet:assembleDebug --stacktrace --no-daemon
+
+      - name: Publier l'APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CultureGenerale-Tablet-CGANDROID001
+          path: tablet/build/outputs/apk/debug/tablet-debug.apk
+          if-no-files-found: error
+          retention-days: 14

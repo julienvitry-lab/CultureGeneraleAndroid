@@ -1,0 +1,9 @@
+<resources>
+    <style name="CgTabletTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/cg_black</item>
+        <item name="android:colorAccent">@color/cg_blue</item>
+        <item name="android:statusBarColor">@color/cg_black</item>
+        <item name="android:navigationBarColor">@color/cg_black</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
