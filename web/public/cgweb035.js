@@ -1,4 +1,4 @@
-const CGWEB035_VERSION='CGPLAY003_FIX5_X_DUPLICATE_TRUTH002';
+const CGWEB035_VERSION='CGPLAY003_FIX6_X_ORIGIN_AUDIT001_REHABILITATION_PREVIEW001';
 const CG35_END='https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb032Search';
 const cg35$=id=>document.getElementById(id);
 const cg35Esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
@@ -149,7 +149,7 @@ function cg35Smart(){
         <label>Jamais vues (%)<input id="cg35SmartUnseen" type="number" min="0" max="100" value="${c.unseenPct}"></label>
         <label>Domaine<select id="cg35SmartDomain">${domains.map(d=>`<option value="${cg35Esc(d)}" ${d===c.domain?'selected':''}>${cg35Esc(d||'Tous les domaines')}</option>`).join('')}</select></label>
       </div>
-      <div class="cg35-actions"><button id="cg35SmartGenerate" class="cg35-smart-primary">Générer la séance</button><button id="cg35XAudit" class="cg35-x-audit-button">Auditer les X</button></div>
+      <div class="cg35-actions"><button id="cg35SmartGenerate" class="cg35-smart-primary">Générer la séance</button><button id="cg35XAudit" class="cg35-x-audit-button">Auditer les X</button><button id="cg35XOriginAudit" class="cg35-x-audit-button">Origine / réhabilitation</button></div>
       <small>LEARNING_MODEL002 : A/R/P/T ne pilotent plus la sélection. Seul X interdit définitivement une question ; SMART_BALANCE002 gère le reste depuis l’historique de jeu.</small>
     </section>
     <section id="cg35SmartResults" class="cg35-smart-results">
@@ -157,6 +157,7 @@ function cg35Smart(){
     </section>`);
   cg35$('cg35SmartGenerate').onclick=cg35GenerateSmart;
   cg35$('cg35XAudit').onclick=cg35RunXAudit;
+  cg35$('cg35XOriginAudit').onclick=cg35RunXOriginAudit;
   cg35Status('Session intelligente prête.','ok');
 }
 async function cg35RunXAudit(){
@@ -729,6 +730,426 @@ async function cg35RunXAudit(){
         a.sampleSize
       )+
       ' X analysés.',
+      'ok'
+    );
+
+
+  }catch(e){
+
+    box.innerHTML=
+      '<div class="cg35-error">'+
+        cg35Esc(
+          e.message
+        )+
+      '</div>';
+
+
+    cg35Status(
+      '❌ '+
+      e.message,
+      'bad'
+    );
+  }
+}
+
+async function cg35RunXOriginAudit(){
+
+  let box=
+    cg35$('cg35XOriginResults');
+
+
+  if(!box){
+
+    const smart=
+      cg35$('cg35SmartResults');
+
+    if(!smart)return;
+
+
+    smart.insertAdjacentHTML(
+      'beforebegin',
+      '<section id="cg35XOriginResults" class="cg35-x-audit cg35-x-origin"></section>'
+    );
+
+
+    box=
+      cg35$('cg35XOriginResults');
+  }
+
+
+  box.innerHTML=
+    '<div class="cg35-empty">Analyse de l’origine des X et prévisualisation de réhabilitation…</div>';
+
+
+  cg35Status(
+    'Audit de l’origine des exclusions X…'
+  );
+
+
+  try{
+
+    const d=
+      await cg35Api({
+        mode:'xOriginAudit',
+        sampleLimit:1200
+      });
+
+
+    const a=
+      d.audit||{};
+
+
+    const pct=v=>
+      Number(v||0)
+        .toLocaleString(
+          'fr-FR',
+          {
+            maximumFractionDigits:2
+          }
+        )+
+      ' %';
+
+
+    const dateText=v=>
+      v
+        ? new Date(v)
+            .toLocaleString('fr-FR')
+        : '—';
+
+
+    const examples=
+      rows=>
+        (rows||[])
+          .map(
+            q=>
+              '<article class="cg35-origin-example">'+
+
+                '<div class="cg35-origin-example-main">'+
+
+                  '<small>'+
+                    cg35Esc(
+                      cg35Path(
+                        q.domain,
+                        q.theme
+                      )
+                    )+
+                  '</small>'+
+
+                  '<strong>'+
+                    cg35Esc(
+                      q.question||
+                      '(question sans texte)'
+                    )+
+                  '</strong>'+
+
+                  '<span>'+
+                    cg35Esc(
+                      q.classification||
+                      ''
+                    )+
+                  '</span>'+
+
+                  (
+                    q.qualitySignals?.length
+                      ? '<span class="cg35-origin-signals">Signal(s) : '+
+                          cg35Esc(
+                            q.qualitySignals.join(', ')
+                          )+
+                        '</span>'
+                      : ''
+                  )+
+
+                  (
+                    q.cgSource
+                      ? '<span>Source actuelle : '+
+                          cg35Esc(q.cgSource)+
+                        '</span>'
+                      : ''
+                  )+
+
+                  (
+                    q.historySummary?.length
+                      ? '<div class="cg35-origin-history">'+
+                          q.historySummary
+                            .map(
+                              h=>
+                                '<span>'+
+                                  cg35Esc(
+                                    h.event+
+                                    ' · '+
+                                    (
+                                      h.source||
+                                      h.family||
+                                      'source inconnue'
+                                    )
+                                  )+
+                                  ' · '+
+                                  cg35Esc(
+                                    dateText(h.at)
+                                  )+
+                                '</span>'
+                            )
+                            .join('')+
+                        '</div>'
+                      : ''
+                  )+
+
+                '</div>'+
+
+                cg35QuestionButton(
+                  q.id
+                )+
+
+              '</article>'
+          )
+          .join('') ||
+        '<div class="cg35-empty">Aucun exemple dans cette catégorie.</div>';
+
+
+    const sources=
+      (a.sourceSummary||[])
+        .map(
+          s=>
+            '<div class="cg35-x-audit-row">'+
+              '<span>'+
+                cg35Esc(s.name)+
+              '</span>'+
+              '<b>'+
+                cg35Fmt(s.count)+
+              '</b>'+
+            '</div>'
+        )
+        .join('') ||
+      '<div class="cg35-empty">Aucune transition vers X historisée dans l’échantillon.</div>';
+
+
+    box.innerHTML=
+
+      '<div class="cg35-x-audit-head">'+
+
+        '<div>'+
+          '<strong>'+
+            cg35Esc(
+              a.auditVersion||
+              'CGPLAY003_FIX6_X_ORIGIN_AUDIT001'
+            )+
+          '</strong>'+
+          '<span>'+
+            cg35Esc(
+              a.previewVersion||
+              'REHABILITATION_PREVIEW001'
+            )+
+            ' · lecture seule'+
+          '</span>'+
+        '</div>'+
+
+        '<button id="cg35XOriginClose">Fermer</button>'+
+
+      '</div>'+
+
+
+      '<section class="cg35-x-audit-kpis">'+
+
+        '<article>'+
+          '<small>X actifs</small>'+
+          '<b>'+
+            cg35Fmt(a.xActive)+
+          '</b>'+
+          '<span>catalogue actuel</span>'+
+        '</article>'+
+
+        '<article>'+
+          '<small>Échantillon analysé</small>'+
+          '<b>'+
+            cg35Fmt(a.sampleAnalyzed)+
+          '</b>'+
+          '<span>'+
+            pct(a.sampleCoveragePct)+
+            ' des X actifs'+
+          '</span>'+
+        '</article>'+
+
+        '<article>'+
+          '<small>Historique disponible</small>'+
+          '<b>'+
+            pct(a.historyCoveragePct)+
+          '</b>'+
+          '<span>'+
+            cg35Fmt(a.withHistory)+
+            ' question(s)'+
+          '</span>'+
+        '</article>'+
+
+        '<article class="cg35-origin-keep">'+
+          '<small>Preuve explicite de X</small>'+
+          '<b>'+
+            cg35Fmt(a.explicitKeepEvidence)+
+          '</b>'+
+          '<span>'+
+            pct(a.explicitKeepPct)+
+            ' · conservation présumée'+
+          '</span>'+
+        '</article>'+
+
+        '<article>'+
+          '<small>Transition → X</small>'+
+          '<b>'+
+            cg35Fmt(a.explicitSetX)+
+          '</b>'+
+          '<span>affectation historisée</span>'+
+        '</article>'+
+
+        '<article>'+
+          '<small>Créées directement en X</small>'+
+          '<b>'+
+            cg35Fmt(a.createdAsX)+
+          '</b>'+
+          '<span>création historisée</span>'+
+        '</article>'+
+
+        '<article class="cg35-origin-candidate">'+
+          '<small>Candidats forts à réexamen</small>'+
+          '<b>'+
+            cg35Fmt(a.strongReviewCandidate)+
+          '</b>'+
+          '<span>'+
+            pct(a.strongReviewPct)+
+            ' · aucune preuve X retrouvée ni signal qualité'+
+          '</span>'+
+        '</article>'+
+
+        '<article>'+
+          '<small>Candidats à contrôler</small>'+
+          '<b>'+
+            cg35Fmt(a.qualityReviewCandidate)+
+          '</b>'+
+          '<span>'+
+            pct(a.qualityReviewPct)+
+            ' · signal qualité présent'+
+          '</span>'+
+        '</article>'+
+
+        '<article class="cg35-origin-zero">'+
+          '<small>Modifications effectuées</small>'+
+          '<b>'+
+            cg35Fmt(a.modificationsPerformed)+
+          '</b>'+
+          '<span>aucun statut modifié</span>'+
+        '</article>'+
+
+      '</section>'+
+
+
+      '<div class="cg35-x-audit-warning">'+
+        '<b>Limite historique :</b> '+
+        cg35Esc(
+          a.historyWarning||
+          ''
+        )+
+      '</div>'+
+
+
+      '<div class="cg35-origin-summary">'+
+
+        '<span>'+
+          '<b>'+
+            cg35Fmt(a.withoutHistory)+
+          '</b> sans aucune entrée d’historique'+
+        '</span>'+
+
+        '<span>'+
+          '<b>'+
+            cg35Fmt(a.xPreservedOnly)+
+          '</b> déjà X lors des premières traces disponibles'+
+        '</span>'+
+
+        '<span>'+
+          '<b>'+
+            cg35Fmt(a.historyNoXEvidence)+
+          '</b> avec historique mais sans affectation X retrouvée'+
+        '</span>'+
+
+      '</div>'+
+
+
+      '<details open class="cg35-x-audit-details">'+
+        '<summary>Origine des affectations X historisées</summary>'+
+        sources+
+      '</details>'+
+
+
+      '<details open class="cg35-x-audit-details">'+
+        '<summary>X avec preuve explicite de conservation ('+
+          cg35Fmt(a.explicitKeepEvidence)+
+          ')</summary>'+
+        examples(
+          a.examples?.explicit
+        )+
+      '</details>'+
+
+
+      '<details open class="cg35-x-audit-details">'+
+        '<summary>Candidats forts à réexamen ('+
+          cg35Fmt(a.strongReviewCandidate)+
+          ' dans l’échantillon)</summary>'+
+        '<div class="cg35-x-audit-warning">'+
+          '« Candidat fort » ne signifie pas réhabilitation automatique : aucune écriture n’est effectuée et l’absence d’historique ancien reste une incertitude.'+
+        '</div>'+
+        examples(
+          a.examples?.strong
+        )+
+      '</details>'+
+
+
+      '<details class="cg35-x-audit-details">'+
+        '<summary>Candidats avec signal qualité ('+
+          cg35Fmt(a.qualityReviewCandidate)+
+          ')</summary>'+
+        examples(
+          a.examples?.quality
+        )+
+      '</details>'+
+
+
+      '<details class="cg35-x-audit-details">'+
+        '<summary>X déjà présents au début de l’historique disponible</summary>'+
+        examples(
+          a.examples?.preserved
+        )+
+      '</details>'+
+
+
+      '<details class="cg35-x-audit-details">'+
+        '<summary>Exemples sans aucun historique</summary>'+
+        examples(
+          a.examples?.noHistory
+        )+
+      '</details>'+
+
+
+      '<div class="cg35-origin-preview">'+
+        '<strong>REHABILITATION_PREVIEW001</strong>'+
+        '<span>'+
+          'Prévisualisation uniquement · '+
+          cg35Fmt(a.strongReviewCandidate)+
+          ' candidat(s) forts dans l’échantillon · 0 modification.'+
+        '</span>'+
+      '</div>';
+
+
+    cg35$('cg35XOriginClose')
+      ?.addEventListener(
+        'click',
+        ()=>{
+          box.remove();
+        }
+      );
+
+
+    cg35Status(
+      '✅ X_ORIGIN_AUDIT001 terminé · '+
+      cg35Fmt(a.sampleAnalyzed)+
+      ' X analysés · 0 modification.',
       'ok'
     );
 

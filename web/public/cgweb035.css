@@ -485,3 +485,113 @@
     flex-direction:column;
   }
 }
+
+/* CGPLAY003 FIX6 · X_ORIGIN_AUDIT001 / REHABILITATION_PREVIEW001 */
+
+.cg35-x-origin{
+  border-color:rgba(125,180,235,.30);
+}
+
+.cg35-origin-keep{
+  border-color:rgba(245,190,80,.30)!important;
+  background:rgba(245,190,80,.045)!important;
+}
+
+.cg35-origin-candidate{
+  border-color:rgba(80,210,160,.38)!important;
+  background:rgba(80,210,160,.055)!important;
+}
+
+.cg35-origin-zero{
+  border-color:rgba(80,210,160,.28)!important;
+}
+
+.cg35-origin-summary{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  margin:10px 0;
+}
+
+.cg35-origin-summary>span{
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  padding:9px 10px;
+  border:1px solid rgba(130,160,190,.18);
+  border-radius:9px;
+  background:rgba(255,255,255,.02);
+}
+
+.cg35-origin-summary b{
+  font-size:1.1rem;
+}
+
+.cg35-origin-example{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:10px;
+  margin-top:7px;
+  padding:8px 9px;
+  border:1px solid rgba(130,160,190,.14);
+  border-radius:8px;
+  background:rgba(255,255,255,.018);
+}
+
+.cg35-origin-example-main{
+  display:flex;
+  flex:1;
+  min-width:0;
+  flex-direction:column;
+  gap:3px;
+}
+
+.cg35-origin-example-main small{
+  opacity:.60;
+}
+
+.cg35-origin-example-main>span{
+  opacity:.78;
+  font-size:.77rem;
+}
+
+.cg35-origin-signals{
+  color:#f3c878;
+}
+
+.cg35-origin-history{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  margin-top:3px;
+  padding-left:8px;
+  border-left:2px solid rgba(110,170,220,.22);
+}
+
+.cg35-origin-history span{
+  font-size:.73rem;
+  opacity:.68;
+}
+
+.cg35-origin-preview{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  margin-top:10px;
+  padding:10px 11px;
+  border:1px solid rgba(80,210,160,.32);
+  border-radius:9px;
+  background:rgba(80,210,160,.045);
+}
+
+@media(max-width:700px){
+
+  .cg35-origin-summary{
+    grid-template-columns:1fr;
+  }
+
+  .cg35-origin-example{
+    flex-direction:column;
+  }
+}

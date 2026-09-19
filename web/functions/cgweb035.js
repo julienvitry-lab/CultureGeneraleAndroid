@@ -21,6 +21,8 @@ const LEARNING_MODEL_VERSION='CGPLAY003_X_ONLY001_LEARNING_MODEL002';
 const X_TRUTH_VERSION='CGPLAY003_FIX3_X_TRUTH001_REPAIR001';
 const X_AUDIT_VERSION='CGPLAY003_FIX4_X_SEMANTIC_AUDIT001';
 const X_DUPLICATE_TRUTH_VERSION='CGPLAY003_FIX5_X_DUPLICATE_TRUTH002';
+const X_ORIGIN_VERSION='CGPLAY003_FIX6_X_ORIGIN_AUDIT001';
+const X_REHABILITATION_PREVIEW_VERSION='CGPLAY003_FIX6_REHABILITATION_PREVIEW001';
 
 const one=v=>String(v??'').trim();
 const num=v=>Number.isFinite(Number(v))?Number(v):0;
@@ -3240,6 +3242,949 @@ async function xDuplicateTruth(
   };
 }
 
+function xOriginStatus(value){
+
+  return one(value)
+    .trim()
+    .toUpperCase();
+}
+
+function xOriginTimestamp(value){
+
+  if(!value)return 0;
+
+  try{
+
+    if(
+      typeof value.toMillis==='function'
+    ){
+      return value.toMillis();
+    }
+
+    if(value.seconds){
+      return Number(value.seconds)*1000;
+    }
+
+    const n=
+      new Date(value)
+        .getTime();
+
+    return Number.isFinite(n)
+      ? n
+      : 0;
+
+  }catch(_){
+
+    return 0;
+  }
+}
+
+function xOriginHistoryStatus(row){
+
+  const before=
+    row?.before_snapshot &&
+    typeof row.before_snapshot==='object'
+      ? xOriginStatus(
+          row.before_snapshot.status
+        )
+      : '';
+
+  const after=
+    row?.after_snapshot &&
+    typeof row.after_snapshot==='object'
+      ? xOriginStatus(
+          row.after_snapshot.status
+        )
+      : '';
+
+  const patchHasStatus=
+    Boolean(
+      row?.patch &&
+      typeof row.patch==='object' &&
+      Object.prototype.hasOwnProperty.call(
+        row.patch,
+        'status'
+      )
+    );
+
+  const patch=
+    patchHasStatus
+      ? xOriginStatus(
+          row.patch.status
+        )
+      : '';
+
+  return {
+    before,
+    after,
+    patch,
+    patchHasStatus
+  };
+}
+
+function xOriginEvent(row){
+
+  const status=
+    xOriginHistoryStatus(row);
+
+  const operation=
+    one(row?.operation)
+      .toLowerCase();
+
+  const target=
+    status.patchHasStatus
+      ? status.patch
+      : status.after;
+
+
+  if(
+    operation==='create' &&
+    target==='X'
+  ){
+    return 'created_as_x';
+  }
+
+
+  /*
+   * Un patch explicite status=X constitue une preuve
+   * d'affectation de X, même si l'ancien snapshot
+   * n'existait pas encore à cette époque.
+   */
+  if(
+    status.patchHasStatus &&
+    status.patch==='X' &&
+    status.before!=='X'
+  ){
+    return 'set_to_x';
+  }
+
+
+  if(
+    status.before!=='X' &&
+    status.after==='X'
+  ){
+    return 'set_to_x';
+  }
+
+
+  if(
+    status.before==='X' &&
+    (
+      status.after==='X' ||
+      (
+        status.patchHasStatus &&
+        status.patch==='X'
+      )
+    )
+  ){
+    return 'x_preserved';
+  }
+
+
+  return '';
+}
+
+function xOriginSourceFamily(row){
+
+  const s=[
+    row?.writer_id,
+    row?.writer_label,
+    row?.source
+  ]
+  .map(
+    x=>one(x).toUpperCase()
+  )
+  .join(' ');
+
+
+  if(
+    s.includes('CGWEB019')
+  ){
+    return 'Édition Web CGWEB019';
+  }
+
+
+  if(
+    s.includes('CGWEB022') ||
+    s.includes('RESTORE')
+  ){
+    return 'Restauration';
+  }
+
+
+  if(
+    s.includes('BULK') ||
+    s.includes('MASS')
+  ){
+    return 'Opération massive';
+  }
+
+
+  if(
+    s.includes('CGWEB024') ||
+    s.includes('CGIMPORT') ||
+    s.includes('IMPORT')
+  ){
+    return 'Import';
+  }
+
+
+  if(
+    s.includes('MIGR') ||
+    s.includes('RECOVERY') ||
+    s.includes('RECOVER') ||
+    s.includes('SCRIPT') ||
+    s.includes('FIX')
+  ){
+    return 'Migration / technique';
+  }
+
+
+  if(
+    s.includes('CGSYNC') ||
+    s.includes('SYNC')
+  ){
+    return 'Synchronisation';
+  }
+
+
+  return 'Autre / indéterminée';
+}
+
+function xOriginQualitySignals(doc){
+
+  const x=
+    doc?.data
+      ? doc.data()
+      : {};
+
+  const q=
+    one(x.question);
+
+  const options=[
+    one(x.proposition_a),
+    one(x.proposition_b),
+    one(x.proposition_c),
+    one(x.proposition_d)
+  ];
+
+  const signals=[];
+
+
+  if(!q){
+    signals.push(
+      'question vide'
+    );
+  }
+
+
+  if(
+    options.filter(Boolean).length<4
+  ){
+    signals.push(
+      'QCM incomplet'
+    );
+  }
+
+
+  const nonTrouve=
+    x.non_trouve===1 ||
+    x.non_trouve===true ||
+    one(x.non_trouve)==='1';
+
+
+  if(nonTrouve){
+    signals.push(
+      'non_trouve'
+    );
+  }
+
+
+  const isImage=
+    x.is_image===1 ||
+    x.is_image===true ||
+    one(x.is_image)==='1';
+
+
+  if(
+    isImage &&
+    !one(x.image_file) &&
+    !one(x.image_source_url)
+  ){
+    signals.push(
+      'image sans référence'
+    );
+  }
+
+
+  return signals;
+}
+
+function xOriginExample(
+  id,
+  doc,
+  histories,
+  classification
+){
+
+  const x=
+    doc?.data
+      ? doc.data()
+      : {};
+
+
+  const historySummary=
+    histories
+      .filter(
+        h=>xOriginEvent(h)
+      )
+      .slice(-3)
+      .map(
+        h=>({
+
+          event:
+            xOriginEvent(h),
+
+          operation:
+            one(h.operation),
+
+          source:
+            one(
+              h.source||
+              h.writer_label||
+              h.writer_id
+            ),
+
+          family:
+            xOriginSourceFamily(h),
+
+          at:
+            xOriginTimestamp(
+              h.created_at
+            )
+        })
+      );
+
+
+  return {
+
+    id,
+
+    classification,
+
+    domain:
+      one(x.megatheme),
+
+    theme:
+      one(x.theme),
+
+    question:
+      one(x.question),
+
+    detail:
+      one(x.detail),
+
+    cgWriter:
+      one(
+        x.cg_writer_label||
+        x.cg_writer_id
+      ),
+
+    cgSource:
+      one(
+        x.cg_update_source
+      ),
+
+    revision:
+      Number(
+        x.cg_revision||0
+      )||0,
+
+    qualitySignals:
+      xOriginQualitySignals(doc),
+
+    historyCount:
+      histories.length,
+
+    historySummary
+  };
+}
+
+async function xOriginAudit(
+  uid,
+  xPolicy,
+  body
+){
+
+  const db=
+    getFirestore();
+
+  const base=
+    db
+      .collection('users')
+      .doc(uid);
+
+  const questions=
+    base.collection('questions');
+
+  const history=
+    base.collection('question_history');
+
+
+  /*
+   * L'historique n'est pas complet sur toute la vie
+   * du catalogue. On travaille donc sur un échantillon
+   * suffisamment large, sans transformer absence de
+   * trace en preuve de réhabilitation.
+   */
+  const sampleLimit=
+    clamp(
+      Math.floor(
+        num(body.sampleLimit)||1200
+      ),
+      300,
+      2000
+    );
+
+
+  const activeIds=[
+    ...(xPolicy?.catalogIds||[])
+  ]
+  .sort(
+    (a,b)=>
+      String(a)
+        .localeCompare(
+          String(b),
+          'fr',
+          {
+            numeric:true
+          }
+        )
+  );
+
+
+  const selectedIds=[];
+
+
+  if(
+    activeIds.length<=sampleLimit
+  ){
+
+    selectedIds.push(
+      ...activeIds
+    );
+
+  }else{
+
+    const used=
+      new Set();
+
+    for(
+      let i=0;
+      i<sampleLimit;
+      i++
+    ){
+
+      const index=
+        Math.floor(
+          i*
+          (activeIds.length-1)/
+          Math.max(
+            1,
+            sampleLimit-1
+          )
+        );
+
+      const id=
+        activeIds[index];
+
+      if(
+        !used.has(id)
+      ){
+        used.add(id);
+        selectedIds.push(id);
+      }
+    }
+  }
+
+
+  /*
+   * Documents questions.
+   *
+   * loadXPolicy possède normalement déjà les snapshots
+   * status=X ; fallback getAll si nécessaire.
+   */
+  const docs=
+    new Map();
+
+
+  for(const id of selectedIds){
+
+    const d=
+      xPolicy
+        ?.docs
+        ?.get(id);
+
+    if(d?.exists){
+      docs.set(id,d);
+    }
+  }
+
+
+  const missingIds=
+    selectedIds.filter(
+      id=>!docs.has(id)
+    );
+
+
+  for(
+    let i=0;
+    i<missingIds.length;
+    i+=200
+  ){
+
+    const refs=
+      missingIds
+        .slice(i,i+200)
+        .map(
+          id=>questions.doc(id)
+        );
+
+    const snaps=
+      await db.getAll(...refs);
+
+    for(const d of snaps){
+
+      if(d.exists){
+        docs.set(d.id,d);
+      }
+    }
+  }
+
+
+  /*
+   * Historique ciblé.
+   *
+   * Requêtes "in" par petits lots :
+   * pas de lecture exhaustive de question_history.
+   */
+  const historyByQuestion=
+    new Map();
+
+
+  for(const id of selectedIds){
+    historyByQuestion.set(id,[]);
+  }
+
+
+  for(
+    let i=0;
+    i<selectedIds.length;
+    i+=25
+  ){
+
+    const ids=
+      selectedIds.slice(i,i+25);
+
+
+    const snap=
+      await history
+        .where(
+          'question_id',
+          'in',
+          ids
+        )
+        .get()
+        .catch(
+          ()=>({
+            docs:[]
+          })
+        );
+
+
+    for(const d of snap.docs){
+
+      const row={
+        id:d.id,
+        ...d.data()
+      };
+
+      const qid=
+        one(row.question_id);
+
+      if(
+        historyByQuestion.has(qid)
+      ){
+        historyByQuestion
+          .get(qid)
+          .push(row);
+      }
+    }
+  }
+
+
+  for(
+    const rows
+    of historyByQuestion.values()
+  ){
+
+    rows.sort(
+      (a,b)=>
+        xOriginTimestamp(a.created_at)-
+        xOriginTimestamp(b.created_at)
+    );
+  }
+
+
+  const counters={
+
+    withHistory:0,
+
+    withoutHistory:0,
+
+    explicitSetX:0,
+
+    createdAsX:0,
+
+    xPreservedOnly:0,
+
+    historyNoXEvidence:0,
+
+    strongReviewCandidate:0,
+
+    qualityReviewCandidate:0,
+
+    explicitKeepEvidence:0
+  };
+
+
+  const sourceFamilies=
+    new Map();
+
+
+  const examples={
+
+    explicit:[],
+
+    strong:[],
+
+    quality:[],
+
+    noHistory:[],
+
+    preserved:[]
+  };
+
+
+  for(const id of selectedIds){
+
+    const doc=
+      docs.get(id);
+
+    if(!doc)continue;
+
+
+    const rows=
+      historyByQuestion.get(id)||[];
+
+
+    if(rows.length){
+      counters.withHistory++;
+    }else{
+      counters.withoutHistory++;
+    }
+
+
+    const events=
+      rows
+        .map(
+          row=>({
+            row,
+            kind:
+              xOriginEvent(row)
+          })
+        )
+        .filter(
+          x=>x.kind
+        );
+
+
+    const createdAsX=
+      events.some(
+        x=>
+          x.kind==='created_as_x'
+      );
+
+
+    const setToX=
+      events.some(
+        x=>
+          x.kind==='set_to_x'
+      );
+
+
+    const preserved=
+      events.some(
+        x=>
+          x.kind==='x_preserved'
+      );
+
+
+    const qualitySignals=
+      xOriginQualitySignals(doc);
+
+
+    /*
+     * Toute création en X ou transition explicite
+     * vers X est considérée comme preuve positive
+     * de conservation, pas comme candidat automatique.
+     */
+    if(
+      createdAsX ||
+      setToX
+    ){
+
+      counters.explicitKeepEvidence++;
+
+      if(createdAsX){
+        counters.createdAsX++;
+      }
+
+      if(setToX){
+        counters.explicitSetX++;
+      }
+
+
+      for(const event of events){
+
+        if(
+          event.kind!=='created_as_x' &&
+          event.kind!=='set_to_x'
+        ){
+          continue;
+        }
+
+        const family=
+          xOriginSourceFamily(
+            event.row
+          );
+
+        sourceFamilies.set(
+          family,
+          (
+            sourceFamilies.get(family)||0
+          )+1
+        );
+      }
+
+
+      if(
+        examples.explicit.length<20
+      ){
+        examples.explicit.push(
+          xOriginExample(
+            id,
+            doc,
+            rows,
+            'X explicitement historisé'
+          )
+        );
+      }
+
+      continue;
+    }
+
+
+    /*
+     * Pas de preuve d'affectation.
+     */
+    if(
+      preserved
+    ){
+
+      counters.xPreservedOnly++;
+
+      if(
+        examples.preserved.length<15
+      ){
+        examples.preserved.push(
+          xOriginExample(
+            id,
+            doc,
+            rows,
+            'X déjà présent au début de l’historique disponible'
+          )
+        );
+      }
+
+    }else if(rows.length){
+
+      counters.historyNoXEvidence++;
+    }
+
+
+    /*
+     * Preview de réexamen seulement.
+     *
+     * Aucun changement de statut.
+     */
+    if(
+      qualitySignals.length===0
+    ){
+
+      counters.strongReviewCandidate++;
+
+      if(
+        examples.strong.length<25
+      ){
+        examples.strong.push(
+          xOriginExample(
+            id,
+            doc,
+            rows,
+            'Candidat fort à réexamen'
+          )
+        );
+      }
+
+    }else{
+
+      counters.qualityReviewCandidate++;
+
+      if(
+        examples.quality.length<20
+      ){
+        examples.quality.push(
+          xOriginExample(
+            id,
+            doc,
+            rows,
+            'Candidat à contrôler'
+          )
+        );
+      }
+    }
+
+
+    if(
+      !rows.length &&
+      examples.noHistory.length<20
+    ){
+      examples.noHistory.push(
+        xOriginExample(
+          id,
+          doc,
+          rows,
+          'Aucun historique disponible'
+        )
+      );
+    }
+  }
+
+
+  const sourceSummary=
+    [...sourceFamilies.entries()]
+      .map(
+        ([name,count])=>({
+          name,
+          count
+        })
+      )
+      .sort(
+        (a,b)=>
+          b.count-a.count
+      );
+
+
+  const analyzed=
+    [
+      ...selectedIds
+    ]
+    .filter(
+      id=>docs.has(id)
+    )
+    .length;
+
+
+  return {
+
+    auditVersion:
+      X_ORIGIN_VERSION,
+
+    previewVersion:
+      X_REHABILITATION_PREVIEW_VERSION,
+
+    readOnly:true,
+
+    modificationsPerformed:0,
+
+    xActive:
+      xPolicy
+        ?.catalogIds
+        ?.size||0,
+
+    sampleRequested:
+      selectedIds.length,
+
+    sampleAnalyzed:
+      analyzed,
+
+    sampleCoveragePct:
+      xPolicy?.catalogIds?.size
+        ? Math.round(
+            analyzed/
+            xPolicy.catalogIds.size*
+            10000
+          )/100
+        : 0,
+
+    historyWarning:
+      'question_history ne couvre que les écritures historisées depuis CGWEB019/CGWEB022 ; absence de trace ne prouve pas que X était involontaire.',
+
+    ...counters,
+
+    historyCoveragePct:
+      analyzed
+        ? Math.round(
+            counters.withHistory/
+            analyzed*
+            10000
+          )/100
+        : 0,
+
+    explicitKeepPct:
+      analyzed
+        ? Math.round(
+            counters.explicitKeepEvidence/
+            analyzed*
+            10000
+          )/100
+        : 0,
+
+    strongReviewPct:
+      analyzed
+        ? Math.round(
+            counters.strongReviewCandidate/
+            analyzed*
+            10000
+          )/100
+        : 0,
+
+    qualityReviewPct:
+      analyzed
+        ? Math.round(
+            counters.qualityReviewCandidate/
+            analyzed*
+            10000
+          )/100
+        : 0,
+
+    sourceSummary,
+
+    examples
+  };
+}
+
 async function handleLearningHub(req,res){
   if(cors(req,res))return;
 
@@ -3273,9 +4218,34 @@ async function handleLearningHub(req,res){
       mode==='neverThemes'||
       mode==='neverQuestions'||
                 mode==='xSemanticAudit'||
-                mode==='xDuplicateTruth';
+                mode==='xDuplicateTruth'||
+                mode==='xOriginAudit';
 
     const xPolicy=await loadXPolicy(user.uid,forceX);
+
+              if(mode==='xOriginAudit'){
+
+                const audit=
+                  await xOriginAudit(
+                    user.uid,
+                    xPolicy,
+                    body
+                  );
+
+                return json(
+                  res,
+                  200,
+                  {
+                    ok:true,
+                    audit,
+                    learningModel:
+                      learningModelMeta(
+                        xPolicy
+                      )
+                  }
+                );
+              }
+
 
               if(mode==='xDuplicateTruth'){
 
