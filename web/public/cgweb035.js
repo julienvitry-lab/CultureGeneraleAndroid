@@ -1,4 +1,4 @@
-const CGWEB035_VERSION='CGPLAY003_FIX4_X_SEMANTIC_AUDIT001';
+const CGWEB035_VERSION='CGPLAY003_FIX5_X_DUPLICATE_TRUTH002';
 const CG35_END='https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb032Search';
 const cg35$=id=>document.getElementById(id);
 const cg35Esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
@@ -170,14 +170,14 @@ async function cg35RunXAudit(){
     const smart=
       cg35$('cg35SmartResults');
 
-    if(!smart){
-      return;
-    }
+    if(!smart)return;
+
 
     smart.insertAdjacentHTML(
       'beforebegin',
       '<section id="cg35XAuditResults" class="cg35-x-audit"></section>'
     );
+
 
     box=
       cg35$('cg35XAuditResults');
@@ -185,11 +185,11 @@ async function cg35RunXAudit(){
 
 
   box.innerHTML=
-    '<div class="cg35-empty">Analyse sémantique read-only des exclusions X…</div>';
+    '<div class="cg35-empty">X_DUPLICATE_TRUTH002 : analyse structurelle read-only…</div>';
 
 
   cg35Status(
-    'Audit sémantique des exclusions X…'
+    'Analyse structurelle des exclusions X…'
   );
 
 
@@ -197,7 +197,7 @@ async function cg35RunXAudit(){
 
     const d=
       await cg35Api({
-        mode:'xSemanticAudit',
+        mode:'xDuplicateTruth',
         sampleLimit:3000
       });
 
@@ -217,33 +217,68 @@ async function cg35RunXAudit(){
       ' %';
 
 
-    const bar=(rows,max=12)=>
-      (rows||[])
-        .slice(0,max)
-        .map(
-          x=>
-            '<div class="cg35-x-audit-row">'+
-              '<span>'+
-                cg35Esc(x.name)+
-              '</span>'+
-              '<b>'+
-                cg35Fmt(x.count)+
-              '</b>'+
-            '</div>'
-        )
-        .join('') ||
-      '<div class="cg35-empty">Aucune donnée.</div>';
+    const field=(label,value)=>
+      value
+        ? '<div class="cg35-x-truth-field"><b>'+
+            cg35Esc(label)+
+          '</b><span>'+
+            cg35Esc(value)+
+          '</span></div>'
+        : '';
 
 
-    const exact=
-      (a.exactExamples||[])
+    const identityRows=
+      rows=>
+        (rows||[])
+          .map(
+            q=>
+              '<div class="cg35-x-truth-entry">'+
+
+                '<div class="cg35-x-truth-entry-main">'+
+
+                  '<strong>'+
+                    cg35Esc(
+                      q.question||
+                      '(question sans texte)'
+                    )+
+                  '</strong>'+
+
+                  field(
+                    'Détail',
+                    q.detail
+                  )+
+
+                  field(
+                    'Bonne réponse',
+                    q.correct
+                  )+
+
+                  field(
+                    'Image',
+                    q.image
+                  )+
+
+                '</div>'+
+
+                cg35QuestionButton(
+                  q.id
+                )+
+
+              '</div>'
+          )
+          .join('');
+
+
+    const structural=
+      (a.structuralExamples||[])
         .map(
           g=>
             '<article class="cg35-x-audit-example">'+
+
               '<header>'+
                 '<b>'+
                   cg35Fmt(g.count)+
-                  ' occurrences'+
+                  ' exemplaires structurellement identiques'+
                 '</b>'+
                 '<span>'+
                   cg35Esc(
@@ -254,39 +289,104 @@ async function cg35RunXAudit(){
                   )+
                 '</span>'+
               '</header>'+
-              (g.rows||[])
-                .map(
-                  q=>
-                    '<div class="cg35-x-audit-question">'+
-                      '<span>'+
-                        cg35Esc(
-                          q.question||
-                          '(sans texte)'
-                        )+
-                      '</span>'+
-                      cg35QuestionButton(
-                        q.id
-                      )+
-                    '</div>'
-                )
-                .join('')+
+
+              identityRows(
+                g.rows
+              )+
+
             '</article>'
         )
         .join('') ||
-      '<div class="cg35-empty">Aucun doublon exact dans l’échantillon.</div>';
+      '<div class="cg35-empty">Aucun doublon structurel dans l’échantillon.</div>';
+
+
+    const templates=
+      (a.templateExamples||[])
+        .map(
+          g=>
+            '<article class="cg35-x-audit-example cg35-x-template-example">'+
+
+              '<header>'+
+                '<b>'+
+                  'Libellé utilisé '+
+                  cg35Fmt(g.count)+
+                  ' fois · '+
+                  cg35Fmt(
+                    g.distinctContents
+                  )+
+                  ' contenus distincts'+
+                '</b>'+
+              '</header>'+
+
+              '<div class="cg35-x-template-stem">'+
+                cg35Esc(
+                  g.question
+                )+
+              '</div>'+
+
+              (g.rows||[])
+                .map(
+                  q=>
+                    '<div class="cg35-x-truth-entry">'+
+
+                      '<div class="cg35-x-truth-entry-main">'+
+
+                        '<small>'+
+                          cg35Esc(
+                            cg35Path(
+                              q.domain,
+                              q.theme
+                            )
+                          )+
+                        '</small>'+
+
+                        field(
+                          'Détail',
+                          q.detail
+                        )+
+
+                        field(
+                          'Bonne réponse',
+                          q.correct
+                        )+
+
+                        field(
+                          'Image',
+                          q.image
+                        )+
+
+                      '</div>'+
+
+                      cg35QuestionButton(
+                        q.id
+                      )+
+
+                    '</div>'
+                )
+                .join('')+
+
+            '</article>'
+        )
+        .join('') ||
+      '<div class="cg35-empty">Aucun gabarit répété distinct détecté.</div>';
 
 
     const near=
-      (a.nearDuplicatePairs||[])
+      (a.nearPairs||[])
         .map(
           p=>
             '<article class="cg35-x-audit-example">'+
+
               '<header>'+
                 '<b>'+
                   cg35Fmt(
                     p.similarity
                   )+
-                  ' % similaire'+
+                  ' % texte · '+
+                  cg35Fmt(
+                    p.optionsSimilarity
+                  )+
+                  ' % réponses'+
                 '</b>'+
                 '<span>'+
                   cg35Esc(
@@ -297,39 +397,24 @@ async function cg35RunXAudit(){
                   )+
                 '</span>'+
               '</header>'+
-              '<div class="cg35-x-audit-question">'+
-                '<span>'+
-                  cg35Esc(
-                    p.a?.question||
-                    ''
-                  )+
-                '</span>'+
-                cg35QuestionButton(
-                  p.a?.id
-                )+
-              '</div>'+
-              '<div class="cg35-x-audit-question">'+
-                '<span>'+
-                  cg35Esc(
-                    p.b?.question||
-                    ''
-                  )+
-                '</span>'+
-                cg35QuestionButton(
-                  p.b?.id
-                )+
-              '</div>'+
+
+              identityRows([
+                p.a,
+                p.b
+              ])+
+
             '</article>'
         )
         .join('') ||
-      '<div class="cg35-empty">Aucun quasi-doublon détecté dans la limite d’analyse.</div>';
+      '<div class="cg35-empty">Aucun quasi-doublon fort détecté dans la limite d’analyse.</div>';
 
 
-    const unique=
-      (a.uniqueExamples||[])
+    const unmatched=
+      (a.unmatchedExamples||[])
         .map(
           q=>
             '<article class="cg35-x-audit-unique">'+
+
               '<small>'+
                 cg35Esc(
                   cg35Path(
@@ -338,41 +423,63 @@ async function cg35RunXAudit(){
                   )
                 )+
               '</small>'+
-              '<span>'+
+
+              '<strong>'+
                 cg35Esc(
                   q.question||
-                  '(sans texte)'
+                  '(question sans texte)'
                 )+
-              '</span>'+
+              '</strong>'+
+
+              field(
+                'Détail',
+                q.detail
+              )+
+
+              field(
+                'Bonne réponse',
+                q.correct
+              )+
+
+              field(
+                'Image',
+                q.image
+              )+
+
               cg35QuestionButton(
                 q.id
               )+
+
             '</article>'
         )
         .join('') ||
       '<div class="cg35-empty">Aucun exemple disponible.</div>';
 
 
-    const nonX=
+    const n=
       a.comparisonNonX||{};
 
 
     box.innerHTML=
+
       '<div class="cg35-x-audit-head">'+
 
         '<div>'+
           '<strong>'+
             cg35Esc(
               a.auditVersion||
-              'CGPLAY003_FIX4_X_SEMANTIC_AUDIT001'
+              'CGPLAY003_FIX5_X_DUPLICATE_TRUTH002'
             )+
           '</strong>'+
-          '<span>Audit read-only · aucune donnée modifiée</span>'+
+          '<span>'+
+            'Audit read-only · identité complète de la question'+
+          '</span>'+
         '</div>'+
 
         '<button id="cg35XAuditClose">Fermer l’audit</button>'+
 
       '</div>'+
+
 
       '<section class="cg35-x-audit-kpis">'+
 
@@ -402,16 +509,6 @@ async function cg35RunXAudit(){
         '</article>'+
 
         '<article>'+
-          '<small>Non-X</small>'+
-          '<b>'+
-            cg35Fmt(
-              a.nonX
-            )+
-          '</b>'+
-          '<span>questions non bannies</span>'+
-        '</article>'+
-
-        '<article>'+
           '<small>Échantillon X</small>'+
           '<b>'+
             cg35Fmt(
@@ -427,105 +524,193 @@ async function cg35RunXAudit(){
         '</article>'+
 
         '<article>'+
-          '<small>Doublons exacts X</small>'+
+          '<small>Libellé répété</small>'+
           '<b>'+
             pct(
-              a.exactDuplicateRatePct
+              a.repeatedStemRatePct
             )+
           '</b>'+
           '<span>'+
             cg35Fmt(
-              a.exactDuplicateRows
+              a.repeatedStemRows
+            )+
+            ' lignes · descriptif seulement'+
+          '</span>'+
+        '</article>'+
+
+        '<article class="cg35-x-truth-important">'+
+          '<small>Doublons structurels X</small>'+
+          '<b>'+
+            pct(
+              a.structuralDuplicateRatePct
+            )+
+          '</b>'+
+          '<span>'+
+            cg35Fmt(
+              a.structuralDuplicateRows
             )+
             ' lignes · '+
             cg35Fmt(
-              a.exactDuplicateGroups
+              a.structuralDuplicateGroups
             )+
             ' groupes'+
           '</span>'+
         '</article>'+
 
         '<article>'+
-          '<small>Comparaison non-X</small>'+
+          '<small>Doublons stricts X</small>'+
           '<b>'+
             pct(
-              nonX.exactDuplicateRatePct
+              a.strictDuplicateRatePct
             )+
           '</b>'+
           '<span>'+
             cg35Fmt(
-              nonX.sampleSize
+              a.strictDuplicateRows
             )+
-            ' questions échantillonnées'+
+            ' lignes'+
+          '</span>'+
+        '</article>'+
+
+        '<article>'+
+          '<small>Gabarits réutilisés</small>'+
+          '<b>'+
+            pct(
+              a.templateReuseRatePct
+            )+
+          '</b>'+
+          '<span>'+
+            cg35Fmt(
+              a.templateReuseRows
+            )+
+            ' X concernés'+
+          '</span>'+
+        '</article>'+
+
+        '<article>'+
+          '<small>X sans doublon détecté</small>'+
+          '<b>'+
+            pct(
+              a.unmatchedRatePct
+            )+
+          '</b>'+
+          '<span>'+
+            cg35Fmt(
+              a.unmatchedRows
+            )+
+            ' dans l’échantillon'+
+          '</span>'+
+        '</article>'+
+
+        '<article>'+
+          '<small>Contrôle non-X structurel</small>'+
+          '<b>'+
+            pct(
+              n.structuralDuplicateRatePct
+            )+
+          '</b>'+
+          '<span>'+
+            cg35Fmt(
+              n.sampleSize
+            )+
+            ' non-X répartis dans le catalogue'+
           '</span>'+
         '</article>'+
 
       '</section>'+
 
+
       '<div class="cg35-x-audit-warning">'+
-        'Les taux de doublons et les répartitions ci-dessous portent sur un échantillon réparti de '+
-        cg35Fmt(
-          a.sampleSize
-        )+
-        ' X actifs ; ils ne constituent pas un comptage exhaustif des doublons de la base entière.'+
+        '<b>Important :</b> « libellé répété » signifie uniquement que le texte principal est identique. '+
+        'Le taux de doublons structurels exige également le domaine, le thème, le détail, les réponses, la bonne réponse et le contexte image. '+
+        'Une question image sans référence visuelle exploitable n’est jamais classée doublon structurel par cet audit.'+
       '</div>'+
 
-      '<section class="cg35-x-audit-columns">'+
 
-        '<article>'+
-          '<h3>Principaux domaines X</h3>'+
-          bar(
-            a.topDomains,
-            12
-          )+
-        '</article>'+
+      '<div class="cg35-x-truth-comparison">'+
 
-        '<article>'+
-          '<h3>Principaux thèmes X</h3>'+
-          bar(
-            a.topThemes,
-            20
-          )+
-        '</article>'+
+        '<div>'+
+          '<b>X</b>'+
+          '<span>libellés répétés : '+
+            pct(
+              a.repeatedStemRatePct
+            )+
+          '</span>'+
+          '<span>structurels : '+
+            pct(
+              a.structuralDuplicateRatePct
+            )+
+          '</span>'+
+        '</div>'+
 
-      '</section>'+
+        '<div>'+
+          '<b>Non-X</b>'+
+          '<span>libellés répétés : '+
+            pct(
+              n.repeatedStemRatePct
+            )+
+          '</span>'+
+          '<span>structurels : '+
+            pct(
+              n.structuralDuplicateRatePct
+            )+
+          '</span>'+
+        '</div>'+
+
+      '</div>'+
+
 
       '<details open class="cg35-x-audit-details">'+
-        '<summary>Exemples de doublons exacts</summary>'+
-        exact+
+        '<summary>Doublons structurels probables</summary>'+
+        structural+
       '</details>'+
 
+
+      '<details open class="cg35-x-audit-details">'+
+        '<summary>Libellés identiques mais contenus différents</summary>'+
+        '<div class="cg35-x-audit-warning">'+
+          'Cette rubrique montre précisément les faux doublons que FIX4 comptait à tort comme identiques.'+
+        '</div>'+
+        templates+
+      '</details>'+
+
+
       '<details class="cg35-x-audit-details">'+
-        '<summary>Quasi-doublons détectés ('+
+        '<summary>Quasi-doublons forts ('+
           cg35Fmt(
-            (a.nearDuplicatePairs||[]).length
+            a.nearDuplicatePairCount
           )+
-          ')</summary>'+
+          ' paire(s))</summary>'+
         near+
       '</details>'+
 
+
       '<details class="cg35-x-audit-details">'+
-        '<summary>X semblant uniques dans l’échantillon</summary>'+
+        '<summary>X sans doublon structurel détecté dans l’échantillon</summary>'+
         '<div class="cg35-x-audit-warning">'+
-          'Ces questions sont uniques uniquement au regard de l’échantillon et de l’heuristique actuelle. Elles ne sont pas automatiquement réhabilitées.'+
+          'Ce résultat ne réhabilite aucune question automatiquement : il signifie seulement qu’aucun doublon suffisamment fort n’a été trouvé dans l’échantillon analysé.'+
         '</div>'+
-        unique+
+        unmatched+
       '</details>'+
 
+
       '<div class="cg35-x-audit-foot">'+
-        'Provenance : '+
+
         cg35Fmt(
-          a.provenance?.fromLegacyBuckets
+          a.imageSampleRows
         )+
-        ' références dans statusBuckets · '+
+        ' question(s) image dans l’échantillon · '+
+
         cg35Fmt(
-          a.provenance?.fromQuestionStatus
+          a.imageWithoutReference
         )+
-        ' dans questions.status · '+
+        ' sans référence visuelle exploitable · '+
+
         cg35Fmt(
           a.semanticComparisons
         )+
-        ' comparaisons sémantiques effectuées.'+
+        ' comparaisons de quasi-doublons.'+
+
       '</div>';
 
 
@@ -539,7 +724,7 @@ async function cg35RunXAudit(){
 
 
     cg35Status(
-      '✅ Audit X terminé : '+
+      '✅ X_DUPLICATE_TRUTH002 terminé : '+
       cg35Fmt(
         a.sampleSize
       )+
@@ -556,6 +741,7 @@ async function cg35RunXAudit(){
           e.message
         )+
       '</div>';
+
 
     cg35Status(
       '❌ '+

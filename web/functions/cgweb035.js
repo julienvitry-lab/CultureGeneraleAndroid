@@ -20,6 +20,7 @@ const X_POLICY_CACHE=new Map();
 const LEARNING_MODEL_VERSION='CGPLAY003_X_ONLY001_LEARNING_MODEL002';
 const X_TRUTH_VERSION='CGPLAY003_FIX3_X_TRUTH001_REPAIR001';
 const X_AUDIT_VERSION='CGPLAY003_FIX4_X_SEMANTIC_AUDIT001';
+const X_DUPLICATE_TRUTH_VERSION='CGPLAY003_FIX5_X_DUPLICATE_TRUTH002';
 
 const one=v=>String(v??'').trim();
 const num=v=>Number.isFinite(Number(v))?Number(v):0;
@@ -1894,6 +1895,1351 @@ async function xSemanticAudit(
   };
 }
 
+function xTruthNorm(value){
+
+  return one(value)
+    .normalize('NFD')
+    .replace(
+      /[\u0300-\u036f]/g,
+      ''
+    )
+    .replace(/œ/gi,'oe')
+    .replace(/æ/gi,'ae')
+    .toLowerCase()
+    .replace(
+      /[^a-z0-9]+/g,
+      ' '
+    )
+    .trim()
+    .replace(/\s+/g,' ');
+}
+
+function xTruthUrl(value){
+
+  const raw=
+    one(value);
+
+  if(!raw)return '';
+
+  try{
+
+    const u=
+      new URL(raw);
+
+    return (
+      u.origin+
+      u.pathname
+    )
+    .toLowerCase()
+    .replace(/\/+$/,'');
+
+  }catch(_){
+
+    return raw
+      .split('#')[0]
+      .split('?')[0]
+      .trim()
+      .toLowerCase();
+  }
+}
+
+function xTruthBool(value){
+
+  if(value===true)return true;
+
+  const s=
+    one(value)
+      .toLowerCase();
+
+  return [
+    '1',
+    'true',
+    'oui',
+    'yes'
+  ].includes(s);
+}
+
+function xTruthQuestionRow(doc){
+
+  const x=
+    doc.data()||{};
+
+  const options=[
+    one(x.proposition_a),
+    one(x.proposition_b),
+    one(x.proposition_c),
+    one(x.proposition_d)
+  ];
+
+  let correctIndex=
+    Math.floor(
+      num(x.correct_index)
+    );
+
+  /*
+   * Les données historiques peuvent utiliser
+   * 0..3 ou 1..4 selon leur provenance.
+   *
+   * On conserve la valeur brute ET on tente
+   * simplement de résoudre le texte correct.
+   */
+  let correctText='';
+
+  if(
+    correctIndex>=0 &&
+    correctIndex<=3
+  ){
+    correctText=
+      options[correctIndex]||'';
+  }
+
+  if(
+    !correctText &&
+    correctIndex>=1 &&
+    correctIndex<=4
+  ){
+    correctText=
+      options[correctIndex-1]||'';
+  }
+
+
+  const imageFile=
+    one(x.image_file);
+
+  const imageSource=
+    one(x.image_source_url);
+
+  const imageKey=
+    xTruthUrl(
+      imageFile||
+      imageSource
+    );
+
+  const isImage=
+    xTruthBool(x.is_image)||
+    Boolean(
+      imageFile||
+      imageSource
+    );
+
+
+  return {
+
+    id:doc.id,
+
+    domain:
+      one(x.megatheme)||
+      '(Sans domaine)',
+
+    theme:
+      one(x.theme)||
+      '(Sans thème)',
+
+    question:
+      one(x.question),
+
+    detail:
+      one(x.detail),
+
+    options,
+
+    correctIndex,
+
+    correctText,
+
+    isImage,
+
+    imageFile,
+
+    imageSource,
+
+    imageKey,
+
+    source:
+      one(
+        x.url_quizypedia||
+        x.url_internet
+      )
+  };
+}
+
+function xTruthStemKey(row){
+
+  return xTruthNorm(
+    row.question
+  );
+}
+
+function xTruthStrictKey(row){
+
+  /*
+   * Pour une question image sans référence exploitable,
+   * on refuse de conclure à un doublon.
+   */
+  if(
+    row.isImage &&
+    !row.imageKey
+  ){
+    return '__IMAGE_UNKNOWN__'+row.id;
+  }
+
+  return [
+    xTruthNorm(row.domain),
+    xTruthNorm(row.theme),
+    xTruthNorm(row.question),
+    xTruthNorm(row.detail),
+
+    ...row.options.map(
+      xTruthNorm
+    ),
+
+    String(
+      row.correctIndex
+    ),
+
+    row.isImage
+      ? 'image'
+      : 'text',
+
+    row.imageKey
+  ].join('\u0001');
+}
+
+function xTruthStructuralKey(row){
+
+  /*
+   * Même identité sémantique, mais ordre des distracteurs
+   * non significatif.
+   */
+  if(
+    row.isImage &&
+    !row.imageKey
+  ){
+    return '__IMAGE_UNKNOWN__'+row.id;
+  }
+
+  const sortedOptions=
+    row.options
+      .map(xTruthNorm)
+      .filter(Boolean)
+      .sort();
+
+  return [
+    xTruthNorm(row.domain),
+    xTruthNorm(row.theme),
+    xTruthNorm(row.question),
+    xTruthNorm(row.detail),
+
+    sortedOptions.join('\u0002'),
+
+    xTruthNorm(
+      row.correctText
+    ),
+
+    row.isImage
+      ? 'image'
+      : 'text',
+
+    row.imageKey
+  ].join('\u0001');
+}
+
+function xTruthGroups(rows,keyFn){
+
+  const map=
+    new Map();
+
+  for(const row of rows){
+
+    const key=
+      keyFn(row);
+
+    if(
+      !key ||
+      key.startsWith('__IMAGE_UNKNOWN__')
+    ){
+      continue;
+    }
+
+    if(!map.has(key)){
+      map.set(key,[]);
+    }
+
+    map
+      .get(key)
+      .push(row);
+  }
+
+  const groups=
+    [...map.values()]
+      .filter(
+        group=>
+          group.length>1
+      )
+      .sort(
+        (a,b)=>
+          b.length-a.length
+      );
+
+  const ids=
+    new Set();
+
+  for(const group of groups){
+
+    for(const row of group){
+      ids.add(row.id);
+    }
+  }
+
+  return {
+
+    map,
+
+    groups,
+
+    ids,
+
+    rows:
+      ids.size
+  };
+}
+
+function xTruthTokens(value){
+
+  return new Set(
+    xTruthNorm(value)
+      .split(' ')
+      .filter(
+        x=>x.length>=2
+      )
+  );
+}
+
+function xTruthSimilarity(a,b){
+
+  const A=
+    xTruthTokens(a);
+
+  const B=
+    xTruthTokens(b);
+
+  if(
+    A.size<3 ||
+    B.size<3
+  ){
+    return 0;
+  }
+
+  let common=0;
+
+  for(const x of A){
+
+    if(B.has(x)){
+      common++;
+    }
+  }
+
+  const union=
+    A.size+
+    B.size-
+    common;
+
+  return union
+    ? common/union
+    : 0;
+}
+
+function xTruthOptionSimilarity(a,b){
+
+  const A=
+    new Set(
+      a.options
+        .map(xTruthNorm)
+        .filter(Boolean)
+    );
+
+  const B=
+    new Set(
+      b.options
+        .map(xTruthNorm)
+        .filter(Boolean)
+    );
+
+  if(
+    !A.size &&
+    !B.size
+  ){
+    return 1;
+  }
+
+  if(
+    !A.size ||
+    !B.size
+  ){
+    return 0;
+  }
+
+  let common=0;
+
+  for(const x of A){
+
+    if(B.has(x)){
+      common++;
+    }
+  }
+
+  const union=
+    A.size+
+    B.size-
+    common;
+
+  return union
+    ? common/union
+    : 0;
+}
+
+function xTruthPct(n,total){
+
+  if(!total)return 0;
+
+  return Math.round(
+    n/
+    total*
+    10000
+  )/100;
+}
+
+function xTruthGroupExamples(
+  groups,
+  limit=15
+){
+
+  return groups
+    .slice(0,limit)
+    .map(
+      group=>({
+
+        count:
+          group.length,
+
+        question:
+          group[0]?.question||'',
+
+        domain:
+          group[0]?.domain||'',
+
+        theme:
+          group[0]?.theme||'',
+
+        rows:
+          group
+            .slice(0,6)
+            .map(
+              row=>({
+
+                id:row.id,
+
+                question:
+                  row.question,
+
+                detail:
+                  row.detail,
+
+                correct:
+                  row.correctText,
+
+                isImage:
+                  row.isImage,
+
+                image:
+                  row.imageFile||
+                  row.imageSource||
+                  '',
+
+                source:
+                  row.source
+              })
+            )
+      })
+    );
+}
+
+function xTruthTemplateExamples(
+  stemGroups,
+  structuralKeyFn,
+  limit=15
+){
+
+  const out=[];
+
+  for(const group of stemGroups){
+
+    const signatures=
+      new Set(
+        group.map(
+          structuralKeyFn
+        )
+      );
+
+    /*
+     * Même libellé, mais contenus structurels distincts.
+     * C'est exactement le cas que FIX4 confondait.
+     */
+    if(signatures.size<=1){
+      continue;
+    }
+
+    out.push({
+
+      count:
+        group.length,
+
+      distinctContents:
+        signatures.size,
+
+      question:
+        group[0]?.question||'',
+
+      rows:
+        group
+          .slice(0,6)
+          .map(
+            row=>({
+
+              id:row.id,
+
+              domain:
+                row.domain,
+
+              theme:
+                row.theme,
+
+              detail:
+                row.detail,
+
+              correct:
+                row.correctText,
+
+              isImage:
+                row.isImage,
+
+              image:
+                row.imageFile||
+                row.imageSource||
+                ''
+            })
+          )
+    });
+
+    if(out.length>=limit){
+      break;
+    }
+  }
+
+  return out;
+}
+
+async function xDuplicateTruth(
+  uid,
+  xPolicy,
+  body
+){
+
+  const db=
+    getFirestore();
+
+  const questions=
+    db
+      .collection('users')
+      .doc(uid)
+      .collection('questions');
+
+
+  const sampleLimit=
+    clamp(
+      Math.floor(
+        num(body.sampleLimit)||3000
+      ),
+      500,
+      5000
+    );
+
+
+  const totalSnap=
+    await questions
+      .count()
+      .get();
+
+
+  const totalQuestions=
+    Number(
+      totalSnap
+        .data()
+        .count||0
+    );
+
+
+  const xActive=
+    xPolicy
+      ?.catalogIds
+      ?.size||0;
+
+
+  const activeIds=
+    [
+      ...(xPolicy?.catalogIds||[])
+    ]
+    .sort(
+      (a,b)=>
+        String(a)
+          .localeCompare(
+            String(b),
+            'fr',
+            {
+              numeric:true
+            }
+          )
+    );
+
+
+  /*
+   * Échantillon X régulièrement réparti
+   * sur l'ensemble des identifiants actifs.
+   */
+  const selectedIds=[];
+
+
+  if(
+    activeIds.length<=sampleLimit
+  ){
+
+    selectedIds.push(
+      ...activeIds
+    );
+
+  }else{
+
+    const used=
+      new Set();
+
+    for(
+      let i=0;
+      i<sampleLimit;
+      i++
+    ){
+
+      const index=
+        Math.floor(
+          i*
+          (activeIds.length-1)/
+          Math.max(
+            1,
+            sampleLimit-1
+          )
+        );
+
+      const id=
+        activeIds[index];
+
+      if(
+        !used.has(id)
+      ){
+
+        used.add(id);
+        selectedIds.push(id);
+      }
+    }
+  }
+
+
+  const sample=[];
+
+
+  for(
+    let i=0;
+    i<selectedIds.length;
+    i+=200
+  ){
+
+    const refs=
+      selectedIds
+        .slice(i,i+200)
+        .map(
+          id=>
+            questions.doc(id)
+        );
+
+
+    if(!refs.length)continue;
+
+
+    const snaps=
+      await db.getAll(...refs);
+
+
+    for(const d of snaps){
+
+      if(d.exists){
+        sample.push(
+          xTruthQuestionRow(d)
+        );
+      }
+    }
+  }
+
+
+  /*
+   * Trois vérités distinctes :
+   *
+   * 1. même libellé ;
+   * 2. copie strictement identique ;
+   * 3. même structure sémantique en tolérant
+   *    l'ordre des propositions.
+   */
+  const stems=
+    xTruthGroups(
+      sample,
+      xTruthStemKey
+    );
+
+
+  const strict=
+    xTruthGroups(
+      sample,
+      xTruthStrictKey
+    );
+
+
+  const structural=
+    xTruthGroups(
+      sample,
+      xTruthStructuralKey
+    );
+
+
+  const imageRows=
+    sample.filter(
+      x=>x.isImage
+    );
+
+
+  const imageUnknown=
+    imageRows.filter(
+      x=>!x.imageKey
+    );
+
+
+  /*
+   * Gabarits répétés mais contenus distincts.
+   */
+  const templateExamples=
+    xTruthTemplateExamples(
+      stems.groups,
+      xTruthStructuralKey,
+      20
+    );
+
+
+  const templateIds=
+    new Set();
+
+
+  for(const group of stems.groups){
+
+    const signatures=
+      new Set(
+        group.map(
+          xTruthStructuralKey
+        )
+      );
+
+    if(signatures.size<=1){
+      continue;
+    }
+
+    for(const row of group){
+      templateIds.add(row.id);
+    }
+  }
+
+
+  /*
+   * Quasi-doublons forts.
+   *
+   * Très conservateur :
+   * - même domaine ;
+   * - même thème ;
+   * - pas déjà doublon structurel ;
+   * - compatibilité image obligatoire ;
+   * - texte composite >= 90 % ;
+   * - propositions >= 75 %.
+   */
+  const candidates=
+    sample.filter(
+      row=>
+        !structural.ids.has(row.id)
+    );
+
+
+  const buckets=
+    new Map();
+
+
+  for(const row of candidates){
+
+    const key=
+      xTruthNorm(row.domain)+
+      '\u0000'+
+      xTruthNorm(row.theme);
+
+    if(!buckets.has(key)){
+      buckets.set(key,[]);
+    }
+
+    buckets
+      .get(key)
+      .push(row);
+  }
+
+
+  const nearPairs=[];
+
+  const nearIds=
+    new Set();
+
+  let comparisons=0;
+
+  const maxComparisons=
+    80000;
+
+
+  outer:
+  for(const rows of buckets.values()){
+
+    const capped=
+      rows.slice(0,300);
+
+    for(
+      let i=0;
+      i<capped.length;
+      i++
+    ){
+
+      for(
+        let j=i+1;
+        j<capped.length;
+        j++
+      ){
+
+        comparisons++;
+
+        if(
+          comparisons>maxComparisons
+        ){
+          break outer;
+        }
+
+
+        const a=
+          capped[i];
+
+        const b=
+          capped[j];
+
+
+        /*
+         * Une question avec image ne peut être rapprochée
+         * que d'une autre utilisant la même image connue.
+         */
+        if(
+          a.isImage !== b.isImage
+        ){
+          continue;
+        }
+
+
+        if(a.isImage){
+
+          if(
+            !a.imageKey ||
+            !b.imageKey ||
+            a.imageKey!==b.imageKey
+          ){
+            continue;
+          }
+        }
+
+
+        const textA=[
+          a.question,
+          a.detail,
+          a.correctText
+        ].join(' ');
+
+
+        const textB=[
+          b.question,
+          b.detail,
+          b.correctText
+        ].join(' ');
+
+
+        const textSimilarity=
+          xTruthSimilarity(
+            textA,
+            textB
+          );
+
+
+        if(
+          textSimilarity<0.90
+        ){
+          continue;
+        }
+
+
+        const optionSimilarity=
+          xTruthOptionSimilarity(
+            a,
+            b
+          );
+
+
+        if(
+          optionSimilarity<0.75
+        ){
+          continue;
+        }
+
+
+        nearIds.add(a.id);
+        nearIds.add(b.id);
+
+
+        nearPairs.push({
+
+          similarity:
+            Math.round(
+              textSimilarity*100
+            ),
+
+          optionsSimilarity:
+            Math.round(
+              optionSimilarity*100
+            ),
+
+          domain:
+            a.domain,
+
+          theme:
+            a.theme,
+
+          a:{
+            id:a.id,
+            question:a.question,
+            detail:a.detail,
+            correct:a.correctText,
+            image:
+              a.imageFile||
+              a.imageSource||
+              ''
+          },
+
+          b:{
+            id:b.id,
+            question:b.question,
+            detail:b.detail,
+            correct:b.correctText,
+            image:
+              b.imageFile||
+              b.imageSource||
+              ''
+          }
+        });
+
+
+        if(
+          nearPairs.length>=30
+        ){
+          break outer;
+        }
+      }
+    }
+  }
+
+
+  /*
+   * X sans doublon structurel ni quasi-doublon
+   * détecté DANS L'ÉCHANTILLON.
+   */
+  const unmatched=
+    sample.filter(
+      row=>
+        !structural.ids.has(row.id) &&
+        !nearIds.has(row.id)
+    );
+
+
+  const uniqueExamples=[];
+
+
+  if(unmatched.length){
+
+    const wanted=
+      Math.min(
+        25,
+        unmatched.length
+      );
+
+    for(
+      let i=0;
+      i<wanted;
+      i++
+    ){
+
+      const index=
+        Math.floor(
+          i*
+          (unmatched.length-1)/
+          Math.max(
+            1,
+            wanted-1
+          )
+        );
+
+      const row=
+        unmatched[index];
+
+
+      uniqueExamples.push({
+
+        id:row.id,
+
+        domain:row.domain,
+
+        theme:row.theme,
+
+        question:row.question,
+
+        detail:row.detail,
+
+        correct:
+          row.correctText,
+
+        isImage:
+          row.isImage,
+
+        image:
+          row.imageFile||
+          row.imageSource||
+          ''
+      });
+    }
+  }
+
+
+  /*
+   * CONTRÔLE NON-X DISTRIBUÉ.
+   *
+   * FIX4 prenait les premiers documents du catalogue,
+   * ce qui pouvait être fortement biaisé.
+   *
+   * Ici, on ouvre plusieurs fenêtres réparties le long
+   * des identifiants X, qui eux-mêmes couvrent la base.
+   */
+  const nonXSample=[];
+
+  const nonXSeen=
+    new Set();
+
+
+  const anchorCount=
+    Math.min(
+      16,
+      activeIds.length
+    );
+
+
+  for(
+    let i=0;
+    i<anchorCount &&
+    nonXSample.length<600;
+    i++
+  ){
+
+    const anchorIndex=
+      Math.floor(
+        i*
+        (activeIds.length-1)/
+        Math.max(
+          1,
+          anchorCount-1
+        )
+      );
+
+
+    const anchor=
+      activeIds[
+        anchorIndex
+      ];
+
+
+    const snap=
+      await questions
+        .orderBy(
+          FieldPath.documentId()
+        )
+        .startAt(
+          questions.doc(anchor)
+        )
+        .select(
+          'question',
+          'detail',
+          'megatheme',
+          'theme',
+          'proposition_a',
+          'proposition_b',
+          'proposition_c',
+          'proposition_d',
+          'correct_index',
+          'is_image',
+          'image_file',
+          'image_source_url',
+          'url_quizypedia',
+          'url_internet'
+        )
+        .limit(120)
+        .get();
+
+
+    for(const d of snap.docs){
+
+      if(
+        nonXSample.length>=600
+      ){
+        break;
+      }
+
+
+      if(
+        nonXSeen.has(d.id) ||
+        xPolicy
+          ?.ids
+          ?.has(d.id)
+      ){
+        continue;
+      }
+
+
+      nonXSeen.add(d.id);
+
+      nonXSample.push(
+        xTruthQuestionRow(d)
+      );
+    }
+  }
+
+
+  const nonXStems=
+    xTruthGroups(
+      nonXSample,
+      xTruthStemKey
+    );
+
+
+  const nonXStrict=
+    xTruthGroups(
+      nonXSample,
+      xTruthStrictKey
+    );
+
+
+  const nonXStructural=
+    xTruthGroups(
+      nonXSample,
+      xTruthStructuralKey
+    );
+
+
+  return {
+
+    auditVersion:
+      X_DUPLICATE_TRUTH_VERSION,
+
+    readOnly:true,
+
+    methodology:
+      'X_DUPLICATE_TRUTH002',
+
+    totalQuestions,
+
+    xActive,
+
+    nonX:
+      Math.max(
+        0,
+        totalQuestions-xActive
+      ),
+
+    xActivePct:
+      xTruthPct(
+        xActive,
+        totalQuestions
+      ),
+
+    sampleSize:
+      sample.length,
+
+    sampleCoveragePct:
+      xTruthPct(
+        sample.length,
+        xActive
+      ),
+
+
+    /*
+     * Même libellé : descriptif uniquement.
+     */
+    repeatedStemGroups:
+      stems.groups.length,
+
+    repeatedStemRows:
+      stems.rows,
+
+    repeatedStemRatePct:
+      xTruthPct(
+        stems.rows,
+        sample.length
+      ),
+
+
+    /*
+     * Doublons réellement forts.
+     */
+    strictDuplicateGroups:
+      strict.groups.length,
+
+    strictDuplicateRows:
+      strict.rows,
+
+    strictDuplicateRatePct:
+      xTruthPct(
+        strict.rows,
+        sample.length
+      ),
+
+
+    structuralDuplicateGroups:
+      structural.groups.length,
+
+    structuralDuplicateRows:
+      structural.rows,
+
+    structuralDuplicateRatePct:
+      xTruthPct(
+        structural.rows,
+        sample.length
+      ),
+
+
+    templateReuseRows:
+      templateIds.size,
+
+    templateReuseRatePct:
+      xTruthPct(
+        templateIds.size,
+        sample.length
+      ),
+
+
+    imageSampleRows:
+      imageRows.length,
+
+    imageWithoutReference:
+      imageUnknown.length,
+
+
+    nearDuplicatePairCount:
+      nearPairs.length,
+
+    nearDuplicateRows:
+      nearIds.size,
+
+    nearDuplicateRatePct:
+      xTruthPct(
+        nearIds.size,
+        sample.length
+      ),
+
+    semanticComparisons:
+      comparisons,
+
+
+    unmatchedRows:
+      unmatched.length,
+
+    unmatchedRatePct:
+      xTruthPct(
+        unmatched.length,
+        sample.length
+      ),
+
+
+    strictExamples:
+      xTruthGroupExamples(
+        strict.groups,
+        15
+      ),
+
+    structuralExamples:
+      xTruthGroupExamples(
+        structural.groups,
+        20
+      ),
+
+    templateExamples,
+
+    nearPairs,
+
+    unmatchedExamples:
+      uniqueExamples,
+
+
+    comparisonNonX:{
+
+      sampleSize:
+        nonXSample.length,
+
+      repeatedStemRows:
+        nonXStems.rows,
+
+      repeatedStemRatePct:
+        xTruthPct(
+          nonXStems.rows,
+          nonXSample.length
+        ),
+
+      strictDuplicateRows:
+        nonXStrict.rows,
+
+      strictDuplicateRatePct:
+        xTruthPct(
+          nonXStrict.rows,
+          nonXSample.length
+        ),
+
+      structuralDuplicateRows:
+        nonXStructural.rows,
+
+      structuralDuplicateRatePct:
+        xTruthPct(
+          nonXStructural.rows,
+          nonXSample.length
+        )
+    }
+  };
+}
+
 async function handleLearningHub(req,res){
   if(cors(req,res))return;
 
@@ -1926,9 +3272,34 @@ async function handleLearningHub(req,res){
       mode==='neverOverview'||
       mode==='neverThemes'||
       mode==='neverQuestions'||
-                mode==='xSemanticAudit';
+                mode==='xSemanticAudit'||
+                mode==='xDuplicateTruth';
 
     const xPolicy=await loadXPolicy(user.uid,forceX);
+
+              if(mode==='xDuplicateTruth'){
+
+                const audit=
+                  await xDuplicateTruth(
+                    user.uid,
+                    xPolicy,
+                    body
+                  );
+
+                return json(
+                  res,
+                  200,
+                  {
+                    ok:true,
+                    audit,
+                    learningModel:
+                      learningModelMeta(
+                        xPolicy
+                      )
+                  }
+                );
+              }
+
 
               if(mode==='xSemanticAudit'){
 

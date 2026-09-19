@@ -389,3 +389,99 @@
     margin-top:6px;
   }
 }
+
+/* CGPLAY003 FIX5 · X_DUPLICATE_TRUTH002 */
+
+.cg35-x-truth-important{
+  border-color:rgba(80,210,160,.38)!important;
+  background:rgba(80,210,160,.055)!important;
+}
+
+.cg35-x-truth-comparison{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  margin:10px 0;
+}
+
+.cg35-x-truth-comparison>div{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px 14px;
+  padding:9px 10px;
+  border:1px solid rgba(130,160,190,.20);
+  border-radius:9px;
+}
+
+.cg35-x-truth-comparison b{
+  width:100%;
+}
+
+.cg35-x-truth-comparison span{
+  opacity:.8;
+}
+
+.cg35-x-truth-entry{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+  padding:7px 0;
+  border-top:1px solid rgba(130,160,190,.10);
+}
+
+.cg35-x-truth-entry-main{
+  min-width:0;
+  flex:1;
+}
+
+.cg35-x-truth-entry-main>strong{
+  display:block;
+  margin-bottom:4px;
+}
+
+.cg35-x-truth-field{
+  display:flex;
+  gap:6px;
+  margin-top:2px;
+  font-size:.76rem;
+  line-height:1.3;
+}
+
+.cg35-x-truth-field b{
+  flex:0 0 auto;
+  opacity:.62;
+}
+
+.cg35-x-truth-field span{
+  overflow-wrap:anywhere;
+  opacity:.82;
+}
+
+.cg35-x-template-stem{
+  margin:6px 0 3px;
+  padding:7px 9px;
+  border-radius:7px;
+  background:rgba(90,160,220,.07);
+  font-weight:700;
+}
+
+.cg35-x-template-example{
+  border-color:rgba(90,160,220,.23);
+}
+
+.cg35-x-audit-unique>strong{
+  display:block;
+  width:100%;
+}
+
+@media(max-width:600px){
+
+  .cg35-x-truth-comparison{
+    grid-template-columns:1fr;
+  }
+
+  .cg35-x-truth-entry{
+    flex-direction:column;
+  }
+}
