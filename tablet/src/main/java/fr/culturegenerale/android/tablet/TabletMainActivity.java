@@ -931,6 +931,7 @@ final class CgAuth {
 final class CgSmartClient {
     CgSmartSession startSync(String token, int count, String domain) throws Exception {
         JSONObject body = new JSONObject();
+        body.put("cgweb035", true);
         body.put("mode", "smartLongStart");
         body.put("count", count);
         body.put("batchSize", 50);
@@ -944,6 +945,7 @@ final class CgSmartClient {
 
     CgSmartSession nextSync(String token, String sessionId) throws Exception {
         JSONObject body = new JSONObject();
+        body.put("cgweb035", true);
         body.put("mode", "smartLongNext");
         body.put("sessionId", sessionId);
         body.put("forceRefresh", true);
