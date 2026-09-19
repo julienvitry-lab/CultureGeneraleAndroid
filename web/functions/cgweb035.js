@@ -5523,44 +5523,6 @@ async function handleLearningHub(req,res){
 
     const xPolicy=await loadXPolicy(user.uid,forceX);
 
-              if(mode==='smartLongStart'){
-
-                return json(
-                  res,
-                  200,
-                  {
-                    ok:true,
-                    session:
-                      await smartLongStart(
-                        user.uid,
-                        analysis,
-                        body,
-                        xPolicy
-                      )
-                  }
-                );
-              }
-
-
-              if(mode==='smartLongNext'){
-
-                return json(
-                  res,
-                  200,
-                  {
-                    ok:true,
-                    session:
-                      await smartLongNext(
-                        user.uid,
-                        analysis,
-                        body,
-                        xPolicy
-                      )
-                  }
-                );
-              }
-
-
               if(mode==='smartLongResume'){
 
                 return json(
@@ -5673,6 +5635,48 @@ async function handleLearningHub(req,res){
     );
 
     const analysis=buildAnalysis(learningEvents);
+
+              // CGANDROID001 FIX2 · ANALYSIS_TDZ_FIX001
+              // LONG_SESSION001 nécessite analysis initialisé.
+if(mode==='smartLongStart'){
+
+                return json(
+                  res,
+                  200,
+                  {
+                    ok:true,
+                    session:
+                      await smartLongStart(
+                        user.uid,
+                        analysis,
+                        body,
+                        xPolicy
+                      )
+                  }
+                );
+              }
+
+
+              if(mode==='smartLongNext'){
+
+                return json(
+                  res,
+                  200,
+                  {
+                    ok:true,
+                    session:
+                      await smartLongNext(
+                        user.uid,
+                        analysis,
+                        body,
+                        xPolicy
+                      )
+                  }
+                );
+              }
+
+
+              
     const learningModel=learningModelMeta(xPolicy);
 
     if(mode==='overview'){
