@@ -757,9 +757,14 @@ public class TabletMainActivity extends Activity {
         JSONObject event = historyPayload(q, choice, correct, responseMs);
         game.recordAnswer(correct);
 
-        // ASYNC_HISTORY001 : le jeu avance avant toute écriture réseau.
-        loadNextPlayable();
+        // CGANDROID003 FIX1 · ANSWER_FEEDBACK500001
+        // Les couleurs sont déjà appliquées ci-dessus :
+        // - bonne réponse = vert ;
+        // - réponse choisie incorrecte = rouge.
+        // On laisse exactement 500 ms pour lire le résultat avant la suite.
+        main.postDelayed(this::loadNextPlayable, 500L);
 
+        // ASYNC_HISTORY001 reste totalement asynchrone pendant ces 500 ms.
         io.submit(() -> {
             try {
                 String token = auth.tokenSync();
