@@ -117,8 +117,12 @@ public class TabletMainActivity extends Activity {
     private CgQuestion current;
     private long currentShownAtMs = 0L;
     private final List<Button> answerButtons = new ArrayList<>();
+    private final Map<String, Bitmap> imageCache = new HashMap<>();
+    private final Set<String> imagePreloadInFlight = new HashSet<>();
     private boolean answering = false;
     private String screen = "home";
+
+    // CGANDROID002 FIX1 · BOTTOM_BAR_LAYOUT001
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -435,7 +439,7 @@ public class TabletMainActivity extends Activity {
         int played = game.played();
         int good = game.correct();
         int errors = Math.max(0, played - good);
-        int scorePct = played <= 0 ? 0 : Math.round((good * 100f) / played);
+        double scorePct = played <= 0 ? 0.0 : (good * 100.0) / played;
 
         band.addView(statCell("Mégathème",
                         selectedDomain.isEmpty() ? "Toutes" : selectedDomain),
@@ -443,7 +447,9 @@ public class TabletMainActivity extends Activity {
         band.addView(statCell("Progression",
                         (played + 1) + " / " + game.target()),
                 statLp(1f));
-        band.addView(statCell("Score", scorePct + " %"), statLp(.9f));
+        band.addView(statCell("Score",
+                        String.format(Locale.FRANCE, "%.2f %%", scorePct)),
+                statLp(.9f));
         band.addView(statCell("Bonnes réponses", String.valueOf(good)), statLp(1.15f));
         band.addView(statCell("Erreurs", String.valueOf(errors)), statLp(.9f));
 
@@ -482,44 +488,48 @@ public class TabletMainActivity extends Activity {
                 q.theme.isEmpty() ? safe(q.megatheme) : q.theme,
                 18, GREEN, Color.WHITE);
         theme.setGravity(Gravity.CENTER);
-        add(theme, -1, dp(48), 0, 0, 0, dp(7));
-
-        if (!q.detail.isEmpty()) {
-            TextView detail = cardText(q.detail, 18, RED, Color.WHITE);
-            detail.setGravity(Gravity.CENTER);
-            add(detail, -1, dp(54), 0, 0, 0, dp(7));
-        }
+        theme.setMinHeight(dp(48));
+        add(theme, -1, -2, 0, 0, 0, dp(7));
 
         TextView question = cardText(q.question, 23, YELLOW, Color.BLACK);
         question.setGravity(Gravity.CENTER);
         question.setMinHeight(dp(70));
-        add(question, -1, -2, 0, 0, 0, dp(8));
+        add(question, -1, -2, 0, 0, 0, dp(7));
+
+        if (!q.detail.isEmpty()) {
+            TextView detail = cardText(q.detail, 18, RED, Color.WHITE);
+            detail.setGravity(Gravity.CENTER);
+            detail.setMinHeight(dp(54));
+            add(detail, -1, -2, 0, 0, 0, dp(8));
+        }
 
         FrameLayout imageArea = new FrameLayout(this);
         imageArea.setVisibility(View.GONE);
         imageArea.setBackground(roundedStroke(DARK, 14, Color.WHITE, 1));
         add(imageArea, -1, dp(270), dp(90), 0, dp(90), dp(8));
         if (q.hasImage()) loadImageAsync(q, imageArea);
-        if (!q.hasImage()) gap(150);
+
+        preloadUpcomingImages();
+        addFlexSpacer();
 
         LinearLayout footer = new LinearLayout(this);
         footer.setOrientation(LinearLayout.HORIZONTAL);
         footer.setGravity(Gravity.CENTER);
 
-        Button menu = button("Menu", RED, 18);
         Button p = microButton("P");
-        Button proposals = button("Propositions", GREEN, 18);
         Button t = microButton("T");
+        Button menu = button("Menu", RED, 18);
+        Button proposals = button("Propositions", GREEN, 18);
 
-        footer.addView(menu, footerLp(1.25f));
         footer.addView(p, footerMicroLp());
-        footer.addView(proposals, footerLp(1.45f));
         footer.addView(t, footerMicroLp());
-        root.addView(footer, new LinearLayout.LayoutParams(-1, dp(62)));
+        footer.addView(menu, footerLp(1.15f));
+        footer.addView(proposals, footerLp(1.45f));
+        root.addView(footer, footerBarLp());
 
-        menu.setOnClickListener(v -> showHome());
         p.setOnClickListener(v -> reportProblem(q, p));
         t.setOnClickListener(v -> confirmAnalogExclusion(q));
+        menu.setOnClickListener(v -> showHome());
         proposals.setOnClickListener(v -> showAnswers(q));
     }
 
@@ -533,7 +543,8 @@ public class TabletMainActivity extends Activity {
 
         TextView question = cardText(q.question, 19, YELLOW, Color.BLACK);
         question.setGravity(Gravity.CENTER);
-        add(question, -1, dp(60), 0, 0, 0, dp(10));
+        question.setMinHeight(dp(60));
+        add(question, -1, -2, 0, 0, 0, dp(10));
 
         for (int i = 0; i < 4; i++) {
             final int choice = i + 1;
@@ -541,26 +552,29 @@ public class TabletMainActivity extends Activity {
             Button b = button(label, GREY, 20);
             b.setGravity(Gravity.CENTER);
             b.setPadding(dp(16), dp(8), dp(16), dp(8));
+            b.setMinHeight(dp(78));
             b.setBackground(roundedStroke(GREY, 14, Color.WHITE, 1));
-            add(b, -1, dp(78), 0, 0, 0, dp(8));
+            add(b, -1, -2, 0, 0, 0, dp(8));
             answerButtons.add(b);
             b.setOnClickListener(v -> answer(q, choice));
         }
+
+        addFlexSpacer();
 
         LinearLayout footer = new LinearLayout(this);
         footer.setOrientation(LinearLayout.HORIZONTAL);
         footer.setGravity(Gravity.CENTER);
 
         Button p = microButton("P");
+        Button t = microButton("T");
         Button menu = button("Menu", RED, 17);
         Button back = button("Retour question", BLUE, 17);
-        Button t = microButton("T");
 
         footer.addView(p, footerMicroLp());
-        footer.addView(menu, footerLp(1.15f));
-        footer.addView(back, footerLp(1.2f));
         footer.addView(t, footerMicroLp());
-        root.addView(footer, new LinearLayout.LayoutParams(-1, dp(60)));
+        footer.addView(menu, footerLp(1.15f));
+        footer.addView(back, footerLp(1.25f));
+        root.addView(footer, footerBarLp());
 
         p.setOnClickListener(v -> reportProblem(q, p));
         t.setOnClickListener(v -> confirmAnalogExclusion(q));
@@ -580,8 +594,31 @@ public class TabletMainActivity extends Activity {
         return lp;
     }
 
+    private LinearLayout.LayoutParams footerBarLp() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(58));
+        lp.setMargins(0, dp(4), 0, 0);
+        return lp;
+    }
+
+    private void addFlexSpacer() {
+        View spacer = new View(this);
+        root.addView(spacer, new LinearLayout.LayoutParams(1, 0, 1f));
+    }
+
     private void loadImageAsync(CgQuestion q, FrameLayout area) {
         area.setVisibility(View.VISIBLE);
+
+        Bitmap cached = imageCache.get(q.imageFile);
+        if (cached != null) {
+            area.removeAllViews();
+            ImageView iv = new ImageView(this);
+            iv.setImageBitmap(cached);
+            iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            iv.setBackgroundColor(Color.BLACK);
+            area.addView(iv, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+            return;
+        }
+
         TextView loading = text("Chargement de l’image…", 15, LIGHT_GREY, Gravity.CENTER);
         area.removeAllViews();
         area.addView(loading, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
@@ -590,6 +627,7 @@ public class TabletMainActivity extends Activity {
             try {
                 String token = auth.tokenSync();
                 Bitmap bitmap = firestore.loadImageSync(token, q.imageFile);
+                imageCache.put(q.imageFile, bitmap);
                 main.post(() -> {
                     if (current != q || !"question".equals(screen)) return;
                     area.removeAllViews();
@@ -610,6 +648,40 @@ public class TabletMainActivity extends Activity {
         });
     }
 
+    private void preloadUpcomingImages() {
+        if (!game.hasActive()) return;
+
+        final int from = game.position() + 1;
+        final int to = Math.min(game.batchIds().size(), from + 3);
+
+        for (int i = from; i < to; i++) {
+            final String id = game.batchIds().get(i);
+
+            io.submit(() -> {
+                try {
+                    String token = auth.tokenSync();
+                    CgQuestion next = firestore.getQuestionSync(token, auth.uid(), id);
+                    if (!next.hasImage()) return;
+
+                    synchronized (imagePreloadInFlight) {
+                        if (imageCache.containsKey(next.imageFile)) return;
+                        if (!imagePreloadInFlight.add(next.imageFile)) return;
+                    }
+
+                    try {
+                        Bitmap bitmap = firestore.loadImageSync(token, next.imageFile);
+                        if (bitmap != null) imageCache.put(next.imageFile, bitmap);
+                    } finally {
+                        synchronized (imagePreloadInFlight) {
+                            imagePreloadInFlight.remove(next.imageFile);
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
+            });
+        }
+    }
+
     private void answer(CgQuestion q, int choice) {
         if (answering) return;
         answering = true;
@@ -627,10 +699,6 @@ public class TabletMainActivity extends Activity {
         long responseMs = Math.max(0L, System.currentTimeMillis() - currentShownAtMs);
         JSONObject event = historyPayload(q, choice, correct, responseMs);
         game.recordAnswer(correct);
-
-        Toast.makeText(this,
-                correct ? "Bonne réponse" : "Réponse incorrecte",
-                Toast.LENGTH_SHORT).show();
 
         io.submit(() -> {
             try {
@@ -830,6 +898,8 @@ public class TabletMainActivity extends Activity {
         v.setGravity(gravity);
         v.setTypeface(appFont);
         v.setIncludeFontPadding(false);
+        v.setSingleLine(false);
+        v.setHorizontallyScrolling(false);
         return v;
     }
 
