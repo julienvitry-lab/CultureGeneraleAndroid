@@ -40,7 +40,7 @@ jobs:
       - name: Publier l'APK
         uses: actions/upload-artifact@v4
         with:
-          name: CultureGenerale-Tablet-CGANDROID001
+          name: CultureGenerale-Tablet-CGANDROID002
           path: tablet/build/outputs/apk/debug/tablet-debug.apk
           if-no-files-found: error
           retention-days: 14

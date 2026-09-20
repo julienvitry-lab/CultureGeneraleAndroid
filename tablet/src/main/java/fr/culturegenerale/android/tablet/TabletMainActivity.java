@@ -66,8 +66,8 @@ import java.util.concurrent.Executors;
  */
 public class TabletMainActivity extends Activity {
 
+    // CGANDROID002 · navigation compartimentée
     private static final String[] DOMAINS = new String[]{
-            "Tous les mégathèmes",
             "Animaux et Plantes",
             "Culture Classique",
             "Culture Générale",
@@ -75,8 +75,10 @@ public class TabletMainActivity extends Activity {
             "Géographie",
             "Histoire",
             "Sciences et Techniques",
-            "Sport"
+            "Sport",
+            "Toutes les questions"
     };
+
     private static final int[] SIZES = new int[]{20, 50, 100, 250, 500, 1000};
 
     private final int BLUE = Color.rgb(0, 86, 180);
@@ -86,6 +88,15 @@ public class TabletMainActivity extends Activity {
     private final int DARK = Color.rgb(35, 35, 35);
     private final int GREY = Color.rgb(85, 85, 85);
     private final int LIGHT_GREY = Color.rgb(130, 130, 130);
+
+    private final int ANIMALS_GREEN = Color.rgb(20, 92, 47);
+    private final int CLASSIC_BLUE = Color.rgb(40, 96, 194);
+    private final int GENERAL_GREEN = Color.rgb(137, 207, 104);
+    private final int MODERN_ORANGE = Color.rgb(239, 126, 24);
+    private final int GEO_BLUE = Color.rgb(104, 184, 223);
+    private final int HISTORY_BROWN = Color.rgb(126, 77, 45);
+    private final int SCIENCE_YELLOW = Color.rgb(249, 210, 38);
+    private final int SPORT_RED = Color.rgb(196, 24, 26);
 
     private final ExecutorService io = Executors.newFixedThreadPool(4);
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -107,6 +118,7 @@ public class TabletMainActivity extends Activity {
     private long currentShownAtMs = 0L;
     private final List<Button> answerButtons = new ArrayList<>();
     private boolean answering = false;
+    private String screen = "home";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -130,6 +142,27 @@ public class TabletMainActivity extends Activity {
         io.shutdownNow();
     }
 
+    @Override
+    public void onBackPressed() {
+        if ("answers".equals(screen) && current != null) {
+            showQuestion(current);
+            return;
+        }
+        if ("size".equals(screen)) {
+            showMegathemes();
+            return;
+        }
+        if ("megathemes".equals(screen)) {
+            showHome();
+            return;
+        }
+        if ("question".equals(screen) && game.hasActive()) {
+            showHome();
+            return;
+        }
+        super.onBackPressed();
+    }
+
     private void loadFont() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -143,18 +176,21 @@ public class TabletMainActivity extends Activity {
     }
 
     private void showLogin() {
+        screen = "login";
         baseScreen();
         addTitle("Culture Générale", 34, Color.WHITE);
         addSub("Nouvelle version tablette · Session intelligente", 18, LIGHT_GREY);
         gap(20);
 
         TextView intro = cardText(
-                "Connexion au même compte que CGWEB. L’identification n’est demandée qu’une fois : le jeton de renouvellement est ensuite conservé sur la tablette.",
+                "Connexion au même compte que CGWEB. L’identification n’est demandée qu’une fois.",
                 16, DARK, Color.WHITE);
         add(intro, -1, -2, 0, 0, 0, dp(14));
 
-        EditText email = edit("Adresse e-mail", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
-        EditText password = edit("Mot de passe", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        EditText email = edit("Adresse e-mail",
+                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        EditText password = edit("Mot de passe",
+                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         add(email, -1, dp(54), dp(24), 0, dp(24), dp(10));
         add(password, -1, dp(54), dp(24), 0, dp(24), dp(16));
 
@@ -190,85 +226,118 @@ public class TabletMainActivity extends Activity {
     }
 
     private void showHome() {
+        screen = "home";
         current = null;
         answering = false;
         baseScreen();
 
-        LinearLayout top = new LinearLayout(this);
-        top.setOrientation(LinearLayout.HORIZONTAL);
-        top.setGravity(Gravity.CENTER_VERTICAL);
+        gap(54);
+        addTitle("Culture Générale", 38, Color.WHITE);
+        addSub("Session intelligente", 20, LIGHT_GREY);
+        gap(48);
 
-        TextView title = text("Culture Générale", 31, Color.WHITE, Gravity.START | Gravity.CENTER_VERTICAL);
-        top.addView(title, new LinearLayout.LayoutParams(0, dp(58), 1f));
+        Button start = button("Démarrer", BLUE, 28);
+        add(start, -1, dp(88), dp(180), 0, dp(180), dp(18));
+        start.setOnClickListener(v -> showMegathemes());
 
-        Button logout = microButton("Déconnexion");
-        top.addView(logout, new LinearLayout.LayoutParams(dp(150), dp(42)));
-        logout.setOnClickListener(v -> {
-            auth.clear();
-            game.clear();
-            showLogin();
-        });
-        root.addView(top, new LinearLayout.LayoutParams(-1, -2));
-
-        TextView subtitle = cardText("SESSION INTELLIGENTE", 19, BLUE, Color.WHITE);
-        add(subtitle, -1, dp(52), 0, dp(8), 0, dp(18));
-
-        TextView megaLabel = text("Mégathème", 16, Color.WHITE, Gravity.START);
-        add(megaLabel, -1, -2, dp(10), 0, dp(10), dp(6));
-
-        Spinner spinner = new Spinner(this);
-        CgSpinnerAdapter adapter = new CgSpinnerAdapter(this, DOMAINS, appFont, Color.WHITE, DARK);
-        spinner.setAdapter(adapter);
-        spinner.setSelection(domainIndex(selectedDomain));
-        spinner.setBackground(rounded(DARK, 14));
-        spinner.setPadding(dp(12), 0, dp(12), 0);
-        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                selectedDomain = position <= 0 ? "" : DOMAINS[position];
-            }
-            @Override public void onNothingSelected(AdapterView<?> parent) { }
-        });
-        add(spinner, -1, dp(56), dp(10), 0, dp(10), dp(20));
-
-        TextView sizeLabel = text("Taille de session", 16, Color.WHITE, Gravity.START);
-        add(sizeLabel, -1, -2, dp(10), 0, dp(10), dp(8));
-
-        LinearLayout sizeRow = new LinearLayout(this);
-        sizeRow.setOrientation(LinearLayout.HORIZONTAL);
-        sizeRow.setGravity(Gravity.CENTER);
-        for (int size : SIZES) {
-            Button b = button(String.valueOf(size), size == selectedCount ? BLUE : GREY, 18);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(54), 1f);
-            lp.setMargins(dp(4), 0, dp(4), 0);
-            sizeRow.addView(b, lp);
-            b.setOnClickListener(v -> {
-                selectedCount = size;
-                showHome();
-            });
-        }
-        add(sizeRow, -1, -2, dp(6), 0, dp(6), dp(24));
-
-        Button start = button("Démarrer une session", GREEN, 23);
-        add(start, -1, dp(66), dp(80), 0, dp(80), dp(14));
-        start.setOnClickListener(v -> startSmartSession());
-
-        if (game.hasActive()) {
-            Button resume = button("Reprendre la session en cours", DARK, 17);
-            add(resume, -1, dp(52), dp(130), 0, dp(130), dp(10));
-            resume.setOnClickListener(v -> resumeLocalSession());
-        }
-
-        statusView = text(
-                "P : signalement éditorial · T : exclusion analogue · " +
-                        flags.pendingCount() + " élément(s) en attente de synchronisation",
-                13, LIGHT_GREY, Gravity.CENTER);
-        add(statusView, -1, -2, dp(20), dp(8), dp(20), 0);
+        TextView helper = text("Créer une nouvelle session", 15, LIGHT_GREY, Gravity.CENTER);
+        add(helper, -1, -2, dp(40), 0, dp(40), 0);
     }
 
-    private int domainIndex(String domain) {
-        if (domain == null || domain.isEmpty()) return 0;
-        for (int i = 1; i < DOMAINS.length; i++) if (DOMAINS[i].equals(domain)) return i;
-        return 0;
+    private void showMegathemes() {
+        screen = "megathemes";
+        baseScreen();
+
+        addTitle("Choix du mégathème", 31, Color.WHITE);
+        gap(8);
+
+        root.addView(domainRow(
+                domainButton("Animaux et Plantes", ANIMALS_GREEN, Color.WHITE, "Animaux et Plantes"),
+                domainButton("Culture Classique", CLASSIC_BLUE, Color.WHITE, "Culture Classique")));
+
+        root.addView(domainRow(
+                domainButton("Culture Générale", GENERAL_GREEN, Color.BLACK, "Culture Générale"),
+                domainButton("Culture Moderne", MODERN_ORANGE, Color.BLACK, "Culture Moderne")));
+
+        root.addView(domainRow(
+                domainButton("Géographie", GEO_BLUE, Color.BLACK, "Géographie"),
+                domainButton("Histoire", HISTORY_BROWN, Color.WHITE, "Histoire")));
+
+        root.addView(domainRow(
+                domainButton("Sciences et Techniques", SCIENCE_YELLOW, Color.BLACK, "Sciences et Techniques"),
+                domainButton("Sport", SPORT_RED, Color.WHITE, "Sport")));
+
+        Button all = domainButton("Toutes les questions", Color.BLACK, Color.WHITE, "");
+        all.setBackground(roundedStroke(Color.BLACK, 14, Color.WHITE, 1));
+        add(all, -1, dp(78), 0, dp(5), 0, dp(8));
+
+        Button back = button("Retour", GREY, 18);
+        add(back, -1, dp(54), 0, 0, 0, 0);
+        back.setOnClickListener(v -> showHome());
+    }
+
+    private LinearLayout domainRow(Button left, Button right) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER);
+
+        LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(0, dp(76), 1f);
+        LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(0, dp(76), 1f);
+        lp1.setMargins(0, dp(5), dp(5), dp(5));
+        lp2.setMargins(dp(5), dp(5), 0, dp(5));
+        row.addView(left, lp1);
+        row.addView(right, lp2);
+        return row;
+    }
+
+    private Button domainButton(String label, int bg, int fg, String domain) {
+        Button b = button(label, bg, 21);
+        b.setTextColor(fg);
+        b.setBackground(roundedStroke(bg, 14, Color.WHITE, 1));
+        b.setOnClickListener(v -> {
+            selectedDomain = domain;
+            showSizeSelection();
+        });
+        return b;
+    }
+
+    private void showSizeSelection() {
+        screen = "size";
+        baseScreen();
+
+        addTitle("Taille de la session", 31, Color.WHITE);
+        addSub(selectedDomain.isEmpty() ? "Toutes les questions" : selectedDomain,
+                18, LIGHT_GREY);
+        gap(20);
+
+        LinearLayout row1 = new LinearLayout(this);
+        row1.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout row2 = new LinearLayout(this);
+        row2.setOrientation(LinearLayout.HORIZONTAL);
+
+        for (int i = 0; i < SIZES.length; i++) {
+            int size = SIZES[i];
+            Button b = button(String.valueOf(size), size == selectedCount ? BLUE : GREY, 24);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(82), 1f);
+            lp.setMargins(dp(6), dp(6), dp(6), dp(6));
+            if (i < 3) row1.addView(b, lp); else row2.addView(b, lp);
+            b.setOnClickListener(v -> {
+                selectedCount = size;
+                startSmartSession();
+            });
+        }
+
+        root.addView(row1);
+        root.addView(row2);
+
+        gap(18);
+        TextView hint = text("Le choix lance directement la session intelligente.",
+                14, LIGHT_GREY, Gravity.CENTER);
+        add(hint, -1, -2, dp(20), 0, dp(20), dp(20));
+
+        Button back = button("Retour", GREY, 18);
+        add(back, -1, dp(54), dp(100), 0, dp(100), 0);
+        back.setOnClickListener(v -> showMegathemes());
     }
 
     private void startSmartSession() {
@@ -288,15 +357,6 @@ public class TabletMainActivity extends Activity {
                 main.post(() -> showFatal("Session impossible", ex.getMessage()));
             }
         });
-    }
-
-    private void resumeLocalSession() {
-        if (!game.hasActive()) {
-            showHome();
-            return;
-        }
-        showLoading("Reprise de la session…");
-        loadNextPlayable();
     }
 
     private void loadNextPlayable() {
@@ -320,7 +380,7 @@ public class TabletMainActivity extends Activity {
         }
 
         final String id = game.batchIds().get(game.position());
-        showLoading("Chargement de la question " + (game.played() + 1) + " / " + game.target() + "…");
+        showLoading("Question " + (game.played() + 1) + " / " + game.target());
 
         io.submit(() -> {
             try {
@@ -336,7 +396,9 @@ public class TabletMainActivity extends Activity {
             } catch (Exception ex) {
                 game.advanceWithoutPlaying();
                 main.post(() -> {
-                    Toast.makeText(this, "Question " + id + " ignorée : " + ex.getMessage(), Toast.LENGTH_LONG).show();
+                    Toast.makeText(this,
+                            "Question " + id + " ignorée : " + ex.getMessage(),
+                            Toast.LENGTH_LONG).show();
                     loadNextPlayable();
                 });
             }
@@ -363,65 +425,159 @@ public class TabletMainActivity extends Activity {
         });
     }
 
+    private void addStatsBanner() {
+        LinearLayout band = new LinearLayout(this);
+        band.setOrientation(LinearLayout.HORIZONTAL);
+        band.setGravity(Gravity.CENTER);
+        band.setPadding(dp(5), dp(5), dp(5), dp(5));
+        band.setBackground(roundedStroke(Color.rgb(16, 16, 16), 14, Color.WHITE, 1));
+
+        int played = game.played();
+        int good = game.correct();
+        int errors = Math.max(0, played - good);
+        int scorePct = played <= 0 ? 0 : Math.round((good * 100f) / played);
+
+        band.addView(statCell("Mégathème",
+                        selectedDomain.isEmpty() ? "Toutes" : selectedDomain),
+                statLp(1.35f));
+        band.addView(statCell("Progression",
+                        (played + 1) + " / " + game.target()),
+                statLp(1f));
+        band.addView(statCell("Score", scorePct + " %"), statLp(.9f));
+        band.addView(statCell("Bonnes réponses", String.valueOf(good)), statLp(1.15f));
+        band.addView(statCell("Erreurs", String.valueOf(errors)), statLp(.9f));
+
+        add(band, -1, dp(70), 0, 0, 0, dp(8));
+    }
+
+    private LinearLayout.LayoutParams statLp(float weight) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, weight);
+        lp.setMargins(dp(3), 0, dp(3), 0);
+        return lp;
+    }
+
+    private View statCell(String label, String value) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        box.setPadding(dp(5), dp(4), dp(5), dp(4));
+
+        TextView l = text(label, 11, LIGHT_GREY, Gravity.CENTER);
+        TextView v = text(value, 16, Color.WHITE, Gravity.CENTER);
+        box.addView(l, new LinearLayout.LayoutParams(-1, 0, .42f));
+        box.addView(v, new LinearLayout.LayoutParams(-1, 0, .58f));
+        return box;
+    }
+
     private void showQuestion(CgQuestion q) {
+        screen = "question";
         answering = false;
         answerButtons.clear();
         currentShownAtMs = System.currentTimeMillis();
         baseScreen();
 
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
+        addStatsBanner();
 
-        TextView progress = text(
-                "Question " + (game.played() + 1) + " / " + game.target(),
-                18, Color.WHITE, Gravity.START | Gravity.CENTER_VERTICAL);
-        header.addView(progress, new LinearLayout.LayoutParams(0, dp(48), 1f));
-
-        Button p = microButton("P");
-        Button t = microButton("T");
-        LinearLayout.LayoutParams microLp = new LinearLayout.LayoutParams(dp(48), dp(42));
-        microLp.setMargins(dp(6), 0, 0, 0);
-        header.addView(p, microLp);
-        header.addView(t, microLp);
-        root.addView(header, new LinearLayout.LayoutParams(-1, -2));
-
-        p.setOnClickListener(v -> reportProblem(q, p));
-        t.setOnClickListener(v -> confirmAnalogExclusion(q));
-
-        TextView path = cardText(
-                safe(q.megatheme) + (q.theme.isEmpty() ? "" : " › " + q.theme),
-                16, BLUE, Color.WHITE);
-        add(path, -1, dp(46), 0, dp(8), 0, dp(8));
-
-        TextView question = cardText(q.question, 24, DARK, Color.WHITE);
-        question.setMinHeight(dp(76));
-        add(question, -1, -2, 0, 0, 0, dp(8));
+        TextView theme = cardText(
+                q.theme.isEmpty() ? safe(q.megatheme) : q.theme,
+                18, GREEN, Color.WHITE);
+        theme.setGravity(Gravity.CENTER);
+        add(theme, -1, dp(48), 0, 0, 0, dp(7));
 
         if (!q.detail.isEmpty()) {
-            TextView detail = cardText(q.detail, 16, DARK, Color.WHITE);
-            add(detail, -1, -2, 0, 0, 0, dp(8));
+            TextView detail = cardText(q.detail, 18, RED, Color.WHITE);
+            detail.setGravity(Gravity.CENTER);
+            add(detail, -1, dp(54), 0, 0, 0, dp(7));
         }
+
+        TextView question = cardText(q.question, 23, YELLOW, Color.BLACK);
+        question.setGravity(Gravity.CENTER);
+        question.setMinHeight(dp(70));
+        add(question, -1, -2, 0, 0, 0, dp(8));
 
         FrameLayout imageArea = new FrameLayout(this);
         imageArea.setVisibility(View.GONE);
-        imageArea.setBackground(rounded(DARK, 14));
-        add(imageArea, -1, dp(210), 0, 0, 0, dp(8));
-
+        imageArea.setBackground(roundedStroke(DARK, 14, Color.WHITE, 1));
+        add(imageArea, -1, dp(270), dp(90), 0, dp(90), dp(8));
         if (q.hasImage()) loadImageAsync(q, imageArea);
+        if (!q.hasImage()) gap(150);
+
+        LinearLayout footer = new LinearLayout(this);
+        footer.setOrientation(LinearLayout.HORIZONTAL);
+        footer.setGravity(Gravity.CENTER);
+
+        Button menu = button("Menu", RED, 18);
+        Button p = microButton("P");
+        Button proposals = button("Propositions", GREEN, 18);
+        Button t = microButton("T");
+
+        footer.addView(menu, footerLp(1.25f));
+        footer.addView(p, footerMicroLp());
+        footer.addView(proposals, footerLp(1.45f));
+        footer.addView(t, footerMicroLp());
+        root.addView(footer, new LinearLayout.LayoutParams(-1, dp(62)));
+
+        menu.setOnClickListener(v -> showHome());
+        p.setOnClickListener(v -> reportProblem(q, p));
+        t.setOnClickListener(v -> confirmAnalogExclusion(q));
+        proposals.setOnClickListener(v -> showAnswers(q));
+    }
+
+    private void showAnswers(CgQuestion q) {
+        screen = "answers";
+        answering = false;
+        answerButtons.clear();
+        baseScreen();
+
+        addStatsBanner();
+
+        TextView question = cardText(q.question, 19, YELLOW, Color.BLACK);
+        question.setGravity(Gravity.CENTER);
+        add(question, -1, dp(60), 0, 0, 0, dp(10));
 
         for (int i = 0; i < 4; i++) {
             final int choice = i + 1;
-            Button b = button((char)('A' + i) + ".  " + q.options[i], GREY, 18);
-            b.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-            b.setPadding(dp(18), dp(8), dp(18), dp(8));
-            add(b, -1, dp(58), 0, 0, 0, dp(7));
+            String label = q.options[i] == null ? "" : q.options[i];
+            Button b = button(label, GREY, 20);
+            b.setGravity(Gravity.CENTER);
+            b.setPadding(dp(16), dp(8), dp(16), dp(8));
+            b.setBackground(roundedStroke(GREY, 14, Color.WHITE, 1));
+            add(b, -1, dp(78), 0, 0, 0, dp(8));
             answerButtons.add(b);
             b.setOnClickListener(v -> answer(q, choice));
         }
 
-        statusView = text("", 13, LIGHT_GREY, Gravity.CENTER);
-        add(statusView, -1, -2, dp(10), dp(2), dp(10), 0);
+        LinearLayout footer = new LinearLayout(this);
+        footer.setOrientation(LinearLayout.HORIZONTAL);
+        footer.setGravity(Gravity.CENTER);
+
+        Button p = microButton("P");
+        Button menu = button("Menu", RED, 17);
+        Button back = button("Retour question", BLUE, 17);
+        Button t = microButton("T");
+
+        footer.addView(p, footerMicroLp());
+        footer.addView(menu, footerLp(1.15f));
+        footer.addView(back, footerLp(1.2f));
+        footer.addView(t, footerMicroLp());
+        root.addView(footer, new LinearLayout.LayoutParams(-1, dp(60)));
+
+        p.setOnClickListener(v -> reportProblem(q, p));
+        t.setOnClickListener(v -> confirmAnalogExclusion(q));
+        menu.setOnClickListener(v -> showHome());
+        back.setOnClickListener(v -> showQuestion(q));
+    }
+
+    private LinearLayout.LayoutParams footerLp(float weight) {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, -1, weight);
+        lp.setMargins(dp(4), 0, dp(4), 0);
+        return lp;
+    }
+
+    private LinearLayout.LayoutParams footerMicroLp() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(58), -1);
+        lp.setMargins(dp(4), 0, dp(4), 0);
+        return lp;
     }
 
     private void loadImageAsync(CgQuestion q, FrameLayout area) {
@@ -435,7 +591,7 @@ public class TabletMainActivity extends Activity {
                 String token = auth.tokenSync();
                 Bitmap bitmap = firestore.loadImageSync(token, q.imageFile);
                 main.post(() -> {
-                    if (current != q) return;
+                    if (current != q || !"question".equals(screen)) return;
                     area.removeAllViews();
                     ImageView iv = new ImageView(this);
                     iv.setImageBitmap(bitmap);
@@ -445,7 +601,7 @@ public class TabletMainActivity extends Activity {
                 });
             } catch (Exception ex) {
                 main.post(() -> {
-                    if (current != q) return;
+                    if (current != q || !"question".equals(screen)) return;
                     area.removeAllViews();
                     TextView missing = text("Image indisponible", 14, LIGHT_GREY, Gravity.CENTER);
                     area.addView(missing, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
@@ -463,16 +619,18 @@ public class TabletMainActivity extends Activity {
         for (int i = 0; i < answerButtons.size(); i++) {
             Button b = answerButtons.get(i);
             int idx = i + 1;
-            if (idx == q.correctIndex) b.setBackground(rounded(GREEN, 14));
-            else if (idx == choice) b.setBackground(rounded(RED, 14));
-            else b.setBackground(rounded(DARK, 14));
+            if (idx == q.correctIndex) b.setBackground(roundedStroke(GREEN, 14, Color.WHITE, 1));
+            else if (idx == choice) b.setBackground(roundedStroke(RED, 14, Color.WHITE, 1));
+            else b.setBackground(roundedStroke(DARK, 14, Color.WHITE, 1));
         }
 
         long responseMs = Math.max(0L, System.currentTimeMillis() - currentShownAtMs);
         JSONObject event = historyPayload(q, choice, correct, responseMs);
         game.recordAnswer(correct);
 
-        status(correct ? "Bonne réponse" : "Réponse incorrecte", correct ? GREEN : RED);
+        Toast.makeText(this,
+                correct ? "Bonne réponse" : "Réponse incorrecte",
+                Toast.LENGTH_SHORT).show();
 
         io.submit(() -> {
             try {
@@ -481,7 +639,7 @@ public class TabletMainActivity extends Activity {
             } catch (Exception ex) {
                 flags.enqueue("play_history", event);
             }
-            try { Thread.sleep(650); } catch (InterruptedException ignored) { }
+            try { Thread.sleep(900); } catch (InterruptedException ignored) { }
             main.post(this::loadNextPlayable);
         });
     }
@@ -514,12 +672,13 @@ public class TabletMainActivity extends Activity {
     }
 
     private void reportProblem(CgQuestion q, Button button) {
-        final EditText note = edit("Précision facultative", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        final EditText note = edit("Précision facultative",
+                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         note.setMinLines(3);
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("Signaler la question (P)")
-                .setMessage("Le signalement n’exclut pas la question du jeu. Il sera destiné au futur traitement en masse dans CGWEB.")
+                .setMessage("Le signalement n’exclut pas la question du jeu. Il sera destiné au traitement dans CGWEB.")
                 .setView(note)
                 .setNegativeButton("Annuler", null)
                 .setPositiveButton("Signaler", null)
@@ -545,7 +704,7 @@ public class TabletMainActivity extends Activity {
                 button.setText("P✓");
                 button.setTextColor(YELLOW);
                 dialog.dismiss();
-                status("Signalement P enregistré.", YELLOW);
+                Toast.makeText(this, "Signalement P enregistré.", Toast.LENGTH_SHORT).show();
                 flushOutboxAsync();
             });
         });
@@ -555,7 +714,7 @@ public class TabletMainActivity extends Activity {
     private void confirmAnalogExclusion(CgQuestion q) {
         new AlertDialog.Builder(this)
                 .setTitle("Exclure ce contenu analogue (T) ?")
-                .setMessage("Toutes les questions ayant le même thème et le même libellé sont considérées analogues. Le détail n’entre pas dans la comparaison.")
+                .setMessage("Même thème + même libellé normalisé. Le détail n’entre pas dans la comparaison.")
                 .setNegativeButton("Annuler", null)
                 .setPositiveButton("Exclure", (d, which) -> {
                     flags.addT(q);
@@ -574,7 +733,9 @@ public class TabletMainActivity extends Activity {
                     } catch (Exception ignored) { }
                     flags.enqueue("analog_exclusions", payload);
                     game.advanceWithoutPlaying();
-                    Toast.makeText(this, "Contenu analogue T exclu sur cette tablette.", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this,
+                            "Questions analogues exclues sur cette tablette.",
+                            Toast.LENGTH_SHORT).show();
                     flushOutboxAsync();
                     loadNextPlayable();
                 })
@@ -591,17 +752,21 @@ public class TabletMainActivity extends Activity {
     }
 
     private void showEnd() {
+        screen = "end";
         game.finish();
         baseScreen();
+        gap(30);
         addTitle("Session terminée", 32, Color.WHITE);
-        gap(20);
-        TextView score = cardText(
-                game.correct() + " bonne(s) réponse(s) sur " + game.played() + " question(s) jouée(s).",
-                24, DARK, Color.WHITE);
-        add(score, -1, dp(100), dp(60), 0, dp(60), dp(22));
+        gap(18);
 
-        Button home = button("Nouvelle session", BLUE, 22);
-        add(home, -1, dp(62), dp(100), 0, dp(100), 0);
+        TextView score = cardText(
+                game.correct() + " bonne(s) réponse(s) sur " + game.played() + " question(s).",
+                24, DARK, Color.WHITE);
+        score.setGravity(Gravity.CENTER);
+        add(score, -1, dp(100), dp(80), 0, dp(80), dp(22));
+
+        Button home = button("Accueil", BLUE, 22);
+        add(home, -1, dp(62), dp(120), 0, dp(120), 0);
         home.setOnClickListener(v -> {
             game.clear();
             showHome();
@@ -609,18 +774,24 @@ public class TabletMainActivity extends Activity {
     }
 
     private void showLoading(String message) {
+        screen = "loading";
         baseScreen();
-        gap(50);
+        gap(70);
         TextView v = cardText(message, 22, DARK, Color.WHITE);
         v.setGravity(Gravity.CENTER);
-        add(v, -1, dp(110), dp(80), 0, dp(80), 0);
+        add(v, -1, dp(110), dp(100), 0, dp(100), 0);
     }
 
     private void showFatal(String title, String message) {
+        screen = "fatal";
         baseScreen();
         addTitle(title, 28, Color.WHITE);
-        TextView err = cardText(message == null ? "Erreur inconnue" : message, 18, RED, Color.WHITE);
+        TextView err = cardText(
+                message == null ? "Erreur inconnue" : message,
+                18, RED, Color.WHITE);
+        err.setGravity(Gravity.CENTER);
         add(err, -1, -2, dp(30), dp(20), dp(30), dp(20));
+
         Button back = button("Retour", BLUE, 20);
         add(back, -1, dp(56), dp(100), 0, dp(100), 0);
         back.setOnClickListener(v -> showHome());
@@ -630,10 +801,12 @@ public class TabletMainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.setBackgroundColor(Color.BLACK);
+
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(18), dp(12), dp(18), dp(16));
+        root.setPadding(dp(14), dp(10), dp(14), dp(12));
         root.setBackgroundColor(Color.BLACK);
+
         scroll.addView(root, new ScrollView.LayoutParams(-1, -1));
         setContentView(scroll);
     }
@@ -695,8 +868,9 @@ public class TabletMainActivity extends Activity {
 
     private Button microButton(String label) {
         Button b = button(label, DARK, 15);
-        b.setTextColor(LIGHT_GREY);
+        b.setTextColor(Color.WHITE);
         b.setPadding(0, 0, 0, 0);
+        b.setBackground(roundedStroke(DARK, 12, Color.WHITE, 1));
         return b;
     }
 
@@ -704,6 +878,12 @@ public class TabletMainActivity extends Activity {
         GradientDrawable g = new GradientDrawable();
         g.setColor(color);
         g.setCornerRadius(dp(radiusDp));
+        return g;
+    }
+
+    private GradientDrawable roundedStroke(int color, int radiusDp, int strokeColor, int strokeDp) {
+        GradientDrawable g = rounded(color, radiusDp);
+        g.setStroke(dp(strokeDp), strokeColor);
         return g;
     }
 
@@ -731,28 +911,8 @@ public class TabletMainActivity extends Activity {
         }
     }
 
-    private static String safe(String s) { return s == null ? "" : s; }
-
-    private static final class CgSpinnerAdapter extends ArrayAdapter<String> {
-        private final Typeface font;
-        private final int fg;
-        private final int bg;
-        CgSpinnerAdapter(Context context, String[] items, Typeface font, int fg, int bg) {
-            super(context, android.R.layout.simple_spinner_item, items);
-            this.font = font; this.fg = fg; this.bg = bg;
-        }
-        @Override public View getView(int position, View convertView, ViewGroup parent) {
-            TextView v = (TextView) super.getView(position, convertView, parent);
-            tune(v); return v;
-        }
-        @Override public View getDropDownView(int position, View convertView, ViewGroup parent) {
-            TextView v = (TextView) super.getDropDownView(position, convertView, parent);
-            tune(v); return v;
-        }
-        private void tune(TextView v) {
-            v.setTypeface(font); v.setTextColor(fg); v.setTextSize(17); v.setBackgroundColor(bg);
-            v.setPadding(18, 14, 18, 14);
-        }
+    private static String safe(String s) {
+        return s == null ? "" : s;
     }
 }
 

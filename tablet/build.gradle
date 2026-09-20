@@ -10,14 +10,14 @@ android {
         applicationId 'fr.culturegenerale.android.tablet'
         minSdk 23
         targetSdk 35
-        versionCode 1
-        versionName 'CGANDROID001'
+        versionCode 2
+        versionName 'CGANDROID002'
 
         buildConfigField 'String', 'FIREBASE_API_KEY', '"AIzaSyBHAVR_Td-VozN7MzMyZqJ046h1T_ggRDc"'
         buildConfigField 'String', 'FIREBASE_PROJECT_ID', '"culturegeneralesync"'
         buildConfigField 'String', 'FIREBASE_STORAGE_BUCKET', '"culturegeneralesync.firebasestorage.app"'
         buildConfigField 'String', 'SMART_API_URL', '"https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb032Search"'
-        buildConfigField 'String', 'CG_CHANNEL', '"CGANDROID001"'
+        buildConfigField 'String', 'CG_CHANNEL', '"CGANDROID002"'
     }
 
     buildFeatures {
