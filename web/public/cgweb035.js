@@ -1,4 +1,5 @@
-const CGWEB035_VERSION='CGPLAY004_FIX2_HISTORY_QUESTION_BINDING_FIX001_HISTORY_SNAPSHOT_TRUTH001';
+const CGWEB035_VERSION='CGWEB107_HISTORY_MAIN_TAB001_HISTORY_CARD_COMPACT001_HISTORY_PAGING001';
+// CGWEB107_HISTORY_MAIN_TAB001_HISTORY_CARD_COMPACT001_HISTORY_PAGING001
 const CG35_END='https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb032Search';
 const cg35$=id=>document.getElementById(id);
 const cg35Esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
@@ -11,7 +12,7 @@ const cg35PriorityCount=n=>cg35Count(n,'prioritaire','prioritaires');
 const cg35DifficultyValue=v=>Number.isFinite(v)?`${cg35Fmt(v)}/100`:'—';
 const cg35Time=ms=>{const n=Number(ms||0);if(!n)return '—';if(n<60000)return `${(n/1000).toFixed(1).replace('.',',')} s`;return `${Math.floor(n/60000)} min ${Math.floor((n%60000)/1000)} s`};
 const cg35Date=ms=>ms?new Date(Number(ms)).toLocaleString('fr-FR'):'—';
-const CG35={tab:'overview',domain:'',theme:'',historyFilter:'all',smartConfig:{count:20,duePct:40,weakPct:35,unseenPct:25,domain:''},smartRows:[]};
+const CG35={tab:'history',domain:'',theme:'',historyFilter:'all',historyPageSize:100,historyOffset:0,historyRows:[],historyTotal:0,smartConfig:{count:20,duePct:40,weakPct:35,unseenPct:25,domain:''},smartRows:[]};
 
 async function cg35Api(body){
   const u=window.CGWEB001?.getUser?.();
@@ -50,15 +51,108 @@ async function cg35Overview(){
 }
 function cg35HistoryResult(e){if(e.playType==='revision_reveal')return 'Révélation';if(e.playType==='challenge_choice')return e.positive?'Juste':'Faux';if(e.playType==='challenge_mental')return e.result==='assimilated'?'Assimilée':'À revoir';return e.result||'—'}
 function cg35HistoryType(e){if(e.playType==='challenge_choice')return 'QCM';if(e.playType==='challenge_mental')return 'Mental';if(e.playType==='revision_reveal')return 'Révision';return e.playType||'Événement'}
-async function cg35History(){
+function cg35HistoryCard(e){
+  const qcm=e.playType==='challenge_choice';
+  const attempt=e.attemptTotal>1
+    ? `<span class="cg35-history-attempt">Tentative ${e.attemptNumber}/${e.attemptTotal}</span>`
+    : '';
+
+  const right=qcm
+    ? `<div class="cg35-history-answer"><span>Réponse donnée</span><b>${cg35Esc(e.selectedAnswer||'—')}</b></div>
+       <div class="cg35-history-answer"><span>Bonne réponse au moment du jeu</span><b>${cg35Esc(e.correctAnswer||'—')}</b></div>
+       ${e.bindingMismatch?'<div class="cg35-history-warning">⚠ incohérence ID historique/snapshot</div>':''}`
+    : `<div class="cg35-history-answer"><span>Résultat</span><b>${cg35Esc(cg35HistoryResult(e))}</b></div>`;
+
+  return `<article class="cg35-event cg35-history-card">
+    <div class="cg35-history-left">
+      <header>
+        <b>${cg35Date(e.playedAtMs)} · ${cg35HistoryType(e)}</b>
+        ${attempt}
+      </header>
+      <small>${cg35Esc(cg35Path(e.domain,e.theme))}</small>
+      <h3>${cg35Esc(e.question||'(question sans texte)')}</h3>
+      <div class="cg35-result">${cg35Esc(cg35HistoryResult(e))}${e.responseTimeMs>0?` · ${cg35Time(e.responseTimeMs)}`:''}</div>
+    </div>
+    <div class="cg35-history-right">
+      ${right}
+      ${cg35QuestionButton(e.questionId)}
+    </div>
+  </article>`;
+}
+
+function cg35RenderHistory(){
+  const shown=CG35.historyRows.length;
+  const total=CG35.historyTotal;
+  const remaining=Math.max(0,total-shown);
+  const next=Math.min(CG35.historyPageSize,remaining);
+
+  cg35SetBody(`
+    <div class="cg35-history-toolbar">
+      <div class="cg35-filterbar">
+        ${[['all','Tous'],['qcm','QCM'],['mental','Mental'],['revision','Révision']]
+          .map(([k,l])=>`<button data-history-filter="${k}" class="${CG35.historyFilter===k?'active':''}">${l}</button>`)
+          .join('')}
+      </div>
+      <div class="cg35-history-count">
+        <b>${cg35Fmt(shown)} affiché${shown===1?'':'s'}</b>
+        <span>sur ${cg35Fmt(total)} événement${total===1?'':'s'}</span>
+      </div>
+    </div>
+
+    <section class="cg35-list cg35-history-list">
+      ${CG35.historyRows.map(cg35HistoryCard).join('')||'<div class="cg35-empty">Aucun événement.</div>'}
+    </section>
+
+    ${remaining>0
+      ? `<div class="cg35-history-paging">
+           <button id="cg35HistoryMore" type="button">Afficher ${cg35Fmt(next)} de plus</button>
+           <span>${cg35Fmt(remaining)} restant${remaining===1?'':'s'}</span>
+         </div>`
+      : shown>0
+        ? `<div class="cg35-history-paging cg35-history-complete">Historique affiché en totalité.</div>`
+        : ''}
+  `);
+
+  document.querySelectorAll('[data-history-filter]').forEach(
+    b=>b.onclick=()=>{
+      CG35.historyFilter=b.dataset.historyFilter;
+      cg35History(true);
+    }
+  );
+
+  cg35$('cg35HistoryMore')?.addEventListener('click',()=>cg35History(false));
+}
+
+async function cg35History(reset=true){
   try{
-    const d=await cg35Api({mode:'history',filter:CG35.historyFilter,limit:100});
-    cg35SetBody(`<div class="cg35-filterbar">${[['all','Tous'],['qcm','QCM'],['mental','Mental'],['revision','Révision']].map(([k,l])=>`<button data-history-filter="${k}" class="${CG35.historyFilter===k?'active':''}">${l}</button>`).join('')}</div>
-      <div class="cg35-submeta">${cg35Fmt((d.rows||[]).length)} affiché${(d.rows||[]).length===1?'':'s'} · 100 derniers maximum</div>
-      <section class="cg35-list">${(d.rows||[]).map(e=>`<article class="cg35-event"><header><b>${cg35Date(e.playedAtMs)} · ${cg35HistoryType(e)}</b>${e.attemptTotal>1?`<span>Tentative ${e.attemptNumber}/${e.attemptTotal}</span>`:''}</header><small>${cg35Esc(cg35Path(e.domain,e.theme))}</small><h3>${cg35Esc(e.question||'(question sans texte)')}</h3><div class="cg35-result">${cg35Esc(cg35HistoryResult(e))}${e.responseTimeMs>0?` · ${cg35Time(e.responseTimeMs)}`:''}</div>${e.playType==='challenge_choice'?`<div class="cg35-submeta">Réponse donnée : <b>${cg35Esc(e.selectedAnswer||'—')}</b> · Bonne réponse au moment du jeu : <b>${cg35Esc(e.correctAnswer||'—')}</b>${e.bindingMismatch?' · ⚠ incohérence ID historique/snapshot':''}</div>`:''}${cg35QuestionButton(e.questionId)}</article>`).join('')||'<div class="cg35-empty">Aucun événement.</div>'}</section>`);
-    document.querySelectorAll('[data-history-filter]').forEach(b=>b.onclick=()=>{CG35.historyFilter=b.dataset.historyFilter;cg35History()});
-    cg35Status('✅ Historique chargé.','ok');
-  }catch(e){cg35SetBody(`<div class="cg35-error">${cg35Esc(e.message)}</div>`);cg35Status(`❌ ${e.message}`,'bad')}
+    if(reset){
+      CG35.historyOffset=0;
+      CG35.historyRows=[];
+      CG35.historyTotal=0;
+    }
+
+    const d=await cg35Api({
+      mode:'history',
+      filter:CG35.historyFilter,
+      limit:CG35.historyPageSize,
+      offset:CG35.historyOffset
+    });
+
+    const page=d.rows||[];
+    CG35.historyRows=reset?page:CG35.historyRows.concat(page);
+    CG35.historyOffset=CG35.historyRows.length;
+    CG35.historyTotal=Number(d.filteredTotal??d.total??CG35.historyRows.length);
+
+    cg35RenderHistory();
+
+    cg35Status(
+      `✅ Historique chargé · ${cg35Fmt(CG35.historyRows.length)} / ${cg35Fmt(CG35.historyTotal)}.`,
+      'ok'
+    );
+  }catch(e){
+    cg35SetBody(`<div class="cg35-error">${cg35Esc(e.message)}</div>`);
+    cg35Status(`❌ ${e.message}`,'bad');
+  }
 }
 
 const CG35_LABELS={mastery:'Maîtrise',due:'À réviser',weakness:'Points faibles',response:'Temps de réponse',difficulty:'Difficulté'};
@@ -2376,10 +2470,10 @@ function cg35Wire(){
 }
 function cg35Init(){
   if(cg35$('cgweb035Panel'))return;
-  const p=document.createElement('section');p.id='cgweb035Panel';p.className='cg35-panel';p.innerHTML=`<header class="cg35-head"><div><div class="cg35-kicker">CGWEB035 FIX2 · LEARNING_HUB002</div><h2>Apprentissage</h2><p>Historique, maîtrise, révisions, points faibles, vitesse et difficulté.</p></div><button id="cg35Refresh">Actualiser</button></header>
-  <nav class="cg35-tabs" aria-label="Analyses d'apprentissage"><button data-cg35-tab="overview" class="active">Vue d’ensemble</button><button data-cg35-tab="history">Historique</button><button data-cg35-tab="mastery">Maîtrise</button><button data-cg35-tab="never">Jamais vues</button><button data-cg35-tab="due">À réviser</button><button data-cg35-tab="weakness">Points faibles</button><button data-cg35-tab="response">Temps de réponse</button><button data-cg35-tab="difficulty">Difficulté</button><button data-cg35-tab="smart">Session intelligente</button></nav>
+  const p=document.createElement('section');p.id='cgweb035Panel';p.className='cg35-panel';p.innerHTML=`<header class="cg35-head"><div><div class="cg35-kicker">CGWEB035 FIX2 · LEARNING_HUB002</div><h2>Historique</h2><p>Historique complet du jeu, maîtrise, révisions, points faibles, vitesse et difficulté.</p></div><button id="cg35Refresh">Actualiser</button></header>
+  <nav class="cg35-tabs" aria-label="Historique et analyses"><button data-cg35-tab="overview" class="active">Vue d’ensemble</button><button data-cg35-tab="history">Historique</button><button data-cg35-tab="mastery">Maîtrise</button><button data-cg35-tab="never">Jamais vues</button><button data-cg35-tab="due">À réviser</button><button data-cg35-tab="weakness">Points faibles</button><button data-cg35-tab="response">Temps de réponse</button><button data-cg35-tab="difficulty">Difficulté</button><button data-cg35-tab="smart">Session intelligente</button></nav>
   <div id="cg35Body" class="cg35-body"></div><div id="cg35Status" class="cg35-status">Initialisation…</div>`;
-  (document.querySelector('main')||document.body).appendChild(p);cg35Wire();setTimeout(()=>{if(window.CGWEB001?.getUser?.())cg35Load('overview')},600);
+  (document.querySelector('main')||document.body).appendChild(p);cg35Wire();setTimeout(()=>{if(window.CGWEB001?.getUser?.())cg35Load('history')},600);
 }
-window.CGWEB035_API={open:()=>{window.CGWEB016_API?.navigate?.('learning');cg35Load('overview')},refresh:()=>cg35Load(CG35.tab)};
+window.CGWEB035_API={open:()=>{window.CGWEB016_API?.navigate?.('learning');cg35Load('history')},refresh:()=>cg35Load(CG35.tab)};
 document.readyState==='loading'?document.addEventListener('DOMContentLoaded',cg35Init):cg35Init();

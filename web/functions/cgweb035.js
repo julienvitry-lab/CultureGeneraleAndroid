@@ -560,7 +560,8 @@ function summaryOf(analysis){
     averageResponseMs:analysis.globalAverageResponseMs
   };
 }
-function historyRows(events,filter,limit){
+// CGWEB107_HISTORY_PAGING001
+function historyRows(events,filter,limit,offset=0){
   const mapType={qcm:'challenge_choice',mental:'challenge_mental',revision:'revision_reveal'};
   const filtered=events.filter(e=>!mapType[filter]||e.playType===mapType[filter]);
   const totals=new Map(),numbers=new Map(),ordered=filtered.slice().sort((a,b)=>a.playedAtMs-b.playedAtMs);
@@ -574,10 +575,14 @@ function historyRows(events,filter,limit){
     const key=`${e.playType}|${questionKey(e)}`;
     grand.set(key,(grand.get(key)||0)+1);
   }
-  return filtered.slice(0,limit).map(e=>{
+  return filtered.slice(offset,offset+limit).map(e=>{
     const key=`${e.playType}|${questionKey(e)}`;
     return {...e,attemptNumber:numbers.get(e.id)||1,attemptTotal:grand.get(key)||1,positive:isEvaluable(e)?isPositive(e):null};
   });
+}
+function historyFilteredCount(events,filter){
+  const mapType={qcm:'challenge_choice',mental:'challenge_mental',revision:'revision_reveal'};
+  return events.filter(e=>!mapType[filter]||e.playType===mapType[filter]).length;
 }
 async function neverOverview(uid,analysis,xPolicy){
   const questions=getFirestore().collection('users').doc(uid).collection('questions');
@@ -5184,11 +5189,16 @@ async function handleLearningHub(req,res){
         ? one(body.filter)
         : 'all';
       const limit=clamp(Math.floor(num(body.limit)||100),1,500);
+      const offset=Math.max(0,Math.floor(num(body.offset)||0));
+      const filteredTotal=historyFilteredCount(events,filter);
       return json(res,200,{
         ok:true,
         total:events.length,
+        filteredTotal,
         filter,
-        rows:historyRows(events,filter,limit)
+        offset,
+        limit,
+        rows:historyRows(events,filter,limit,offset)
       });
     }
 
