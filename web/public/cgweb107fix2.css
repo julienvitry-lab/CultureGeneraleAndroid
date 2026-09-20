@@ -1,0 +1,53 @@
+/* CGWEB107 FIX2 · PRIMARY_NAV_SINGLE_ROW001
+   Dernier fichier CSS chargé : neutralise les anciens repeat(4), repeat(3), repeat(2).
+   Les cinq onglets restent toujours sur UNE ligne.
+*/
+
+body.cg16-installed .cg16-primary-nav{
+  display:grid!important;
+  grid-template-columns:
+    minmax(105px,1.00fr)
+    minmax(150px,1.22fr)
+    minmax(170px,1.38fr)
+    minmax(105px,.88fr)
+    minmax(70px,.62fr)!important;
+  gap:6px!important;
+  align-items:stretch!important;
+  overflow-x:auto!important;
+  overflow-y:hidden!important;
+  flex-wrap:nowrap!important;
+}
+
+body.cg16-installed .cg16-primary-nav > button{
+  min-width:0!important;
+  width:100%!important;
+  margin:0!important;
+  padding:9px 7px!important;
+  white-space:nowrap!important;
+  line-height:1.08!important;
+  text-align:center!important;
+  font-size:clamp(.72rem,.92vw,.92rem)!important;
+}
+
+@media(max-width:900px){
+  body.cg16-installed .cg16-primary-nav{
+    grid-template-columns:
+      minmax(105px,1.00fr)
+      minmax(150px,1.22fr)
+      minmax(170px,1.38fr)
+      minmax(105px,.88fr)
+      minmax(70px,.62fr)!important;
+  }
+}
+
+@media(max-width:650px){
+  body.cg16-installed .cg16-primary-nav{
+    grid-template-columns:
+      105px 150px 170px 105px 70px!important;
+  }
+
+  body.cg16-installed .cg16-primary-nav > button{
+    font-size:.76rem!important;
+    padding:8px 6px!important;
+  }
+}

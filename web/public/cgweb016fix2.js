@@ -13,7 +13,10 @@
   const PLUS_PAGES = new Set(["home2", "dedup", "quality", "bulk", "history", "fulltext", "analytics", "backup", "androidpreview", "sync", "diagnostic", "imagescenter"]);
   const IMPORT_PAGES = new Set(["url", "review", "images", "migration", "recovery404", "semantic"]);
 
-  let currentPage = sessionStorage.getItem(SESSION_PAGE) || "directory";
+  // CGWEB107_FIX2_PRIMARY_NAV_SINGLE_ROW001_DEFAULT_DIRECTORY001
+  // À chaque ouverture/rechargement complet de CGWEB, le Répertoire est la page d'accueil.
+  let currentPage = "directory";
+  sessionStorage.setItem(SESSION_PAGE, currentPage);
   let currentPlus = sessionStorage.getItem(SESSION_PLUS) || "dedup";
   let currentImport = sessionStorage.getItem(SESSION_IMPORT) || "url";
   if (!PAGES.has(currentPage)) currentPage = "directory";
