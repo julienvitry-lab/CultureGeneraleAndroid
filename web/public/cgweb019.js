@@ -1,43 +1,88 @@
-const CGWEB019_VERSION="CGWEB019_QUESTION001";
+const CGWEB019_VERSION="CGWEB106";
+const CGWEB106_VERSION="CGWEB106_HISTORY_CATALOG_TRUTH001_QUESTION_DETAIL_NULLSAFE001_IMAGE_DETAIL_RESTORE001";
+// CGWEB106_HISTORY_CATALOG_TRUTH001
 const cg19$=id=>document.getElementById(id);
 const cg19Esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
+function cg19SetText(id,value){const e=cg19$(id);if(e)e.textContent=String(value??"");return e}
+function cg19SetHtml(id,value){const e=cg19$(id);if(e)e.innerHTML=String(value??"");return e}
+function cg19CorrectLabel(r){
+  const n=cg19CorrectIndex(r);
+  const p=[r?.proposition_a,r?.proposition_b,r?.proposition_c,r?.proposition_d];
+  if(!Number.isInteger(n)||n<1||n>4)return "—";
+  return `${String.fromCharCode(64+n)} — ${String(p[n-1]??"")}`;
+}
 const CG19={id:"",record:null,list:[],editing:false};
 function cg19Date(v){if(!v)return"—";try{const d=typeof v?.toDate==="function"?v.toDate():v?.seconds?new Date(v.seconds*1000):new Date(v);return Number.isNaN(d.getTime())?"—":d.toLocaleString("fr-FR")}catch(_){return"—"}}
 function cg19Status(t,type=""){const e=cg19$("cg19Status");if(e){e.textContent=t;e.className=`cg19-status${type?" cg19-"+type:""}`}}
 function cg19CorrectIndex(r){const n=Number(r?.correct_index);return Number.isFinite(n)?n:null}
 function cg19SourceLink(url,label){const u=String(url||"").trim();return /^https?:\/\//i.test(u)?`<a href="${cg19Esc(u)}" target="_blank" rel="noopener">${label}</a>`:""}
 async function cg19Image(record){
-  const box=cg19$("cg19Image");if(!box)return;const path=String(record?.image_file||"").trim();
-  if(!path){box.innerHTML="<span>Aucune image</span>";cg19$("cg19AndroidImage").innerHTML="";return}
-  box.innerHTML="<span>Chargement…</span>";
+  const box=cg19$("cg19Image"), phone=cg19$("cg19AndroidImage");
+  if(!box&&!phone)return;
+  const path=String(record?.image_file||record?.image_thumb_file||"").trim();
+  const source=String(record?.image_source_url||"").trim();
+  if(!path&&!/^https?:\/\//i.test(source)){
+    cg19SetHtml("cg19Image","<span>Aucune image</span>");
+    cg19SetHtml("cg19AndroidImage","");
+    return;
+  }
+  cg19SetHtml("cg19Image","<span>Chargement…</span>");
+  cg19SetHtml("cg19AndroidImage","<span>Chargement…</span>");
   try{
-    let url="";if(window.CGIMAGE001?.isCloudPath?.(path))url=await window.CGIMAGE001.urlForPath(path);else if(/^https?:\/\//i.test(path))url=path;else if(/^https?:\/\//i.test(String(record.image_source_url||"")))url=String(record.image_source_url);
-    if(!url){box.innerHTML=`<span>Image historique : ${cg19Esc(path)}</span>`;return}
-    box.innerHTML=`<img src="${cg19Esc(url)}" alt="Image de la question">`;cg19$("cg19AndroidImage").innerHTML=`<img src="${cg19Esc(url)}" alt="Aperçu Android">`;
-  }catch(error){box.innerHTML=`<span class="cg19-error">${cg19Esc(error?.message||String(error))}</span>`}
+    let url="";
+    if(path&&window.CGIMAGE001?.isCloudPath?.(path)){
+      try{url=await window.CGIMAGE001.urlForPath(path)}catch(_){url=""}
+    }
+    if(!url&&/^https?:\/\//i.test(path))url=path;
+    if(!url&&/^https?:\/\//i.test(source))url=source;
+    if(!url){
+      cg19SetHtml("cg19Image",`<span>Image indisponible : ${cg19Esc(path||source)}</span>`);
+      cg19SetHtml("cg19AndroidImage","");
+      return;
+    }
+    cg19SetHtml("cg19Image",`<img src="${cg19Esc(url)}" alt="Image de la question" loading="eager" decoding="async">`);
+    cg19SetHtml("cg19AndroidImage",`<img src="${cg19Esc(url)}" alt="Aperçu Android" loading="eager" decoding="async">`);
+  }catch(error){
+    cg19SetHtml("cg19Image",`<span class="cg19-error">${cg19Esc(error?.message||String(error))}</span>`);
+    cg19SetHtml("cg19AndroidImage","");
+  }
 }
 async function cg19History(id){
-  const box=cg19$("cg19History");box.innerHTML="Chargement…";
+  const box=cg19$("cg19History");if(!box)return;box.innerHTML="Chargement…";
   try{const rows=await window.CGWEB019_DATA_API?.history?.(id,30)||[];box.innerHTML=rows.length?rows.map(h=>`<article><div><strong>${cg19Esc(h.operation||"update")}</strong><span>rév. ${cg19Esc(h.revision_after??h.revision_before??"—")}</span></div><small>${cg19Date(h.created_at)} · ${cg19Esc(h.writer_label||h.writer_id||"")}</small><div class="cg19-patch">${cg19Esc(Object.keys(h.patch||{}).join(", ")||"—")}</div></article>`).join(""):`<div class="cg19-empty">Aucun historique CGWEB019 encore enregistré. Révision actuelle : ${cg19Esc(CG19.record?.cg_revision??0)}.</div>`}catch(error){box.innerHTML=`<div class="cg19-error">${cg19Esc(error?.message||String(error))}</div>`}
 }
 function cg19Props(r,cls=""){
-  const correct=cg19CorrectIndex(r);return ["a","b","c","d"].map((letter,i)=>{const v=r?.[`proposition_${letter}`];if(v===undefined||v===null||String(v)==="")return"";return `<div class="${cls} ${correct===i?"correct":""}"><b>${String.fromCharCode(65+i)}.</b> ${cg19Esc(v)}</div>`}).join("")
+  const correct=cg19CorrectIndex(r);return ["a","b","c","d"].map((letter,i)=>{const v=r?.[`proposition_${letter}`];if(v===undefined||v===null||String(v)==="")return"";return `<div class="${cls} ${correct===i+1?"correct":""}"><b>${String.fromCharCode(65+i)}.</b> ${cg19Esc(v)}</div>`}).join("")
 }
 function cg19Render(record){
-  CG19.record=record;CG19.id=String(record.id);cg19$("cg19Id").textContent=`#${record.original_id??record.id}`;cg19$("cg19Path").textContent=`${record.megatheme||""}${record.theme?" › "+record.theme:""}`;
-  cg19$("cg19Question").textContent=record.question||"";cg19$("cg19Detail").textContent=record.detail||"";cg19$("cg19Props").innerHTML=cg19Props(record,"cg19-prop");
-  cg19$("cg19Meta").innerHTML=`<span>Statut : <b>${cg19Esc(record.status??"—")}</b></span><span>Révision : <b>${cg19Esc(record.cg_revision??0)}</b></span><span>Image : <b>${Number(record.is_image||0)===1?"oui":"non"}</b></span><span>Introuvable : <b>${Number(record.non_trouve||0)===1?"oui":"non"}</b></span><span>Mise à jour : <b>${cg19Date(record.cg_updated_at||record.updated_at)}</b></span>`;
-  cg19$("cg19Sources").innerHTML=[cg19SourceLink(record.url_quizypedia,"Quizypedia"),cg19SourceLink(record.url_internet,"Source Internet"),cg19SourceLink(record.image_source_url,"Source image")].filter(Boolean).join(" · ")||"Aucun lien source";
-  cg19$("cg19AndroidTheme").textContent=record.theme||record.megatheme||"Culture générale";cg19$("cg19AndroidQuestion").textContent=record.question||"";cg19$("cg19AndroidProps").innerHTML=cg19Props(record,"cg19-android-prop");
+  if(!record||!record.id){cg19Status("Fiche question invalide ou incomplète.","error");return}
+  CG19.record=record;CG19.id=String(record.id);
+  cg19SetText("cg19Id",`#${record.original_id??record.id}`);
+  cg19SetText("cg19Path",`${record.megatheme||""}${record.theme?" › "+record.theme:""}`);
+  cg19SetText("cg19Question",record.question||"");
+  cg19SetText("cg19Detail",record.detail||"");
+  cg19SetHtml("cg19Props",cg19Props(record,"cg19-prop"));
+  const truth=cg19CorrectLabel(record);
+  cg19SetHtml("cg19Meta",
+    `<span>Statut : <b>${cg19Esc(record.status??"—")}</b></span>`+
+    `<span>Révision : <b>${cg19Esc(record.cg_revision??0)}</b></span>`+
+    `<span>Image : <b>${Number(record.is_image||0)===1?"oui":"non"}</b></span>`+
+    `<span>Introuvable : <b>${Number(record.non_trouve||0)===1?"oui":"non"}</b></span>`+
+    `<span>Bonne réponse catalogue : <b>${cg19Esc(truth)}</b></span>`+
+    `<span>Mise à jour : <b>${cg19Date(record.cg_updated_at||record.updated_at)}</b></span>`);
+  cg19SetHtml("cg19Sources",[cg19SourceLink(record.url_quizypedia,"Quizypedia"),cg19SourceLink(record.url_internet,"Source Internet"),cg19SourceLink(record.image_source_url,"Source image")].filter(Boolean).join(" · ")||"Aucun lien source");
+  cg19SetText("cg19AndroidTheme",record.theme||record.megatheme||"Culture générale");
+  cg19SetText("cg19AndroidQuestion",record.question||"");
+  cg19SetHtml("cg19AndroidProps",cg19Props(record,"cg19-android-prop"));
   cg19FillForm(record);cg19Image(record);cg19History(record.id);cg19NavState();
 }
 function cg19FillForm(r){for(const [id,key] of [["Mega","megatheme"],["Theme","theme"],["Question","question"],["Detail","detail"],["A","proposition_a"],["B","proposition_b"],["C","proposition_c"],["D","proposition_d"],["Correct","correct_index"],["StatusEdit","status"]]){const e=cg19$(`cg19Edit${id}`);if(e)e.value=r?.[key]??""}}
-function cg19ToggleEdit(force){CG19.editing=force??!CG19.editing;cg19$("cg19Editor").classList.toggle("cg19-hidden",!CG19.editing);cg19$("cg19EditBtn").textContent=CG19.editing?"Fermer l'édition":"Modifier"}
+function cg19ToggleEdit(force){CG19.editing=force??!CG19.editing;const e=cg19$("cg19Editor");if(e)e.classList.toggle("cg19-hidden",!CG19.editing);cg19SetText("cg19EditBtn",CG19.editing?"Fermer l'édition":"Modifier")}
 async function cg19Save(){
   const raw=cg19$("cg19EditCorrect").value.trim();const n=raw===""?null:Number(raw);const patch={megatheme:cg19$("cg19EditMega").value.trim(),theme:cg19$("cg19EditTheme").value.trim(),question:cg19$("cg19EditQuestion").value.trim(),detail:cg19$("cg19EditDetail").value,proposition_a:cg19$("cg19EditA").value,proposition_b:cg19$("cg19EditB").value,proposition_c:cg19$("cg19EditC").value,proposition_d:cg19$("cg19EditD").value,correct_index:Number.isFinite(n)?n:raw,status:cg19$("cg19EditStatusEdit").value.trim()};
   cg19Status("Enregistrement…");try{const result=await window.CGWEB006_API.update(CG19.id,patch,{expectedRevision:Number(CG19.record.cg_revision||0),source:"CGWEB019_EDITOR"});if(result?.conflict)throw new Error("Conflit de révision : recharge la fiche avant d'enregistrer.");const fresh=await window.CGWEB006_API.byId(CG19.id);cg19Render(fresh);cg19ToggleEdit(false);cg19Status("✅ Question enregistrée.","ok");window.CGWEB018_API?.reload?.()}catch(error){cg19Status(error?.message||String(error),"error")}
 }
-function cg19NavState(){const i=CG19.list.indexOf(CG19.id);cg19$("cg19Prev").disabled=i<=0;cg19$("cg19Next").disabled=i<0||i>=CG19.list.length-1}
+function cg19NavState(){const i=CG19.list.indexOf(CG19.id),p=cg19$("cg19Prev"),n=cg19$("cg19Next");if(p)p.disabled=i<=0;if(n)n.disabled=i<0||i>=CG19.list.length-1}
 async function cg19Go(delta){const i=CG19.list.indexOf(CG19.id);const id=CG19.list[i+delta];if(id)await cg19Open(id,CG19.list)}
 async function cg19Open(id,listIds=[]){
   cg19Ensure();CG19.list=Array.isArray(listIds)&&listIds.length?listIds.map(String):CG19.list;cg19$("cgweb019Drawer").classList.remove("cg19-hidden");document.body.classList.add("cg19-open");cg19Status("Chargement…");
