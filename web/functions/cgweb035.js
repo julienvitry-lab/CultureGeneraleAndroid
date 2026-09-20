@@ -30,6 +30,8 @@ const CGPLAY004_RANDOMIZE_VERSION='CGPLAY004_FIX1_LONG_SESSION_RANDOMIZE001';
 const CGPLAY004_THEME_DIVERSITY_VERSION='CGPLAY004_FIX1_THEME_DIVERSITY001';
 const CGPLAY004_UNSEEN_FIRST_VERSION='CGPLAY004_FIX2_UNSEEN_FIRST001';
 const CGPLAY004_OLDEST_PLAYED_FIRST_VERSION='CGPLAY004_FIX2_OLDEST_PLAYED_FIRST001';
+const CGWEB_HISTORY_BINDING_VERSION='CGWEB_HISTORY_QUESTION_BINDING_FIX001';
+// CGWEB_HISTORY_QUESTION_BINDING_FIX001
 // CGPLAY004_FIX2_UNSEEN_FIRST001_OLDEST_PLAYED_FIRST001
 // CGPLAY004_FIX1_LONG_SESSION_RANDOMIZE001_THEME_DIVERSITY001
 
@@ -76,12 +78,41 @@ async function requireUser(req){
 function eventFromDoc(doc){
   const x=doc.data()||{};
   const snap=x.question_snapshot&&typeof x.question_snapshot==='object'?x.question_snapshot:{};
-  const questionId=one(x.question_id||x.question_row_number||doc.id);
-  const row=num(x.question_row_number||x.question_id);
+
+  const explicitQuestionId=one(x.question_id);
+  const snapshotQuestionId=one(snap.question_id);
+  const legacyQuestionId=one(x.question_row_number);
+  const questionId=explicitQuestionId||snapshotQuestionId||legacyQuestionId||doc.id;
+
+  const bindingSource=
+    explicitQuestionId?'question_id':
+    snapshotQuestionId?'question_snapshot.question_id':
+    legacyQuestionId?'question_row_number':
+    'history_document_id';
+
+  const bindingMismatch=Boolean(
+    explicitQuestionId&&snapshotQuestionId&&explicitQuestionId!==snapshotQuestionId
+  );
+
+  const selectedIndex=num(x.selected_index);
+  const correctIndex=num(x.correct_index)||num(snap.correct_index);
+
+  const options=[
+    one(snap.proposition_a),
+    one(snap.proposition_b),
+    one(snap.proposition_c),
+    one(snap.proposition_d)
+  ];
+
+  const snapCorrectAnswer=
+    correctIndex>=1&&correctIndex<=4
+      ?options[correctIndex-1]
+      :'';
+
   return {
     id:doc.id,
     questionId,
-    row,
+    row:num(x.question_row_number||questionId),
     playedAtMs:num(x.client_played_at_ms)||tsMs(x.played_at),
     playType:one(x.play_type),
     gameMode:one(x.game_mode),
@@ -92,8 +123,15 @@ function eventFromDoc(doc){
     theme:one(x.theme||snap.theme),
     question:one(snap.question),
     detail:one(snap.detail),
+    selectedIndex,
+    correctIndex,
     selectedAnswer:one(x.selected_answer),
-    correctAnswer:one(x.correct_answer)
+    correctAnswer:one(x.correct_answer)||snapCorrectAnswer,
+    snapshotQuestionId,
+    snapshotOptions:options,
+    bindingSource,
+    bindingMismatch,
+    historyBindingVersion:CGWEB_HISTORY_BINDING_VERSION
   };
 }
 async function loadHistory(uid,force=false){

@@ -1,4 +1,4 @@
-const CGWEB035_VERSION='CGPLAY004_LONG_SESSION001_ADAPTIVE_BATCH001_SESSION_RESUME001';
+const CGWEB035_VERSION='CGPLAY004_FIX2_HISTORY_QUESTION_BINDING_FIX001_HISTORY_SNAPSHOT_TRUTH001';
 const CG35_END='https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb032Search';
 const cg35$=id=>document.getElementById(id);
 const cg35Esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
@@ -55,7 +55,7 @@ async function cg35History(){
     const d=await cg35Api({mode:'history',filter:CG35.historyFilter,limit:100});
     cg35SetBody(`<div class="cg35-filterbar">${[['all','Tous'],['qcm','QCM'],['mental','Mental'],['revision','Révision']].map(([k,l])=>`<button data-history-filter="${k}" class="${CG35.historyFilter===k?'active':''}">${l}</button>`).join('')}</div>
       <div class="cg35-submeta">${cg35Fmt((d.rows||[]).length)} affiché${(d.rows||[]).length===1?'':'s'} · 100 derniers maximum</div>
-      <section class="cg35-list">${(d.rows||[]).map(e=>`<article class="cg35-event"><header><b>${cg35Date(e.playedAtMs)} · ${cg35HistoryType(e)}</b>${e.attemptTotal>1?`<span>Tentative ${e.attemptNumber}/${e.attemptTotal}</span>`:''}</header><small>${cg35Esc(cg35Path(e.domain,e.theme))}</small><h3>${cg35Esc(e.question||'(question sans texte)')}</h3><div class="cg35-result">${cg35Esc(cg35HistoryResult(e))}${e.responseTimeMs>0?` · ${cg35Time(e.responseTimeMs)}`:''}</div>${cg35QuestionButton(e.questionId)}</article>`).join('')||'<div class="cg35-empty">Aucun événement.</div>'}</section>`);
+      <section class="cg35-list">${(d.rows||[]).map(e=>`<article class="cg35-event"><header><b>${cg35Date(e.playedAtMs)} · ${cg35HistoryType(e)}</b>${e.attemptTotal>1?`<span>Tentative ${e.attemptNumber}/${e.attemptTotal}</span>`:''}</header><small>${cg35Esc(cg35Path(e.domain,e.theme))}</small><h3>${cg35Esc(e.question||'(question sans texte)')}</h3><div class="cg35-result">${cg35Esc(cg35HistoryResult(e))}${e.responseTimeMs>0?` · ${cg35Time(e.responseTimeMs)}`:''}</div>${e.playType==='challenge_choice'?`<div class="cg35-submeta">Réponse donnée : <b>${cg35Esc(e.selectedAnswer||'—')}</b> · Bonne réponse au moment du jeu : <b>${cg35Esc(e.correctAnswer||'—')}</b>${e.bindingMismatch?' · ⚠ incohérence ID historique/snapshot':''}</div>`:''}${cg35QuestionButton(e.questionId)}</article>`).join('')||'<div class="cg35-empty">Aucun événement.</div>'}</section>`);
     document.querySelectorAll('[data-history-filter]').forEach(b=>b.onclick=()=>{CG35.historyFilter=b.dataset.historyFilter;cg35History()});
     cg35Status('✅ Historique chargé.','ok');
   }catch(e){cg35SetBody(`<div class="cg35-error">${cg35Esc(e.message)}</div>`);cg35Status(`❌ ${e.message}`,'bad')}

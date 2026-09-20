@@ -788,15 +788,26 @@ public class TabletMainActivity extends Activity {
             x.put("response_time_ms", responseMs);
             x.put("domain", q.megatheme);
             x.put("theme", q.theme);
+            // CGANDROID_HISTORY_SNAPSHOT_TRUTH001
+            x.put("selected_index", choice);
+            x.put("correct_index", q.correctIndex);
             x.put("selected_answer", q.options[Math.max(0, Math.min(3, choice - 1))]);
             x.put("correct_answer", q.options[Math.max(0, Math.min(3, q.correctIndex - 1))]);
             x.put("source", BuildConfig.CG_CHANNEL);
             x.put("session_id", game.sessionId());
+
             JSONObject snap = new JSONObject();
+            snap.put("question_id", q.id);
             snap.put("domain", q.megatheme);
             snap.put("theme", q.theme);
             snap.put("question", q.question);
             snap.put("detail", q.detail);
+            snap.put("proposition_a", q.options[0]);
+            snap.put("proposition_b", q.options[1]);
+            snap.put("proposition_c", q.options[2]);
+            snap.put("proposition_d", q.options[3]);
+            snap.put("correct_index", q.correctIndex);
+            snap.put("image_file", q.imageFile);
             x.put("question_snapshot", snap);
         } catch (Exception ignored) { }
         return x;
