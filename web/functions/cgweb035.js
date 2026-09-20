@@ -26,6 +26,9 @@ const X_REHABILITATION_PREVIEW_VERSION='CGPLAY003_FIX6_REHABILITATION_PREVIEW001
 const CGPLAY004_LONG_SESSION_VERSION='CGPLAY004_LONG_SESSION001';
 const CGPLAY004_ADAPTIVE_BATCH_VERSION='CGPLAY004_ADAPTIVE_BATCH001';
 const CGPLAY004_SESSION_RESUME_VERSION='CGPLAY004_SESSION_RESUME001';
+const CGPLAY004_RANDOMIZE_VERSION='CGPLAY004_FIX1_LONG_SESSION_RANDOMIZE001';
+const CGPLAY004_THEME_DIVERSITY_VERSION='CGPLAY004_FIX1_THEME_DIVERSITY001';
+// CGPLAY004_FIX1_LONG_SESSION_RANDOMIZE001_THEME_DIVERSITY001
 
 const one=v=>String(v??'').trim();
 const num=v=>Number.isFinite(Number(v))?Number(v):0;
@@ -4291,6 +4294,26 @@ function smartLongRowId(row){
   );
 }
 
+function cg35ThemeDiverse(rows){
+  const remaining=cg35Shuffle(rows||[]);
+  const out=[];
+  let lastTheme='';
+
+  while(remaining.length){
+    let index=remaining.findIndex(
+      row=>one(row?.theme)!==lastTheme
+    );
+
+    if(index<0)index=0;
+
+    const [row]=remaining.splice(index,1);
+    out.push(row);
+    lastTheme=one(row?.theme);
+  }
+
+  return out;
+}
+
 async function smartLongUnseenPool(
   uid,
   analysis,
@@ -4310,15 +4333,22 @@ async function smartLongUnseenPool(
         .filter(Boolean)
     );
 
-
   for(const id of blocked||[]){
     seen.add(
       one(id)
     );
   }
 
-
-  const out=[];
+  /*
+   * LONG_SESSION_RANDOMIZE001
+   * Reservoir sampling :
+   * - Firestore impose ici un parcours déterministe par documentId ;
+   * - on NE sélectionne plus les premiers éléments rencontrés ;
+   * - chaque candidat éligible dans la fenêtre scannée possède
+   *   une chance uniforme d'appartenir au reservoir.
+   */
+  const reservoir=[];
+  let eligibleSeen=0;
 
   const col=
     getFirestore()
@@ -4326,16 +4356,9 @@ async function smartLongUnseenPool(
       .doc(uid)
       .collection('questions');
 
-
   let last=null;
   let scanned=0;
 
-
-  /*
-   * Les lots longs peuvent avoir déjà consommé
-   * plusieurs centaines d'identifiants.
-   * Le scan reste borné.
-   */
   const maxScan=
     Math.max(
       5000,
@@ -4348,24 +4371,25 @@ async function smartLongUnseenPool(
       )
     );
 
+  const reservoirSize=
+    Math.max(
+      1,
+      wanted
+    );
 
   while(
-    out.length<wanted &&
     scanned<maxScan
   ){
 
     let q=col;
 
-
     if(domain){
-
       q=q.where(
         'megatheme',
         '==',
         domain
       );
     }
-
 
     q=q
       .orderBy(
@@ -4379,22 +4403,16 @@ async function smartLongUnseenPool(
       )
       .limit(250);
 
-
     if(last){
-
       q=q.startAfter(last);
     }
-
 
     const snap=
       await q.get();
 
-
     if(snap.empty)break;
 
-
     scanned+=snap.size;
-
 
     for(const d of snap.docs){
 
@@ -4405,76 +4423,65 @@ async function smartLongUnseenPool(
         continue;
       }
 
-
       const x=
         d.data()||{};
 
-
-      out.push({
-
+      const row={
         id:d.id,
-
-        row:
-          num(d.id),
-
-        domain:
-          one(x.megatheme),
-
-        theme:
-          one(x.theme),
-
-        question:
-          one(x.question),
-
-        detail:
-          one(x.detail),
-
+        row:num(d.id),
+        domain:one(x.megatheme),
+        theme:one(x.theme),
+        question:one(x.question),
+        detail:one(x.detail),
         source:'unseen',
-
         reason:'Jamais vue',
-
         due:false,
-
         weakness:0,
-
         successPercent:null,
-
         attempts:0,
-
         mastery:'Jamais vue',
-
         medianResponseMs:0
-      });
+      };
 
-
-      seen.add(d.id);
-
+      eligibleSeen++;
 
       if(
-        out.length>=wanted
+        reservoir.length<
+        reservoirSize
       ){
-        break;
+        reservoir.push(row);
+      }else{
+        const slot=
+          Math.floor(
+            Math.random()*
+            eligibleSeen
+          );
+
+        if(slot<reservoirSize){
+          reservoir[slot]=row;
+        }
       }
     }
-
 
     last=
       snap.docs[
         snap.docs.length-1
       ];
 
-
     if(snap.size<250){
       break;
     }
   }
 
-
   return {
     rows:
-      cg35Shuffle(out),
+      cg35ThemeDiverse(
+        reservoir
+      ),
 
-    scanned
+    scanned,
+
+    eligibleSeen
   };
 }
 
@@ -4907,7 +4914,9 @@ async function smartLongComposeBatch(
   return {
 
     rows:
-      selected.slice(
+      cg35ThemeDiverse(
+        selected
+      ).slice(
         0,
         batchCount
       ),
@@ -4953,6 +4962,12 @@ function smartLongPublicState(
 
     resumeVersion:
       CGPLAY004_SESSION_RESUME_VERSION,
+
+    randomizeVersion:
+      CGPLAY004_RANDOMIZE_VERSION,
+
+    themeDiversityVersion:
+      CGPLAY004_THEME_DIVERSITY_VERSION,
 
     status:
       one(s.status)||

@@ -484,9 +484,10 @@ public class TabletMainActivity extends Activity {
 
         addStatsBanner();
 
+        // CGANDROID002 FIX2 · BANNER_FONT_UNIFY001
         TextView theme = cardText(
                 q.theme.isEmpty() ? safe(q.megatheme) : q.theme,
-                18, GREEN, Color.WHITE);
+                23, GREEN, Color.WHITE);
         theme.setGravity(Gravity.CENTER);
         theme.setMinHeight(dp(48));
         add(theme, -1, -2, 0, 0, 0, dp(7));
@@ -497,7 +498,7 @@ public class TabletMainActivity extends Activity {
         add(question, -1, -2, 0, 0, 0, dp(7));
 
         if (!q.detail.isEmpty()) {
-            TextView detail = cardText(q.detail, 18, RED, Color.WHITE);
+            TextView detail = cardText(q.detail, 23, RED, Color.WHITE);
             detail.setGravity(Gravity.CENTER);
             detail.setMinHeight(dp(54));
             add(detail, -1, -2, 0, 0, 0, dp(8));
