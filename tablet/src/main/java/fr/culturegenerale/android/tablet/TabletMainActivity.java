@@ -79,7 +79,11 @@ public class TabletMainActivity extends Activity {
             "Toutes les questions"
     };
 
-    private static final int[] SIZES = new int[]{20, 50, 100, 250, 500, 1000};
+    // CGANDROID003 · FIXED_500_SESSION001
+    private static final int FIXED_SESSION_SIZE = 500;
+    private static final int SMART_BATCH_SIZE = 100;
+    private static final int NEXT_BATCH_PREFETCH_AT = 70;
+    private static final int QUESTION_PREFETCH_AHEAD = 10;
 
     private final int BLUE = Color.rgb(0, 86, 180);
     private final int GREEN = Color.rgb(0, 135, 60);
@@ -112,13 +116,16 @@ public class TabletMainActivity extends Activity {
     private CgGameState game;
 
     private String selectedDomain = "";
-    private int selectedCount = 500;
+    private int selectedCount = FIXED_SESSION_SIZE;
 
     private CgQuestion current;
     private long currentShownAtMs = 0L;
     private final List<Button> answerButtons = new ArrayList<>();
     private final Map<String, Bitmap> imageCache = new HashMap<>();
     private final Set<String> imagePreloadInFlight = new HashSet<>();
+    private final Map<String, CgQuestion> questionCache = new HashMap<>();
+    private final Set<String> questionPreloadInFlight = new HashSet<>();
+    private volatile boolean nextBatchPrefetching = false;
     private boolean answering = false;
     private String screen = "home";
 
@@ -300,53 +307,21 @@ public class TabletMainActivity extends Activity {
         b.setBackground(roundedStroke(bg, 14, Color.WHITE, 1));
         b.setOnClickListener(v -> {
             selectedDomain = domain;
-            showSizeSelection();
+            selectedCount = FIXED_SESSION_SIZE;
+            startSmartSession();
         });
         return b;
     }
 
     private void showSizeSelection() {
-        screen = "size";
-        baseScreen();
-
-        addTitle("Taille de la session", 31, Color.WHITE);
-        addSub(selectedDomain.isEmpty() ? "Toutes les questions" : selectedDomain,
-                18, LIGHT_GREY);
-        gap(20);
-
-        LinearLayout row1 = new LinearLayout(this);
-        row1.setOrientation(LinearLayout.HORIZONTAL);
-        LinearLayout row2 = new LinearLayout(this);
-        row2.setOrientation(LinearLayout.HORIZONTAL);
-
-        for (int i = 0; i < SIZES.length; i++) {
-            int size = SIZES[i];
-            Button b = button(String.valueOf(size), size == selectedCount ? BLUE : GREY, 24);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(82), 1f);
-            lp.setMargins(dp(6), dp(6), dp(6), dp(6));
-            if (i < 3) row1.addView(b, lp); else row2.addView(b, lp);
-            b.setOnClickListener(v -> {
-                selectedCount = size;
-                startSmartSession();
-            });
-        }
-
-        root.addView(row1);
-        root.addView(row2);
-
-        gap(18);
-        TextView hint = text("Le choix lance directement la session intelligente.",
-                14, LIGHT_GREY, Gravity.CENTER);
-        add(hint, -1, -2, dp(20), 0, dp(20), dp(20));
-
-        Button back = button("Retour", GREY, 18);
-        add(back, -1, dp(54), dp(100), 0, dp(100), 0);
-        back.setOnClickListener(v -> showMegathemes());
+        selectedCount = FIXED_SESSION_SIZE;
+        startSmartSession();
     }
 
     private void startSmartSession() {
         showLoading("Création de la session intelligente…");
-        final int target = selectedCount;
+        selectedCount = FIXED_SESSION_SIZE;
+        final int target = FIXED_SESSION_SIZE;
         final String domain = selectedDomain;
 
         io.submit(() -> {
@@ -369,64 +344,115 @@ public class TabletMainActivity extends Activity {
             return;
         }
 
-        if (game.played() >= game.target()) {
+        if (game.consumed() >= game.target()) {
             showEnd();
             return;
         }
 
         if (game.position() >= game.batchIds().size()) {
+            if (game.promoteStagedBatch()) {
+                nextBatchPrefetching = false;
+                preloadUpcomingQuestions();
+                loadNextPlayable();
+                return;
+            }
+
             if (!"active".equals(game.serverStatus())) {
                 showEnd();
                 return;
             }
+
             requestNextBatch();
             return;
         }
 
+        maybePrefetchNextBatch();
+
         final String id = game.batchIds().get(game.position());
-        showLoading("Question " + (game.played() + 1) + " / " + game.target());
+
+        CgQuestion cached;
+        synchronized (questionCache) {
+            cached = questionCache.remove(id);
+        }
+
+        if (cached != null) {
+            if (flags.isTExcluded(cached)) {
+                game.advanceFiltered();
+                loadNextPlayable();
+                return;
+            }
+            current = cached;
+            showQuestion(cached);
+            return;
+        }
 
         io.submit(() -> {
             try {
                 String token = auth.tokenSync();
                 CgQuestion q = firestore.getQuestionSync(token, auth.uid(), id);
                 if (flags.isTExcluded(q)) {
-                    game.advanceWithoutPlaying();
+                    game.advanceFiltered();
                     main.post(this::loadNextPlayable);
                     return;
                 }
                 current = q;
                 main.post(() -> showQuestion(q));
             } catch (Exception ex) {
-                game.advanceWithoutPlaying();
-                main.post(() -> {
-                    Toast.makeText(this,
-                            "Question " + id + " ignorée : " + ex.getMessage(),
-                            Toast.LENGTH_LONG).show();
-                    loadNextPlayable();
-                });
+                game.advanceFiltered();
+                main.post(this::loadNextPlayable);
             }
         });
     }
 
     private void requestNextBatch() {
-        showLoading("Préparation du lot suivant…");
+        if (nextBatchPrefetching) return;
+        nextBatchPrefetching = true;
+
         io.submit(() -> {
             try {
                 String token = auth.tokenSync();
                 flags.flushOutboxSync(firestore, token, auth.uid());
-                CgSmartSession s = smart.nextSync(token, game.sessionId());
-                if (s.ids.isEmpty()) {
-                    game.setServerStatus(s.status);
-                    main.post(this::showEnd);
+                CgSmartSession next = smart.nextSync(token, game.sessionId());
+
+                if (next.ids.isEmpty()) {
+                    game.setServerStatus(next.status);
+                    nextBatchPrefetching = false;
+                    main.post(() -> {
+                        if (game.position() >= game.batchIds().size()) showEnd();
+                    });
                     return;
                 }
-                game.setBatch(s.status, s.ids);
-                main.post(this::loadNextPlayable);
+
+                game.stageBatch(next.status, next.ids);
+                preloadQuestionIds(next.ids, QUESTION_PREFETCH_AHEAD);
+                nextBatchPrefetching = false;
+
+                main.post(() -> {
+                    if (game.position() >= game.batchIds().size()) {
+                        if (game.promoteStagedBatch()) {
+                            loadNextPlayable();
+                        }
+                    }
+                });
             } catch (Exception ex) {
-                main.post(() -> showFatal("Lot suivant impossible", ex.getMessage()));
+                nextBatchPrefetching = false;
             }
         });
+    }
+
+    private void maybePrefetchNextBatch() {
+        if (!game.hasActive()) return;
+        if (!"active".equals(game.serverStatus())) return;
+        if (game.hasStagedBatch()) return;
+        if (nextBatchPrefetching) return;
+
+        int pos = game.position();
+        int size = game.batchIds().size();
+        if (size <= 0) return;
+
+        if (pos >= Math.min(NEXT_BATCH_PREFETCH_AT, Math.max(1, size - 20))) {
+            requestNextBatch();
+        }
     }
 
     private void addStatsBanner() {
@@ -437,6 +463,7 @@ public class TabletMainActivity extends Activity {
         band.setBackground(roundedStroke(Color.rgb(16, 16, 16), 14, Color.WHITE, 1));
 
         int played = game.played();
+        int consumed = game.consumed();
         int good = game.correct();
         int errors = Math.max(0, played - good);
         double scorePct = played <= 0 ? 0.0 : (good * 100.0) / played;
@@ -445,7 +472,7 @@ public class TabletMainActivity extends Activity {
                         selectedDomain.isEmpty() ? "Toutes" : selectedDomain),
                 statLp(1.35f));
         band.addView(statCell("Progression",
-                        (played + 1) + " / " + game.target()),
+                        Math.min(game.target(), consumed + 1) + " / " + game.target()),
                 statLp(1f));
         band.addView(statCell("Score",
                         String.format(Locale.FRANCE, "%.2f %%", scorePct)),
@@ -650,34 +677,63 @@ public class TabletMainActivity extends Activity {
     }
 
     private void preloadUpcomingImages() {
+        preloadUpcomingQuestions();
+    }
+
+    private void preloadUpcomingQuestions() {
         if (!game.hasActive()) return;
 
-        final int from = game.position() + 1;
-        final int to = Math.min(game.batchIds().size(), from + 3);
+        ArrayList<String> ids = game.batchIds();
+        int from = Math.min(ids.size(), game.position() + 1);
+        int to = Math.min(ids.size(), from + QUESTION_PREFETCH_AHEAD);
 
-        for (int i = from; i < to; i++) {
-            final String id = game.batchIds().get(i);
+        if (from >= to) return;
+        preloadQuestionIds(new ArrayList<>(ids.subList(from, to)), QUESTION_PREFETCH_AHEAD);
+    }
+
+    private void preloadQuestionIds(List<String> ids, int limit) {
+        if (ids == null || ids.isEmpty()) return;
+
+        int max = Math.min(ids.size(), Math.max(1, limit));
+        for (int i = 0; i < max; i++) {
+            final String id = ids.get(i);
+            if (id == null || id.isEmpty()) continue;
+
+            synchronized (questionCache) {
+                if (questionCache.containsKey(id)) continue;
+            }
+            synchronized (questionPreloadInFlight) {
+                if (!questionPreloadInFlight.add(id)) continue;
+            }
 
             io.submit(() -> {
                 try {
                     String token = auth.tokenSync();
-                    CgQuestion next = firestore.getQuestionSync(token, auth.uid(), id);
-                    if (!next.hasImage()) return;
+                    CgQuestion q = firestore.getQuestionSync(token, auth.uid(), id);
 
-                    synchronized (imagePreloadInFlight) {
-                        if (imageCache.containsKey(next.imageFile)) return;
-                        if (!imagePreloadInFlight.add(next.imageFile)) return;
+                    synchronized (questionCache) {
+                        questionCache.put(id, q);
                     }
 
-                    try {
-                        Bitmap bitmap = firestore.loadImageSync(token, next.imageFile);
-                        if (bitmap != null) imageCache.put(next.imageFile, bitmap);
-                    } finally {
+                    if (q.hasImage()) {
                         synchronized (imagePreloadInFlight) {
-                            imagePreloadInFlight.remove(next.imageFile);
+                            if (!imageCache.containsKey(q.imageFile)
+                                    && imagePreloadInFlight.add(q.imageFile)) {
+                                try {
+                                    Bitmap bitmap = firestore.loadImageSync(token, q.imageFile);
+                                    if (bitmap != null) imageCache.put(q.imageFile, bitmap);
+                                } catch (Exception ignored) {
+                                } finally {
+                                    imagePreloadInFlight.remove(q.imageFile);
+                                }
+                            }
                         }
                     }
                 } catch (Exception ignored) {
+                } finally {
+                    synchronized (questionPreloadInFlight) {
+                        questionPreloadInFlight.remove(id);
+                    }
                 }
             });
         }
@@ -701,6 +757,9 @@ public class TabletMainActivity extends Activity {
         JSONObject event = historyPayload(q, choice, correct, responseMs);
         game.recordAnswer(correct);
 
+        // ASYNC_HISTORY001 : le jeu avance avant toute écriture réseau.
+        loadNextPlayable();
+
         io.submit(() -> {
             try {
                 String token = auth.tokenSync();
@@ -708,8 +767,6 @@ public class TabletMainActivity extends Activity {
             } catch (Exception ex) {
                 flags.enqueue("play_history", event);
             }
-            try { Thread.sleep(900); } catch (InterruptedException ignored) { }
-            main.post(this::loadNextPlayable);
         });
     }
 
@@ -741,74 +798,48 @@ public class TabletMainActivity extends Activity {
     }
 
     private void reportProblem(CgQuestion q, Button button) {
-        final EditText note = edit("Précision facultative",
-                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-        note.setMinLines(3);
+        JSONObject payload = new JSONObject();
+        try {
+            payload.put("question_id", q.id);
+            payload.put("megatheme", q.megatheme);
+            payload.put("theme", q.theme);
+            payload.put("question", q.question);
+            payload.put("detail", q.detail);
+            payload.put("note", "");
+            payload.put("session_id", game.sessionId());
+            payload.put("created_ms", System.currentTimeMillis());
+            payload.put("state", "pending");
+            payload.put("source", BuildConfig.CG_CHANNEL);
+        } catch (Exception ignored) { }
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("Signaler la question (P)")
-                .setMessage("Le signalement n’exclut pas la question du jeu. Il sera destiné au traitement dans CGWEB.")
-                .setView(note)
-                .setNegativeButton("Annuler", null)
-                .setPositiveButton("Signaler", null)
-                .create();
-
-        dialog.setOnShowListener(v -> {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v2 -> {
-                JSONObject payload = new JSONObject();
-                try {
-                    payload.put("question_id", q.id);
-                    payload.put("megatheme", q.megatheme);
-                    payload.put("theme", q.theme);
-                    payload.put("question", q.question);
-                    payload.put("detail", q.detail);
-                    payload.put("note", note.getText().toString().trim());
-                    payload.put("session_id", game.sessionId());
-                    payload.put("created_ms", System.currentTimeMillis());
-                    payload.put("state", "pending");
-                    payload.put("source", BuildConfig.CG_CHANNEL);
-                } catch (Exception ignored) { }
-
-                flags.enqueue("problem_reports", payload);
-                button.setText("P✓");
-                button.setTextColor(YELLOW);
-                dialog.dismiss();
-                Toast.makeText(this, "Signalement P enregistré.", Toast.LENGTH_SHORT).show();
-                flushOutboxAsync();
-            });
-        });
-        dialog.show();
+        flags.enqueue("problem_reports", payload);
+        button.setEnabled(false);
+        game.skipCurrent();
+        flushOutboxAsync();
+        loadNextPlayable();
     }
 
     private void confirmAnalogExclusion(CgQuestion q) {
-        new AlertDialog.Builder(this)
-                .setTitle("Exclure ce contenu analogue (T) ?")
-                .setMessage("Même thème + même libellé normalisé. Le détail n’entre pas dans la comparaison.")
-                .setNegativeButton("Annuler", null)
-                .setPositiveButton("Exclure", (d, which) -> {
-                    flags.addT(q);
-                    JSONObject payload = new JSONObject();
-                    try {
-                        payload.put("question_id", q.id);
-                        payload.put("theme", q.theme);
-                        payload.put("question", q.question);
-                        payload.put("theme_key", CgFlags.comparisonKey(q.theme));
-                        payload.put("question_key", CgFlags.comparisonKey(q.question));
-                        payload.put("group_key", CgFlags.analogKey(q.theme, q.question));
-                        payload.put("session_id", game.sessionId());
-                        payload.put("created_ms", System.currentTimeMillis());
-                        payload.put("state", "pending");
-                        payload.put("source", BuildConfig.CG_CHANNEL);
-                    } catch (Exception ignored) { }
-                    flags.enqueue("analog_exclusions", payload);
-                    game.advanceWithoutPlaying();
-                    Toast.makeText(this,
-                            "Questions analogues exclues sur cette tablette.",
-                            Toast.LENGTH_SHORT).show();
-                    flushOutboxAsync();
-                    loadNextPlayable();
-                })
-                .show();
+        flags.addT(q);
+
+        JSONObject payload = new JSONObject();
+        try {
+            payload.put("question_id", q.id);
+            payload.put("theme", q.theme);
+            payload.put("question", q.question);
+            payload.put("theme_key", CgFlags.comparisonKey(q.theme));
+            payload.put("question_key", CgFlags.comparisonKey(q.question));
+            payload.put("group_key", CgFlags.analogKey(q.theme, q.question));
+            payload.put("session_id", game.sessionId());
+            payload.put("created_ms", System.currentTimeMillis());
+            payload.put("state", "pending");
+            payload.put("source", BuildConfig.CG_CHANNEL);
+        } catch (Exception ignored) { }
+
+        flags.enqueue("analog_exclusions", payload);
+        game.skipCurrent();
+        flushOutboxAsync();
+        loadNextPlayable();
     }
 
     private void flushOutboxAsync() {
@@ -1165,7 +1196,7 @@ final class CgSmartClient {
         body.put("cgweb035", true);
         body.put("mode", "smartLongStart");
         body.put("count", count);
-        body.put("batchSize", 50);
+        body.put("batchSize", 100);
         body.put("duePct", 40);
         body.put("weakPct", 35);
         body.put("unseenPct", 25);
@@ -1443,8 +1474,11 @@ final class CgGameState {
                 .putString("server_status", status == null ? "active" : status)
                 .putInt("played", 0)
                 .putInt("correct", 0)
+                .putInt("consumed", 0)
                 .putInt("position", 0)
                 .putString("batch", toJson(ids))
+                .putString("staged_batch", "[]")
+                .putString("staged_status", "")
                 .apply();
     }
 
@@ -1453,6 +1487,9 @@ final class CgGameState {
     int target() { return prefs.getInt("target", 0); }
     int played() { return prefs.getInt("played", 0); }
     int correct() { return prefs.getInt("correct", 0); }
+    int consumed() {
+        return prefs.contains("consumed") ? prefs.getInt("consumed", 0) : played();
+    }
     int position() { return prefs.getInt("position", 0); }
     String serverStatus() { return prefs.getString("server_status", "active"); }
     void setServerStatus(String status) { prefs.edit().putString("server_status", status == null ? "" : status).apply(); }
@@ -1473,20 +1510,72 @@ final class CgGameState {
         prefs.edit()
                 .putString("server_status", status == null ? "active" : status)
                 .putString("batch", toJson(ids))
+                .putString("staged_batch", "[]")
+                .putString("staged_status", "")
                 .putInt("position", 0)
                 .apply();
+    }
+
+    void stageBatch(String status, List<String> ids) {
+        prefs.edit()
+                .putString("staged_status", status == null ? "active" : status)
+                .putString("staged_batch", toJson(ids))
+                .apply();
+    }
+
+    boolean hasStagedBatch() {
+        try {
+            return new JSONArray(prefs.getString("staged_batch", "[]")).length() > 0;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    boolean promoteStagedBatch() {
+        ArrayList<String> staged = new ArrayList<>();
+        try {
+            JSONArray a = new JSONArray(prefs.getString("staged_batch", "[]"));
+            for (int i = 0; i < a.length(); i++) {
+                String x = a.optString(i, "");
+                if (!x.isEmpty()) staged.add(x);
+            }
+        } catch (Exception ignored) { }
+
+        if (staged.isEmpty()) return false;
+
+        String status = prefs.getString("staged_status", "active");
+        prefs.edit()
+                .putString("server_status", status)
+                .putString("batch", toJson(staged))
+                .putInt("position", 0)
+                .putString("staged_batch", "[]")
+                .putString("staged_status", "")
+                .apply();
+        return true;
     }
 
     void recordAnswer(boolean correct) {
         prefs.edit()
                 .putInt("played", played() + 1)
                 .putInt("correct", correct() + (correct ? 1 : 0))
+                .putInt("consumed", consumed() + 1)
                 .putInt("position", position() + 1)
                 .apply();
     }
 
-    void advanceWithoutPlaying() {
+    void skipCurrent() {
+        prefs.edit()
+                .putInt("consumed", consumed() + 1)
+                .putInt("position", position() + 1)
+                .apply();
+    }
+
+    void advanceFiltered() {
         prefs.edit().putInt("position", position() + 1).apply();
+    }
+
+    void advanceWithoutPlaying() {
+        skipCurrent();
     }
 
     void finish() { prefs.edit().putBoolean("active", false).apply(); }
