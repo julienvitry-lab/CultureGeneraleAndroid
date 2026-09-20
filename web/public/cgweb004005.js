@@ -281,6 +281,8 @@ function cg45Render(items){
   });
 }
 
+// CGWEB · CORRECT_INDEX_DISPLAY_FIX001
+// correct_index 1..4 => tableau JS [correct_index-1].
 function cg45DetailRows(item){
   const correct = Number(item.correct_index || 0);
   const props = [item.proposition_a,item.proposition_b,item.proposition_c,item.proposition_d];

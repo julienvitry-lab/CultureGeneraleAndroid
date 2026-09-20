@@ -28,6 +28,9 @@ const CGPLAY004_ADAPTIVE_BATCH_VERSION='CGPLAY004_ADAPTIVE_BATCH001';
 const CGPLAY004_SESSION_RESUME_VERSION='CGPLAY004_SESSION_RESUME001';
 const CGPLAY004_RANDOMIZE_VERSION='CGPLAY004_FIX1_LONG_SESSION_RANDOMIZE001';
 const CGPLAY004_THEME_DIVERSITY_VERSION='CGPLAY004_FIX1_THEME_DIVERSITY001';
+const CGPLAY004_UNSEEN_FIRST_VERSION='CGPLAY004_FIX2_UNSEEN_FIRST001';
+const CGPLAY004_OLDEST_PLAYED_FIRST_VERSION='CGPLAY004_FIX2_OLDEST_PLAYED_FIRST001';
+// CGPLAY004_FIX2_UNSEEN_FIRST001_OLDEST_PLAYED_FIRST001
 // CGPLAY004_FIX1_LONG_SESSION_RANDOMIZE001_THEME_DIVERSITY001
 
 const one=v=>String(v??'').trim();
@@ -4491,451 +4494,75 @@ async function smartLongComposeBatch(
   body,
   xPolicy
 ){
+  const config=smartLongConfig(body);
+  const blocked=new Set(
+    (Array.isArray(body?.excludeIds)?body.excludeIds:[])
+      .map(one).filter(Boolean).slice(0,1000)
+  );
 
-  const config=
-    smartLongConfig(body);
-
-
-  const servedCounts=
-    smartLongCounts(
-      body?.servedCounts
-    );
-
-
-  const blocked=
-    new Set(
-      (
-        Array.isArray(
-          body?.excludeIds
-        )
-          ? body.excludeIds
-          : []
-      )
-      .map(one)
-      .filter(Boolean)
-      .slice(0,1000)
-    );
-
-
-  const remainingTotal=
-    Math.max(
-      0,
-      config.count-
-      blocked.size
-    );
-
-
-  const batchCount=
-    Math.min(
-      config.batchSize,
-      remainingTotal
-    );
-
-
-  const targetQuota=
-    smartQuota(
-      config.count,
-      config.duePct,
-      config.weakPct,
-      config.unseenPct
-    );
-
+  const remainingTotal=Math.max(0,config.count-blocked.size);
+  const batchCount=Math.min(config.batchSize,remainingTotal);
 
   if(batchCount<=0){
+    return {rows:[],requestedBatch:0,mode:'done',unseenAvailable:0,historicalAvailable:0,scannedUnseen:0};
+  }
 
+  /* UNSEEN_FIRST001 */
+  const unseenResult=await smartLongUnseenPool(
+    uid,
+    analysis,
+    Math.max(batchCount*4,batchCount),
+    config.domain,
+    xPolicy,
+    blocked
+  );
+
+  if(unseenResult.eligibleSeen>0){
+    const rows=cg35ThemeDiverse(unseenResult.rows).slice(0,batchCount);
     return {
-
-      rows:[],
-
-      requestedBatch:0,
-
-      desired:{
-        due:0,
-        weakness:0,
-        unseen:0
-      },
-
-      actual:{
-        due:0,
-        weakness:0,
-        unseen:0
-      },
-
-      targetQuota,
-
-      servedCountsAfter:
-        servedCounts,
-
-      redistributed:0,
-
-      scannedUnseen:0
+      rows,
+      requestedBatch:batchCount,
+      mode:'unseen_first',
+      unseenAvailable:unseenResult.eligibleSeen,
+      historicalAvailable:0,
+      scannedUnseen:unseenResult.scanned,
+      desired:{due:0,weakness:0,unseen:rows.length},
+      actual:{due:0,weakness:0,unseen:rows.length},
+      targetQuota:{due:0,weakness:0,unseen:config.count},
+      servedCountsAfter:{due:0,weakness:0,unseen:rows.length},
+      redistributed:0
     };
   }
 
-
-  /*
-   * ADAPTIVE_BATCH001 :
-   * le prochain lot cherche à rattraper les quotas
-   * globaux restant encore à servir.
-   */
-  const remainingTargets={
-
-    due:
-      Math.max(
-        0,
-        targetQuota.due-
-        servedCounts.due
-      ),
-
-    weakness:
-      Math.max(
-        0,
-        targetQuota.weakness-
-        servedCounts.weakness
-      ),
-
-    unseen:
-      Math.max(
-        0,
-        targetQuota.unseen-
-        servedCounts.unseen
-      )
-  };
-
-
-  const remainingWeight=
-    remainingTargets.due+
-    remainingTargets.weakness+
-    remainingTargets.unseen;
-
-
-  const desired=
-    remainingWeight>0
-
-      ? smartQuota(
-          batchCount,
-          remainingTargets.due,
-          remainingTargets.weakness,
-          remainingTargets.unseen
-        )
-
-      : smartQuota(
-          batchCount,
-          config.duePct,
-          config.weakPct,
-          config.unseenPct
-        );
-
-
-  const selected=[];
-
-  const selectedIds=
-    new Set(blocked);
-
-
-  const eligible=q=>{
-
-    const id=
-      one(q.questionId)||
-      String(q.row||'');
-
-
-    if(
-      !id ||
-      selectedIds.has(id) ||
-      xPolicy?.ids?.has(id)
-    ){
-      return false;
-    }
-
-
-    if(
-      config.domain &&
-      one(q.domain)!==config.domain
-    ){
-      return false;
-    }
-
-
-    return true;
-  };
-
-
-  const due=
-    analysis.questions
-      .filter(
-        q=>
-          q.due &&
-          eligible(q)
-      )
-      .sort(
-        (a,b)=>
-          b.overdueMs-a.overdueMs ||
-          a.successPercent-b.successPercent
-      );
-
-
-  const weak=
-    analysis.questions
-      .filter(
-        q=>
-          q.priority &&
-          eligible(q)
-      )
-      .sort(
-        (a,b)=>
-          b.weakness-a.weakness ||
-          b.failures-a.failures
-      );
-
-
-  const unseenWanted=
-    Math.min(
-      250,
-      Math.max(
-        batchCount*3,
-        desired.unseen+
-        batchCount
-      )
+  /* OLDEST_PLAYED_FIRST001 */
+  const historical=analysis.questions
+    .filter(q=>{
+      const id=one(q.questionId)||String(q.row||'');
+      if(!id||blocked.has(id)||xPolicy?.ids?.has(id))return false;
+      if(config.domain&&one(q.domain)!==config.domain)return false;
+      return q.lastPlayedAtMs>0;
+    })
+    .sort((a,b)=>
+      a.lastPlayedAtMs-b.lastPlayedAtMs ||
+      one(a.questionId).localeCompare(one(b.questionId))
     );
 
-
-  const unseenResult=
-    await smartLongUnseenPool(
-      uid,
-      analysis,
-      unseenWanted,
-      config.domain,
-      xPolicy,
-      selectedIds
-    );
-
-
-  const pools={
-
-    due,
-
-    weakness:weak,
-
-    unseen:
-      unseenResult.rows
-  };
-
-
-  const cursor={
-    due:0,
-    weakness:0,
-    unseen:0
-  };
-
-
-  const actual={
-    due:0,
-    weakness:0,
-    unseen:0
-  };
-
-
-  function pullOne(key){
-
-    const pool=
-      pools[key]||[];
-
-
-    while(
-      cursor[key]<
-      pool.length
-    ){
-
-      const q=
-        pool[
-          cursor[key]++
-        ];
-
-
-      const id=
-        key==='unseen'
-          ? one(q.id)
-          : (
-              one(q.questionId)||
-              String(q.row||'')
-            );
-
-
-      if(
-        !id ||
-        selectedIds.has(id) ||
-        xPolicy?.ids?.has(id)
-      ){
-        continue;
-      }
-
-
-      const row=
-        key==='unseen'
-          ? q
-          : smartHistoricalRow(
-              q,
-              key
-            );
-
-
-      selected.push(row);
-
-      selectedIds.add(id);
-
-      actual[key]++;
-
-      return true;
-    }
-
-
-    return false;
-  }
-
-
-  /*
-   * Quotas primaires.
-   */
-  for(
-    const key of [
-      'due',
-      'weakness',
-      'unseen'
-    ]
-  ){
-
-    while(
-      actual[key]<
-        desired[key] &&
-      selected.length<
-        batchCount
-    ){
-
-      if(
-        !pullOne(key)
-      ){
-        break;
-      }
-    }
-  }
-
-
-  /*
-   * SMART_BALANCE pour le lot :
-   * toute place manquante est redistribuée vers
-   * la catégorie ayant le plus grand déficit global.
-   */
-  while(
-    selected.length<
-    batchCount
-  ){
-
-    const keys=[
-      'due',
-      'weakness',
-      'unseen'
-    ];
-
-
-    keys.sort(
-      (a,b)=>{
-
-        const da=
-          targetQuota[a]-
-          (
-            servedCounts[a]+
-            actual[a]
-          );
-
-
-        const db=
-          targetQuota[b]-
-          (
-            servedCounts[b]+
-            actual[b]
-          );
-
-
-        return db-da;
-      }
-    );
-
-
-    let added=false;
-
-
-    for(const key of keys){
-
-      if(pullOne(key)){
-
-        added=true;
-        break;
-      }
-    }
-
-
-    if(!added){
-      break;
-    }
-  }
-
-
-  const servedCountsAfter={
-
-    due:
-      servedCounts.due+
-      actual.due,
-
-    weakness:
-      servedCounts.weakness+
-      actual.weakness,
-
-    unseen:
-      servedCounts.unseen+
-      actual.unseen
-  };
-
-
-  const redistributed=
-    ['due','weakness','unseen']
-      .reduce(
-        (sum,key)=>
-          sum+
-          Math.max(
-            0,
-            actual[key]-
-            desired[key]
-          ),
-        0
-      );
-
+  const rows=historical
+    .slice(0,batchCount)
+    .map(q=>smartHistoricalRow(q,'oldest'));
 
   return {
-
-    rows:
-      cg35ThemeDiverse(
-        selected
-      ).slice(
-        0,
-        batchCount
-      ),
-
-    requestedBatch:
-      batchCount,
-
-    desired,
-
-    actual,
-
-    targetQuota,
-
-    servedCountsAfter,
-
-    redistributed,
-
-    scannedUnseen:
-      unseenResult.scanned
+    rows,
+    requestedBatch:batchCount,
+    mode:'oldest_played_first',
+    unseenAvailable:0,
+    historicalAvailable:historical.length,
+    scannedUnseen:unseenResult.scanned,
+    desired:{due:rows.length,weakness:0,unseen:0},
+    actual:{due:rows.length,weakness:0,unseen:0},
+    targetQuota:{due:config.count,weakness:0,unseen:0},
+    servedCountsAfter:{due:rows.length,weakness:0,unseen:0},
+    redistributed:0
   };
 }
 
@@ -4968,6 +4595,12 @@ function smartLongPublicState(
 
     themeDiversityVersion:
       CGPLAY004_THEME_DIVERSITY_VERSION,
+
+    unseenFirstVersion:
+      CGPLAY004_UNSEEN_FIRST_VERSION,
+
+    oldestPlayedFirstVersion:
+      CGPLAY004_OLDEST_PLAYED_FIRST_VERSION,
 
     status:
       one(s.status)||
