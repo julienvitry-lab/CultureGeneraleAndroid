@@ -1,5 +1,6 @@
 // CGWEB016 FIX2 · chargement direct depuis index.html
 // CGWEB107_HISTORY_MAIN_TAB001
+// CGWEB108_DIRECTORY_COMPACT_LAYOUT001_MAIN_TABS_REORDER001_MASS_SELECTION_ENABLE001
 // Couche d'agencement uniquement : conserve les moteurs CGWEB/CGIMPORT existants.
 
 (() => {
@@ -44,10 +45,10 @@
     shell.innerHTML = `
       <div class="cg16-version-proof" id="cg16VersionProof">CGWEB022 · CGWEB024 · CGWEB025 ACTIFS</div>
       <nav class="cg16-primary-nav" aria-label="Navigation Culture Générale">
-        <button type="button" data-cg16-page="directory">Répertoire</button>
         <button type="button" data-cg16-page="import">Import Quizypedia</button>
         <button type="button" data-cg16-page="create">Création de questions</button>
         <button type="button" data-cg16-page="learning">Historique</button>
+        <button type="button" data-cg16-page="directory">Répertoire</button>
         <button type="button" data-cg16-page="more">Plus</button>
       </nav>
 
@@ -413,9 +414,9 @@ if (!PAGES.has(page)) page = "directory";
     }
     move("cgcloud002-panel", "cg16DiagnosticMount");
 
-    // Libellé d'application plus sobre.
+    // CGWEB108 : en-tête minimal
     const brandSub = document.querySelector(".brand p");
-    if (brandSub) brandSub.textContent = "Répertoire · création · import · maintenance";
+    if (brandSub) brandSub.remove();
 
     renderNavigation();
   }

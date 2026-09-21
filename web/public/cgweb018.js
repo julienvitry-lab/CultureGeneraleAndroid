@@ -1,4 +1,5 @@
-const CGWEB018_VERSION="CGWEB018_FIX5";
+const CGWEB018_VERSION="CGWEB108_DIRECTORY_COMPACT_LAYOUT001";
+// CGWEB108_DIRECTORY_COMPACT_LAYOUT001_MAIN_TABS_REORDER001_MASS_SELECTION_ENABLE001
 const cg18$=id=>document.getElementById(id);
 const cg18Esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
 const cg18Fmt=v=>new Intl.NumberFormat("fr-FR").format(Number(v||0));
@@ -23,14 +24,19 @@ function cg18Status(text,type=""){const e=cg18$("cg18Status");if(e){e.textConten
 function cg18Date(v){if(!v)return"—";try{const d=typeof v?.toDate==="function"?v.toDate():v?.seconds?new Date(v.seconds*1000):new Date(v);return Number.isNaN(d.getTime())?"—":d.toLocaleDateString("fr-FR")}catch(_){return"—"}}
 function cg18ImageLabel(r){const p=String(r.image_file||"").trim();if(!p)return"—";return String(r.image_origin||"")==="firebase_storage"||p.startsWith("users/")?"Cloud":"Historique"}
 function cg18Filters(){return{
-  megatheme:cg18$("cg18Mega").value.trim(),
-  themeContains:cg18$("cg18Theme").value.trim(),
-  status:cg18$("cg18StatusFilter").value,
-  recordContains:cg18$("cg18Prefix").value.trim(),
-  imageState:cg18$("cg18Image").value,
-  nonTrouve:cg18$("cg18Missing").value
+  megatheme:"",
+  themeContains:"",
+  status:"",
+  recordContains:cg18$("cg18Prefix")?.value.trim()||"",
+  imageState:cg18$("cg18Image")?.value||"",
+  nonTrouve:""
 }}
-function cg18UpdateSelection(){cg18$("cg18Selected").textContent=`${cg18Fmt(CG18.selected.size)} sélectionnée(s)`;cg18SaveSelection()}
+function cg18UpdateSelection(){
+  const label=cg18$("cg18Selected");
+  if(label)label.textContent=`${cg18Fmt(CG18.selected.size)} sélectionnée(s)`;
+  cg18SaveSelection();
+  window.dispatchEvent(new CustomEvent("cgweb018-selection-change",{detail:{ids:[...CG18.selected]}}));
+}
 
 function cg18Cell(key,r){
   if(key==="id")return `<code>#${cg18Esc(r.original_id??r.id)}</code>`;
@@ -156,23 +162,13 @@ function cg18CopySelected(){navigator.clipboard?.writeText([...CG18.selected].jo
 function cg18Init(){
   if(cg18$("cgweb018Panel"))return;cg18LoadPrefs();
   const panel=document.createElement("section");panel.id="cgweb018Panel";panel.className="cg18-panel";panel.innerHTML=`
-    <div class="cg18-head"><div><h2>Répertoire</h2><p>Filtres combinés, recherche de thème par terme, tri, colonnes configurables et sélection persistante.</p></div></div>
-    <div class="cg18-filters">
-      <label>Mégathème<select id="cg18Mega"><option value="">Tous</option><option>Animaux et Plantes</option><option>Culture Classique</option><option>Culture Générale</option><option>Culture Moderne</option><option>Géographie</option><option>Histoire</option><option>Sciences et Techniques</option><option>Sport</option></select></label>
-      <label>Thème contient<input id="cg18Theme" placeholder="Ex. capitales" title="Retrouve tous les thèmes dont l’intitulé contient ce terme."></label>
-      <label>Statut<input id="cg18StatusFilter" placeholder="Tous"></label>
-      <label>La fiche contient<input id="cg18Prefix" placeholder="Question, détail, thème ou mégathème…"></label>
-      <label>Image<select id="cg18Image"><option value="">Toutes</option><option value="1">Avec image</option><option value="0">Sans image</option></select></label>
-      <label>Recherche image<select id="cg18Missing" title="Ce filtre correspond au champ non_trouve : il signale l’échec d’une recherche d’image, pas une question introuvable."><option value="">Tous les états</option><option value="1">Image signalée introuvable</option><option value="0">Non signalée introuvable</option></select></label>
-      <label>Tri<select id="cg18Sort"><option value="id">ID</option><option value="question">Question</option><option value="megatheme">Mégathème</option><option value="theme">Thème</option><option value="status">Statut</option></select></label>
-      <label>Sens<select id="cg18Direction"><option value="asc">Croissant</option><option value="desc">Décroissant</option></select></label>
-      <label>Par page<select id="cg18PageSize"><option>20</option><option selected>50</option><option>100</option></select></label>
+    <div class="cg18-filters cg18-filters-compact">
+      <label class="cg18-filter-search">La fiche contient<input id="cg18Prefix" placeholder="Question, détail, thème ou mégathème…"></label>
+      <label class="cg18-filter-image">Image<select id="cg18Image"><option value="">Toutes</option><option value="1">Avec image</option><option value="0">Sans image</option></select></label>
+      <label class="cg18-filter-sort">Tri<select id="cg18Sort"><option value="id">ID</option><option value="question">Question</option><option value="megatheme">Mégathème</option><option value="theme">Thème</option><option value="status">Statut</option></select></label>
+      <label class="cg18-filter-direction">Sens<select id="cg18Direction"><option value="asc">Croissant</option><option value="desc">Décroissant</option></select></label>
+      <label class="cg18-filter-page">Par page<select id="cg18PageSize"><option>20</option><option selected>50</option><option>100</option></select></label>
     </div>
-    <div class="cg18-filter-help">
-      <b>Recherche image :</b> « Image signalée introuvable » signifie qu’une tentative de récupération d’image a échoué.
-      Cela ne signifie pas que la question elle-même est introuvable.
-    </div>
-    <div id="cg18ThemeMatches" class="cg18-theme-matches" hidden></div>
     <div class="cg18-actions"><button id="cg18Apply" class="cg18-btn cg18-primary">Appliquer</button><button id="cg18Reset" class="cg18-btn">Réinitialiser</button><button id="cg18Columns" class="cg18-btn">Colonnes</button><span id="cg18Meta"></span></div>
     <div id="cg18ColumnList" class="cg18-columns cg18-hidden"></div>
     <div class="cg18-selection"><strong id="cg18Selected">0 sélectionnée</strong><button id="cg18SelectVisible" class="cg18-btn">Tout visible</button><button id="cg18Clear" class="cg18-btn">Vider</button><button id="cg18Copy" class="cg18-btn">Copier les ID</button></div>
@@ -180,11 +176,11 @@ function cg18Init(){
     <div class="cg18-pagination"><button id="cg18Prev" class="cg18-btn">← Précédent</button><button id="cg18Next" class="cg18-btn cg18-primary">Suivant →</button></div>
     <div id="cg18Status" class="cg18-status">Initialisation…</div>`;
   (document.querySelector("main")||document.body).appendChild(panel);document.body.classList.add("cg18-managed");cg18BuildColumns();
-  cg18$("cg18Apply").onclick=()=>cg18Load(true);cg18$("cg18Reset").onclick=()=>{for(const id of ["cg18Mega","cg18Theme","cg18StatusFilter","cg18Prefix","cg18Image","cg18Missing"]){const e=cg18$(id);if(e)e.value=""}cg18$("cg18Sort").value="id";cg18$("cg18Direction").value="asc";cg18Load(true)};
+  cg18$("cg18Apply").onclick=()=>cg18Load(true);cg18$("cg18Reset").onclick=()=>{for(const id of ["cg18Prefix","cg18Image"]){const e=cg18$(id);if(e)e.value=""}cg18$("cg18Sort").value="id";cg18$("cg18Direction").value="asc";cg18Load(true)};
   cg18$("cg18Columns").onclick=()=>cg18$("cg18ColumnList").classList.toggle("cg18-hidden");
   cg18$("cg18SelectVisible").onclick=()=>{for(const r of CG18.rows)CG18.selected.add(String(r.id));cg18Render()};cg18$("cg18Clear").onclick=()=>{CG18.selected.clear();cg18Render()};cg18$("cg18Copy").onclick=cg18CopySelected;
   cg18$("cg18Prev").onclick=()=>{if(CG18.page>0){CG18.page--;cg18Load(false)}};cg18$("cg18Next").onclick=()=>{if(CG18.next){CG18.stack[CG18.page+1]=CG18.next;CG18.page++;cg18Load(false)}};
-  cg18$("cg18Prefix").onkeydown=e=>{if(e.key==="Enter")cg18Load(true)};cg18$("cg18Theme").onkeydown=e=>{if(e.key==="Enter")cg18Load(true)};
+  cg18$("cg18Prefix").onkeydown=e=>{if(e.key==="Enter")cg18Load(true)};
   window.CGWEB018_API={selectedIds:()=>[...CG18.selected],reload:()=>cg18Load(true),rows:()=>CG18.rows.slice()};
   cg18Load(true);
 }

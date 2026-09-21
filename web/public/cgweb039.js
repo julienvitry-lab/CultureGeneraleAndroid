@@ -1,7 +1,8 @@
 (() => {
   "use strict";
 
-  const VERSION = "BULK_ACTIONS001";
+  const VERSION = "CGWEB108_MASS_SELECTION_ENABLE001";
+  // CGWEB108_DIRECTORY_COMPACT_LAYOUT001_MAIN_TABS_REORDER001_MASS_SELECTION_ENABLE001
   const SS_SELECTION = "cgweb039.bulk.selection.v1";
   const SS_CONTEXTS = "cgweb039.bulk.contexts.v1";
 
@@ -126,6 +127,23 @@
     persistState();
     renderToolbar();
   }
+  function syncFromDirectoryApi() {
+    const source = window.CGWEB018_API?.selectedIds?.();
+    if (!Array.isArray(source)) return false;
+    const next = new Set(source.map(String));
+    state.ids = next;
+    for (const id of [...state.contexts.keys()]) if (!next.has(String(id))) state.contexts.delete(String(id));
+    const table = directoryTable();
+    if (table) for (const row of table.querySelectorAll("tbody tr")) {
+      const id = rowId(row);
+      if (!id || !next.has(String(id))) continue;
+      const ctx = rowContext(row);
+      if (ctx) state.contexts.set(String(id), ctx);
+    }
+    persistState();
+    return true;
+  }
+
 
   function setStatus(text, kind = "") {
     const el = document.querySelector("#cgweb039Status");
@@ -459,7 +477,7 @@
       }
       persistState();
       renderToolbar();
-    }, true);
+    }, false);
 
     p.addEventListener("click", (ev) => {
       const b = ev.target.closest("button");
@@ -490,6 +508,7 @@
     restoreState();
     wireDirectory();
     buildToolbar();
+    syncFromDirectoryApi();
     syncVisibleRows();
 
     state.observer = new MutationObserver((mutations) => {
@@ -506,10 +525,27 @@
       state.observerTimer = setTimeout(() => {
         state.directoryPanel = findDirectoryPanel() || state.directoryPanel;
         buildToolbar();
+        syncFromDirectoryApi();
+        renderToolbar();
         installTransferPanel();
       }, 120);
     });
     state.observer.observe(document.body, { childList: true, subtree: true });
+
+    window.addEventListener("cgweb018-selection-change", (ev) => {
+      const ids = Array.isArray(ev.detail?.ids) ? ev.detail.ids.map(String) : [];
+      state.ids = new Set(ids);
+      const table = directoryTable();
+      if (table) for (const row of table.querySelectorAll("tbody tr")) {
+        const id = rowId(row);
+        if (!id || !state.ids.has(String(id))) continue;
+        const ctx = rowContext(row);
+        if (ctx) state.contexts.set(String(id), ctx);
+      }
+      for (const id of [...state.contexts.keys()]) if (!state.ids.has(String(id))) state.contexts.delete(String(id));
+      persistState();
+      renderToolbar();
+    });
 
     state.initialized = true;
     window.CGWEB039 = {
@@ -528,4 +564,3 @@
     boot();
   }
 })();
-

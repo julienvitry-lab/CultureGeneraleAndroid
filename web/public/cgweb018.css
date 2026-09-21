@@ -53,3 +53,24 @@
   color-scheme:dark!important;
   -webkit-text-fill-color:#eef7ff!important;
 }
+
+/* CGWEB108 · DIRECTORY_COMPACT_LAYOUT001 */
+#cg16PageDirectory #cgweb046Open{display:none!important}
+#cgweb018Panel{padding-top:0!important}
+#cgweb018Panel .cg18-filters-compact{
+  display:grid!important;
+  grid-template-columns:minmax(300px,2.35fr) minmax(135px,.95fr) minmax(105px,.55fr) minmax(105px,.55fr) minmax(90px,.48fr)!important;
+  gap:8px!important;align-items:end!important;overflow-x:auto!important;margin-top:0!important
+}
+#cgweb018Panel .cg18-filters-compact>label{min-width:0!important}
+#cgweb018Panel .cg18-filters-compact input,
+#cgweb018Panel .cg18-filters-compact select{width:100%!important;box-sizing:border-box!important}
+#cgweb018Panel .cg18-filter-sort,
+#cgweb018Panel .cg18-filter-direction,
+#cgweb018Panel .cg18-filter-page{max-width:150px!important}
+@media(max-width:1100px){
+  #cgweb018Panel .cg18-filters-compact{grid-template-columns:minmax(280px,2.2fr) minmax(130px,.9fr) 110px 110px 95px!important}
+}
+@media(max-width:760px){
+  #cgweb018Panel .cg18-filters-compact{grid-template-columns:280px 135px 110px 110px 95px!important}
+}
