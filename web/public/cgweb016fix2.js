@@ -371,6 +371,7 @@ if (!PAGES.has(page)) page = "directory";
   }
 
   // CGWEB109_FIX3_IMPORT_MOUNT_OWNERSHIP001_PRIMARY_TABS_EQUAL002
+  // CGWEB109_FIX4_NO_PERIODIC_LAYOUT001_NO_FORCED_SCROLL001
   function organizeModules() {
     buildShell();
     hideLegacy();
@@ -447,10 +448,16 @@ if (!PAGES.has(page)) page = "directory";
     if (!badge) return;
 
     const full = connectionIsComplete();
-    badge.textContent = full ? "Connecté" : "Non connecté";
-    badge.className = `badge ${full ? "badge-ok" : "badge-error"} cg16-unified-connection`;
+    const text = full ? "Connecté" : "Non connecté";
+    const className = `badge ${full ? "badge-ok" : "badge-error"} cg16-unified-connection`;
 
-    renderNavigation();
+    if (badge.textContent !== text) badge.textContent = text;
+    if (badge.className !== className) badge.className = className;
+
+    // CGWEB109 FIX4 : ne jamais relancer toute la navigation pour un simple
+    // changement d'état de connexion.
+    const shell = $("cgweb016Shell");
+    if (shell) shell.classList.toggle("cg16-auth-hidden", !window.CGWEB001?.getUser?.());
   }
 
   function resetCreateForm({ preserveClassification = true } = {}) {
@@ -560,26 +567,49 @@ if (!PAGES.has(page)) page = "directory";
     organizeModules();
     renderUnifiedConnection();
 
-    // Les modules historiques créent certains panneaux après le parsing initial.
-    // On les range dès leur apparition, sans modifier leurs moteurs ni listeners.
-    let fastPasses = 0;
-    const fastTimer = window.setInterval(() => {
-      organizeModules();
-      renderUnifiedConnection();
-      fastPasses += 1;
-      if (fastPasses >= 40) window.clearInterval(fastTimer);
-    }, 250);
+    // CGWEB109 FIX4 · NO_PERIODIC_LAYOUT001
+    // Plus aucun réagencement périodique de la page.
+    // On n'agit que lorsqu'un panneau historique apparaît réellement.
+    const latePanelIds = new Set([
+      "cgweb031Panel","cgweb032Panel","cgweb030Panel","cgweb035Panel","cgweb017Panel",
+      "cgweb018Panel","cgweb006Panel","cgimport002Panel","cgweb024Panel",
+      "cgimage002Panel","cgimage005Panel","cgimage007Panel","cgimage008Panel",
+      "cgweb025Panel","cgdedup001Panel","cgweb020Panel","cgweb021Panel",
+      "cgweb022Panel","cgweb026Panel","cgweb027Panel","cgweb028Panel",
+      "cgweb029Panel","cgweb015Panel","cgweb023Panel","cgcloud002-panel"
+    ]);
 
-    // Surveillance légère ensuite : auth et éventuels panneaux tardifs.
-    window.setInterval(() => {
-      organizeModules();
-      renderUnifiedConnection();
-    }, 2500);
+    let arrangeTimer = null;
 
-    window.addEventListener("focus", () => {
-      organizeModules();
-      renderUnifiedConnection();
+    function containsLatePanel(node) {
+      if (!node || node.nodeType !== 1) return false;
+      if (node.id && latePanelIds.has(node.id)) return true;
+      for (const id of latePanelIds) {
+        if (node.querySelector?.(`#${CSS.escape(id)}`)) return true;
+      }
+      return false;
+    }
+
+    const lateObserver = new MutationObserver(mutations => {
+      const relevant = mutations.some(m =>
+        [...m.addedNodes].some(containsLatePanel)
+      );
+      if (!relevant) return;
+
+      clearTimeout(arrangeTimer);
+      arrangeTimer = setTimeout(() => {
+        organizeModules();
+        renderUnifiedConnection();
+      }, 40);
     });
+
+    lateObserver.observe(document.body, {subtree:true, childList:true});
+
+    // L'état Firebase peut changer sans modifier la structure de la page :
+    // seul le badge est rafraîchi, jamais les panneaux.
+    window.setInterval(renderUnifiedConnection, 2500);
+
+    window.addEventListener("focus", renderUnifiedConnection);
   }
 
   if (document.readyState === "loading") {

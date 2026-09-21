@@ -1,7 +1,8 @@
 (() => {
   "use strict";
 
-  const VERSION = "CGWEB109_FIX2";
+  const VERSION = "CGWEB109_FIX4";
+  // CGWEB109_FIX4_NO_PERIODIC_LAYOUT001_NO_FORCED_SCROLL001
   // CGWEB109_FIX2_SCROLL_STABILITY001_OBSERVER_SCOPE001
   // CGWEB109_FIX1_BULK_PANEL_PURGE001_QUIZYPEDIA_SOURCE_MERGE001_PRIMARY_TABS_EQUAL001
   const q = (s, root=document) => root.querySelector(s);
@@ -299,16 +300,10 @@
 
     clearTimeout(timer);
     timer = setTimeout(() => {
-      const y = window.scrollY;
+      // CGWEB109 FIX4 · NO_FORCED_SCROLL001
+      // Aucun scroll programmatique : la position appartient exclusivement
+      // à l'utilisateur. apply() est désormais rare grâce aux observers ciblés.
       apply();
-
-      // Si un ancien moteur vient de réinjecter/reconstruire une surface,
-      // l'utilisateur reste exactement à la même position verticale.
-      requestAnimationFrame(() => {
-        if (Math.abs(window.scrollY - y) > 2) {
-          window.scrollTo({top:y, left:window.scrollX, behavior:"auto"});
-        }
-      });
     }, 60);
   });
 
