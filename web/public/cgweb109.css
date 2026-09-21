@@ -223,3 +223,36 @@ button[data-cg16-plus="bulk"],
     width:100%!important;
   }
 }
+
+/* CGWEB109 FIX3 · PRIMARY_TABS_EQUAL002
+   Surcharge explicite de CGWEB107FIX2. */
+body.cg16-installed .cg16-primary-nav{
+  display:grid!important;
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  gap:6px!important;
+  align-items:stretch!important;
+  overflow-x:auto!important;
+  overflow-y:hidden!important;
+}
+
+body.cg16-installed .cg16-primary-nav > button{
+  width:100%!important;
+  min-width:0!important;
+  max-width:none!important;
+  margin:0!important;
+  justify-self:stretch!important;
+  box-sizing:border-box!important;
+  text-align:center!important;
+}
+
+@media(max-width:900px){
+  body.cg16-installed .cg16-primary-nav{
+    grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  }
+}
+
+@media(max-width:650px){
+  body.cg16-installed .cg16-primary-nav{
+    grid-template-columns:repeat(5,105px)!important;
+  }
+}

@@ -370,6 +370,7 @@ if (!PAGES.has(page)) page = "directory";
     $("cg10New")?.classList.add("cg16-legacy-hidden");
   }
 
+  // CGWEB109_FIX3_IMPORT_MOUNT_OWNERSHIP001_PRIMARY_TABS_EQUAL002
   function organizeModules() {
     buildShell();
     hideLegacy();
@@ -383,8 +384,18 @@ if (!PAGES.has(page)) page = "directory";
     // vue principale de l'onglet Répertoire de questions.
     move("cgweb018Panel", "cg16DirectoryMount");
     $("cgweb006Panel")?.classList.add("cg16-directory-legacy-hidden");
-    move("cgimport002Panel", "cg16ImportUrlMount");
-    move("cgweb024Panel", "cg16ImportReviewMount");
+    // CGWEB109 FIX3 · IMPORT_MOUNT_OWNERSHIP001
+    // Quand le flux Quizypedia unifié existe, il devient propriétaire des
+    // panneaux URL et Validation. Cela évite le ping-pong toutes les 2,5 s
+    // entre CGWEB016 et CGWEB109, responsable des remontées de page.
+    move(
+      "cgimport002Panel",
+      $("cgweb109SingleMount") ? "cgweb109SingleMount" : "cg16ImportUrlMount"
+    );
+    move(
+      "cgweb024Panel",
+      $("cgweb109ReviewMount") ? "cgweb109ReviewMount" : "cg16ImportReviewMount"
+    );
     move("cgimage002Panel", "cg16ImportImagesMount");
     move("cgimage005Panel", "cg16ImportMigrationMount");
     move("cgimage007Panel", "cg16Import404Mount");
