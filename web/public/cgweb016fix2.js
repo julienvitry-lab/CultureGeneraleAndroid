@@ -1,6 +1,7 @@
 // CGWEB016 FIX2 · chargement direct depuis index.html
 // CGWEB107_HISTORY_MAIN_TAB001
 // CGWEB108_DIRECTORY_COMPACT_LAYOUT001_MAIN_TABS_REORDER001_MASS_SELECTION_ENABLE001
+// CGWEB109_DIRECTORY_SELECTION_SIMPLIFY001_BULK_EDIT_RETIRE001_QUIZYPEDIA_UNIFIED_FLOW001_IMAGE_TOOLS_RETIRE001
 // Couche d'agencement uniquement : conserve les moteurs CGWEB/CGIMPORT existants.
 
 (() => {
@@ -11,7 +12,7 @@
   const SESSION_PLUS = "cgweb016_plus";
   const SESSION_IMPORT = "cgweb016_import";
   const PAGES = new Set(["directory", "import", "create", "learning", "more"]);
-  const PLUS_PAGES = new Set(["home2", "dedup", "quality", "bulk", "history", "fulltext", "analytics", "backup", "androidpreview", "sync", "diagnostic", "imagescenter"]);
+  const PLUS_PAGES = new Set(["home2", "dedup", "quality", "history", "fulltext", "analytics", "backup", "androidpreview", "sync", "diagnostic", "imagescenter"]);
   const IMPORT_PAGES = new Set(["url", "review", "images", "migration", "recovery404", "semantic"]);
 
   // CGWEB107_FIX2_PRIMARY_NAV_SINGLE_ROW001_DEFAULT_DIRECTORY001
@@ -45,7 +46,7 @@
     shell.innerHTML = `
       <div class="cg16-version-proof" id="cg16VersionProof">CGWEB022 · CGWEB024 · CGWEB025 ACTIFS</div>
       <nav class="cg16-primary-nav" aria-label="Navigation Culture Générale">
-        <button type="button" data-cg16-page="import">Import Quizypedia</button>
+        <button type="button" data-cg16-page="import">Quizypedia</button>
         <button type="button" data-cg16-page="create">Création de questions</button>
         <button type="button" data-cg16-page="learning">Historique</button>
         <button type="button" data-cg16-page="directory">Répertoire</button>
@@ -59,7 +60,6 @@
           <span class="cg16-plus-group-title">Qualité</span>
           <button type="button" data-cg16-plus="dedup">Doublons intelligents</button>
           <button type="button" data-cg16-plus="quality">Contrôle qualité</button>
-          <button type="button" data-cg16-plus="bulk">Modifications massives</button>
           <span class="cg16-plus-group-title">Contenu et médias</span>
           <button type="button" data-cg16-plus="history">Historique des modifications</button>
           <button type="button" data-cg16-plus="fulltext">Plein texte</button>
@@ -207,7 +207,6 @@
 
           <section class="cg16-plus-page" data-cg16-plus-panel="dedup"><div id="cg16DedupMount" class="cg16-mount"></div></section>
           <section class="cg16-plus-page" data-cg16-plus-panel="quality"><div id="cg16QualityMount" class="cg16-mount"></div></section>
-          <section class="cg16-plus-page" data-cg16-plus-panel="bulk"><div id="cg16BulkMount" class="cg16-mount"></div></section>
           <section class="cg16-plus-page" data-cg16-plus-panel="history"><div id="cg16HistoryMount" class="cg16-mount"></div></section>
           <section class="cg16-plus-page" data-cg16-plus-panel="imagescenter"><div id="cg16ImageCenterMount" class="cg16-mount"></div></section>
           <section class="cg16-plus-page" data-cg16-plus-panel="androidpreview"><div id="cg16AndroidPreviewMount" class="cg16-mount"></div></section>

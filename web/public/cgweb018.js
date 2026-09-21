@@ -1,5 +1,6 @@
 const CGWEB018_VERSION="CGWEB108_DIRECTORY_COMPACT_LAYOUT001";
 // CGWEB108_DIRECTORY_COMPACT_LAYOUT001_MAIN_TABS_REORDER001_MASS_SELECTION_ENABLE001
+// CGWEB109_DIRECTORY_SELECTION_SIMPLIFY001_BULK_EDIT_RETIRE001_QUIZYPEDIA_UNIFIED_FLOW001_IMAGE_TOOLS_RETIRE001
 const cg18$=id=>document.getElementById(id);
 const cg18Esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
 const cg18Fmt=v=>new Intl.NumberFormat("fr-FR").format(Number(v||0));
@@ -169,16 +170,14 @@ function cg18Init(){
       <label class="cg18-filter-direction">Sens<select id="cg18Direction"><option value="asc">Croissant</option><option value="desc">Décroissant</option></select></label>
       <label class="cg18-filter-page">Par page<select id="cg18PageSize"><option>20</option><option selected>50</option><option>100</option></select></label>
     </div>
-    <div class="cg18-actions"><button id="cg18Apply" class="cg18-btn cg18-primary">Appliquer</button><button id="cg18Reset" class="cg18-btn">Réinitialiser</button><button id="cg18Columns" class="cg18-btn">Colonnes</button><span id="cg18Meta"></span></div>
+    <div class="cg18-actions"><button id="cg18Apply" class="cg18-btn cg18-primary">Appliquer</button><button id="cg18Reset" class="cg18-btn">Réinitialiser</button><button id="cg18Columns" class="cg18-btn">Colonnes</button><button id="cgweb109ExportCsv" class="cg18-btn" disabled>Exporter CSV</button><strong id="cg18Selected" class="cgweb109-selected">0 sélectionnée(s)</strong><span id="cg18Meta"></span></div>
     <div id="cg18ColumnList" class="cg18-columns cg18-hidden"></div>
-    <div class="cg18-selection"><strong id="cg18Selected">0 sélectionnée</strong><button id="cg18SelectVisible" class="cg18-btn">Tout visible</button><button id="cg18Clear" class="cg18-btn">Vider</button><button id="cg18Copy" class="cg18-btn">Copier les ID</button></div>
     <div class="cg18-table-wrap"><table id="cg18Table" class="cg18-table"></table></div>
     <div class="cg18-pagination"><button id="cg18Prev" class="cg18-btn">← Précédent</button><button id="cg18Next" class="cg18-btn cg18-primary">Suivant →</button></div>
     <div id="cg18Status" class="cg18-status">Initialisation…</div>`;
   (document.querySelector("main")||document.body).appendChild(panel);document.body.classList.add("cg18-managed");cg18BuildColumns();
   cg18$("cg18Apply").onclick=()=>cg18Load(true);cg18$("cg18Reset").onclick=()=>{for(const id of ["cg18Prefix","cg18Image"]){const e=cg18$(id);if(e)e.value=""}cg18$("cg18Sort").value="id";cg18$("cg18Direction").value="asc";cg18Load(true)};
   cg18$("cg18Columns").onclick=()=>cg18$("cg18ColumnList").classList.toggle("cg18-hidden");
-  cg18$("cg18SelectVisible").onclick=()=>{for(const r of CG18.rows)CG18.selected.add(String(r.id));cg18Render()};cg18$("cg18Clear").onclick=()=>{CG18.selected.clear();cg18Render()};cg18$("cg18Copy").onclick=cg18CopySelected;
   cg18$("cg18Prev").onclick=()=>{if(CG18.page>0){CG18.page--;cg18Load(false)}};cg18$("cg18Next").onclick=()=>{if(CG18.next){CG18.stack[CG18.page+1]=CG18.next;CG18.page++;cg18Load(false)}};
   cg18$("cg18Prefix").onkeydown=e=>{if(e.key==="Enter")cg18Load(true)};
   window.CGWEB018_API={selectedIds:()=>[...CG18.selected],reload:()=>cg18Load(true),rows:()=>CG18.rows.slice()};
