@@ -1,7 +1,8 @@
 (() => {
   "use strict";
 
-  const VERSION = "CGWEB109_FIX1";
+  const VERSION = "CGWEB109_FIX2";
+  // CGWEB109_FIX2_SCROLL_STABILITY001_OBSERVER_SCOPE001
   // CGWEB109_FIX1_BULK_PANEL_PURGE001_QUIZYPEDIA_SOURCE_MERGE001_PRIMARY_TABS_EQUAL001
   const q = (s, root=document) => root.querySelector(s);
   const qa = (s, root=document) => [...root.querySelectorAll(s)];
@@ -227,18 +228,25 @@
     // Navigation/panel CGWEB016.
     qa('button[data-cg16-plus="bulk"],[data-cg16-plus-panel="bulk"]').forEach(el => el.remove());
 
-    // CGWEB039 reste utilisable en arrière-plan comme miroir de sélection CSV,
-    // mais ses surfaces UI sont retirées définitivement de la page.
-    qa("#cgweb039Toolbar,#cgweb039Modal,#cgweb039Transfer").forEach(el => el.remove());
+    // CGWEB039 reste actif en arrière-plan comme miroir de sélection CSV.
+    // IMPORTANT : on NE RETIRE PLUS ses noeuds du DOM. Son propre observer les
+    // recréait aussitôt, provoquant une boucle remove/rebuild et des sauts de scroll.
+    qa("#cgweb039Toolbar,#cgweb039Modal,#cgweb039Transfer").forEach(el => {
+      el.hidden = true;
+      el.setAttribute("aria-hidden","true");
+    });
 
-    // Certains anciens moteurs se réinjectent directement dans <main> lorsqu'un
-    // mount n'existe plus. On supprime le panneau par son titre, sans toucher à
-    // « Historique des modifications » ni aux autres outils.
+    // Les anciens panneaux de modifications massives restent eux aussi dans le DOM
+    // mais invisibles : aucune réinjection, aucun changement de hauteur répété.
     qa("h1,h2,h3").forEach(title => {
       const txt = lower(title.textContent);
       if (txt === "modifications massives sécurisées" || txt === "modifications massives"){
         const panel = title.closest("section,article,.panel");
-        if (panel && !panel.closest("#cgweb109QuizypediaFlow")) panel.remove();
+        if (panel && !panel.closest("#cgweb109QuizypediaFlow")){
+          panel.hidden = true;
+          panel.setAttribute("aria-hidden","true");
+          panel.dataset.cgweb109Retired = "1";
+        }
       }
     });
 
@@ -259,15 +267,60 @@
   window.addEventListener("cgweb018-selection-change", updateDirectorySelectionUi);
 
   let timer = null;
-  const observer = new MutationObserver(() => {
+
+  function mutationNeedsApply(mutations){
+    const selectors = [
+      "#cgweb039Toolbar",
+      "#cgweb039Modal",
+      "#cgweb039Transfer",
+      "#cgweb024Panel",
+      "#cgimport002Panel",
+      "#cgimport011Bulk",
+      "#cgweb040ControlCenter"
+    ].join(",");
+
+    return mutations.some(m => [...m.addedNodes].some(node => {
+      if (node.nodeType !== 1) return false;
+      if (node.matches?.(selectors) || node.querySelector?.(selectors)) return true;
+
+      const titles = node.matches?.("h1,h2,h3")
+        ? [node]
+        : [...(node.querySelectorAll?.("h1,h2,h3") || [])];
+
+      return titles.some(t => {
+        const txt = lower(t.textContent);
+        return txt === "modifications massives sécurisées" || txt === "modifications massives";
+      });
+    }));
+  }
+
+  const observer = new MutationObserver((mutations) => {
+    if (!mutationNeedsApply(mutations)) return;
+
     clearTimeout(timer);
-    timer = setTimeout(apply, 40);
+    timer = setTimeout(() => {
+      const y = window.scrollY;
+      apply();
+
+      // Si un ancien moteur vient de réinjecter/reconstruire une surface,
+      // l'utilisateur reste exactement à la même position verticale.
+      requestAnimationFrame(() => {
+        if (Math.abs(window.scrollY - y) > 2) {
+          window.scrollTo({top:y, left:window.scrollX, behavior:"auto"});
+        }
+      });
+    }, 60);
   });
 
   function boot(){
     document.documentElement.dataset.cgweb109 = VERSION;
     apply();
+
+    // Observer ciblé : les mises à jour normales de la liste de validation
+    // ne déclenchent plus de recomposition générale de la page.
     observer.observe(document.body, {subtree:true, childList:true});
+
+    // Stabilisation initiale seulement.
     setTimeout(apply, 250);
     setTimeout(apply, 1000);
   }
