@@ -134,3 +134,92 @@ button[data-cg16-plus="bulk"],
     grid-template-columns:1fr!important;
   }
 }
+
+/* CGWEB109 FIX1 · PRIMARY_TABS_EQUAL001 */
+.cg16-primary-nav{
+  display:grid!important;
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  align-items:stretch!important;
+}
+.cg16-primary-nav > button{
+  width:100%!important;
+  min-width:0!important;
+  max-width:none!important;
+  justify-self:stretch!important;
+}
+
+/* CGWEB109 FIX1 · BULK_PANEL_PURGE001 */
+#cgweb039Toolbar,
+#cgweb039Modal,
+#cgweb039Transfer,
+button[data-cg16-plus="bulk"],
+[data-cg16-plus-panel="bulk"]{
+  display:none!important;
+}
+
+/* CGWEB109 FIX1 · QUIZYPEDIA_SOURCE_MERGE001 */
+.cgweb109-source-grid{
+  display:block!important;
+}
+
+.cgweb109-source-unified{
+  width:100%!important;
+}
+
+.cgweb109-source-head{
+  align-items:center!important;
+}
+
+.cgweb109-source-head > div:first-child{
+  display:grid!important;
+  gap:3px!important;
+}
+
+.cgweb109-source-head > div:first-child span{
+  display:block!important;
+  margin-top:2px!important;
+}
+
+.cgweb109-source-switch{
+  display:grid!important;
+  grid-template-columns:1fr 1fr!important;
+  gap:6px!important;
+  min-width:min(470px,48vw)!important;
+}
+
+.cgweb109-source-switch button{
+  min-height:38px!important;
+  border:1px solid rgba(125,211,252,.32)!important;
+  border-radius:10px!important;
+  background:rgba(8,38,67,.68)!important;
+  color:inherit!important;
+  font:inherit!important;
+  font-size:.88rem!important;
+  cursor:pointer!important;
+  padding:7px 12px!important;
+}
+
+.cgweb109-source-switch button[aria-pressed="true"]{
+  background:#1678a5!important;
+  border-color:#7dd3fc!important;
+  box-shadow:inset 0 -2px 0 rgba(255,255,255,.8)!important;
+}
+
+.cgweb109-source-pane[hidden]{
+  display:none!important;
+}
+
+.cgweb109-source-pane{
+  margin-top:10px!important;
+}
+
+@media(max-width:900px){
+  .cgweb109-source-head{
+    align-items:stretch!important;
+    flex-direction:column!important;
+  }
+  .cgweb109-source-switch{
+    min-width:0!important;
+    width:100%!important;
+  }
+}

@@ -1,10 +1,12 @@
 (() => {
   "use strict";
 
-  const VERSION = "CGWEB109";
+  const VERSION = "CGWEB109_FIX1";
+  // CGWEB109_FIX1_BULK_PANEL_PURGE001_QUIZYPEDIA_SOURCE_MERGE001_PRIMARY_TABS_EQUAL001
   const q = (s, root=document) => root.querySelector(s);
   const qa = (s, root=document) => [...root.querySelectorAll(s)];
   const norm = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
+  const lower = (s) => norm(s).toLocaleLowerCase("fr-FR");
 
   function selectedIds(){
     const nativeIds = window.CGWEB018_API?.selectedIds?.();
@@ -102,16 +104,24 @@
               <p>Une seule chaîne de travail : une URL ou un fichier de thèmes, puis contrôle avant création définitive.</p>
             </div>
           </div>
-          <div class="cgweb109-source-grid">
-            <article class="cgweb109-source-card">
-              <div class="cgweb109-card-head"><strong>Un thème</strong><span>URL Quizypedia</span></div>
+          <article class="cgweb109-source-card cgweb109-source-unified">
+            <div class="cgweb109-card-head cgweb109-source-head">
+              <div>
+                <strong>Source Quizypedia</strong>
+                <span>Choisis une URL unique ou un fichier contenant plusieurs URL.</span>
+              </div>
+              <div class="cgweb109-source-switch" role="group" aria-label="Type de source Quizypedia">
+                <button type="button" id="cgweb109ModeUrl" aria-pressed="true">URL unique</button>
+                <button type="button" id="cgweb109ModeFile" aria-pressed="false">Plusieurs URL · CSV / ODS</button>
+              </div>
+            </div>
+            <div id="cgweb109SingleWrap" class="cgweb109-source-pane">
               <div id="cgweb109SingleMount"></div>
-            </article>
-            <article class="cgweb109-source-card">
-              <div class="cgweb109-card-head"><strong>Plusieurs thèmes</strong><span>CSV / ODS</span></div>
+            </div>
+            <div id="cgweb109MultiWrap" class="cgweb109-source-pane" hidden>
               <div id="cgweb109MultiMount"></div>
-            </article>
-          </div>
+            </div>
+          </article>
         </section>
         <section class="cgweb109-review-block">
           <div class="cgweb109-flow-head cgweb109-review-head">
@@ -134,6 +144,39 @@
     return true;
   }
 
+  function setQuizMode(mode){
+    const next = mode === "file" ? "file" : "url";
+    const singleWrap = q("#cgweb109SingleWrap");
+    const multiWrap = q("#cgweb109MultiWrap");
+    const urlBtn = q("#cgweb109ModeUrl");
+    const fileBtn = q("#cgweb109ModeFile");
+
+    if (singleWrap) singleWrap.hidden = next !== "url";
+    if (multiWrap) multiWrap.hidden = next !== "file";
+    if (urlBtn) urlBtn.setAttribute("aria-pressed", String(next === "url"));
+    if (fileBtn) fileBtn.setAttribute("aria-pressed", String(next === "file"));
+
+    try{ sessionStorage.setItem("cgweb109_quiz_mode", next); }catch(_){}
+  }
+
+  function wireQuizMode(){
+    const urlBtn = q("#cgweb109ModeUrl");
+    const fileBtn = q("#cgweb109ModeFile");
+
+    if (urlBtn && !urlBtn.dataset.cgweb109fix1){
+      urlBtn.dataset.cgweb109fix1 = "1";
+      urlBtn.addEventListener("click", () => setQuizMode("url"));
+    }
+    if (fileBtn && !fileBtn.dataset.cgweb109fix1){
+      fileBtn.dataset.cgweb109fix1 = "1";
+      fileBtn.addEventListener("click", () => setQuizMode("file"));
+    }
+
+    let saved = "url";
+    try{ saved = sessionStorage.getItem("cgweb109_quiz_mode") || "url"; }catch(_){}
+    setQuizMode(saved);
+  }
+
   function composeQuizypedia(){
     const flow = makeFlow();
     if (!flow) return;
@@ -149,6 +192,7 @@
       q("#cgweb109MultiMount").appendChild(control);
     }
     moveInto(review, q("#cgweb109ReviewMount"));
+    wireQuizMode();
 
     // Titres internes allégés : les nouvelles cartes donnent déjà le contexte.
     const singleTitle = single && qa("h1,h2,h3", single)
@@ -180,10 +224,29 @@
   }
 
   function retireBulkEdit(){
+    // Navigation/panel CGWEB016.
     qa('button[data-cg16-plus="bulk"],[data-cg16-plus-panel="bulk"]').forEach(el => el.remove());
-    if (sessionStorage.getItem("cgweb016_plus") === "bulk"){
-      sessionStorage.setItem("cgweb016_plus","dedup");
-    }
+
+    // CGWEB039 reste utilisable en arrière-plan comme miroir de sélection CSV,
+    // mais ses surfaces UI sont retirées définitivement de la page.
+    qa("#cgweb039Toolbar,#cgweb039Modal,#cgweb039Transfer").forEach(el => el.remove());
+
+    // Certains anciens moteurs se réinjectent directement dans <main> lorsqu'un
+    // mount n'existe plus. On supprime le panneau par son titre, sans toucher à
+    // « Historique des modifications » ni aux autres outils.
+    qa("h1,h2,h3").forEach(title => {
+      const txt = lower(title.textContent);
+      if (txt === "modifications massives sécurisées" || txt === "modifications massives"){
+        const panel = title.closest("section,article,.panel");
+        if (panel && !panel.closest("#cgweb109QuizypediaFlow")) panel.remove();
+      }
+    });
+
+    try{
+      if (sessionStorage.getItem("cgweb016_plus") === "bulk"){
+        sessionStorage.setItem("cgweb016_plus","dedup");
+      }
+    }catch(_){}
   }
 
   function apply(){
