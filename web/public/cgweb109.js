@@ -1,7 +1,8 @@
 (() => {
   "use strict";
 
-  const VERSION = "CGWEB109_FIX4";
+  const VERSION = "CGWEB110";
+  // CGWEB110_IMPORT_REVIEW_RETIRE001_DIRECT_QUIZYPEDIA_IMPORT001_VALIDATION_UI_REMOVE001
   // CGWEB109_FIX4_NO_PERIODIC_LAYOUT001_NO_FORCED_SCROLL001
   // CGWEB109_FIX2_SCROLL_STABILITY001_OBSERVER_SCOPE001
   // CGWEB109_FIX1_BULK_PANEL_PURGE001_QUIZYPEDIA_SOURCE_MERGE001_PRIMARY_TABS_EQUAL001
@@ -103,7 +104,7 @@
             <div>
               <div class="cgweb109-kicker">QUIZYPEDIA</div>
               <h2>Capture de questions</h2>
-              <p>Une seule chaîne de travail : une URL ou un fichier de thèmes, puis contrôle avant création définitive.</p>
+              <p>Une seule chaîne de travail : une URL ou un fichier de thèmes, puis import direct des questions sélectionnées.</p>
             </div>
           </div>
           <article class="cgweb109-source-card cgweb109-source-unified">
@@ -124,16 +125,6 @@
               <div id="cgweb109MultiMount"></div>
             </div>
           </article>
-        </section>
-        <section class="cgweb109-review-block">
-          <div class="cgweb109-flow-head cgweb109-review-head">
-            <div>
-              <div class="cgweb109-kicker">VALIDATION</div>
-              <h2>Validation après capture Quizypedia</h2>
-              <p>Les questions capturées restent en attente tant qu'elles ne sont pas validées.</p>
-            </div>
-          </div>
-          <div id="cgweb109ReviewMount"></div>
         </section>`;
       page.prepend(flow);
     }
@@ -186,14 +177,12 @@
     const single = q("#cgimport002Panel");
     const multi = q("#cgimport011Bulk");
     const control = q("#cgweb040ControlCenter");
-    const review = q("#cgweb024Panel");
 
     moveInto(single, q("#cgweb109SingleMount"));
     moveInto(multi, q("#cgweb109MultiMount"));
     if (control && multi?.parentElement === q("#cgweb109MultiMount")){
       q("#cgweb109MultiMount").appendChild(control);
     }
-    moveInto(review, q("#cgweb109ReviewMount"));
     wireQuizMode();
 
     // Titres internes allégés : les nouvelles cartes donnent déjà le contexte.
@@ -205,9 +194,6 @@
       .find(x => norm(x.textContent).toLowerCase().includes("import de plusieurs thèmes"));
     if (multiTitle) multiTitle.textContent = "Importer plusieurs thèmes";
 
-    const reviewTitle = review && qa("h1,h2,h3", review)
-      .find(x => norm(x.textContent).toLowerCase().includes("validation"));
-    if (reviewTitle) reviewTitle.textContent = "Questions en attente de validation";
   }
 
   function retireOldImportTools(){
@@ -274,7 +260,6 @@
       "#cgweb039Toolbar",
       "#cgweb039Modal",
       "#cgweb039Transfer",
-      "#cgweb024Panel",
       "#cgimport002Panel",
       "#cgimport011Bulk",
       "#cgweb040ControlCenter"
@@ -311,8 +296,7 @@
     document.documentElement.dataset.cgweb109 = VERSION;
     apply();
 
-    // Observer ciblé : les mises à jour normales de la liste de validation
-    // ne déclenchent plus de recomposition générale de la page.
+    // Observer ciblé : seules les surfaces encore utilisées peuvent déclencher une recomposition.
     observer.observe(document.body, {subtree:true, childList:true});
 
     // Stabilisation initiale seulement.

@@ -13,7 +13,7 @@
   const SESSION_IMPORT = "cgweb016_import";
   const PAGES = new Set(["directory", "import", "create", "learning", "more"]);
   const PLUS_PAGES = new Set(["home2", "dedup", "quality", "history", "fulltext", "analytics", "backup", "androidpreview", "sync", "diagnostic", "imagescenter"]);
-  const IMPORT_PAGES = new Set(["url", "review", "images", "migration", "recovery404", "semantic"]);
+  const IMPORT_PAGES = new Set(["url", "images", "migration", "recovery404", "semantic"]);
 
   // CGWEB107_FIX2_PRIMARY_NAV_SINGLE_ROW001_DEFAULT_DIRECTORY001
   // À chaque ouverture/rechargement complet de CGWEB, le Répertoire est la page d'accueil.
@@ -44,7 +44,7 @@
     shell.id = "cgweb016Shell";
     shell.className = "cg16-shell";
     shell.innerHTML = `
-      <div class="cg16-version-proof" id="cg16VersionProof">CGWEB022 · CGWEB024 · CGWEB025 ACTIFS</div>
+      <div class="cg16-version-proof" id="cg16VersionProof">CGWEB022 · CGWEB025 ACTIFS</div>
       <nav class="cg16-primary-nav" aria-label="Navigation Culture Générale">
         <button type="button" data-cg16-page="import">Quizypedia</button>
         <button type="button" data-cg16-page="create">Création de questions</button>
@@ -90,7 +90,6 @@
         <section id="cg16PageImport" class="cg16-page" data-cg16-page-panel="import">
           <nav id="cg16ImportNav" class="cg16-import-nav" aria-label="Sous-navigation Import Quizypedia">
             <button type="button" data-cg16-import="url">Import Quizypedia par URL</button>
-            <button type="button" data-cg16-import="review">Validation après import</button>
             <button type="button" data-cg16-import="images">Gestion avancée des images</button>
             <button type="button" data-cg16-import="migration">Migration massive des images historiques</button>
             <button type="button" data-cg16-import="recovery404">Récupération ciblée des 404</button>
@@ -99,9 +98,6 @@
 
           <section class="cg16-import-page" data-cg16-import-panel="url">
             <div id="cg16ImportUrlMount" class="cg16-mount"></div>
-          </section>
-          <section class="cg16-import-page" data-cg16-import-panel="review">
-            <div id="cg16ImportReviewMount" class="cg16-mount"></div>
           </section>
           <section class="cg16-import-page" data-cg16-import-panel="images">
             <div id="cg16ImportImagesMount" class="cg16-mount"></div>
@@ -372,6 +368,7 @@ if (!PAGES.has(page)) page = "directory";
 
   // CGWEB109_FIX3_IMPORT_MOUNT_OWNERSHIP001_PRIMARY_TABS_EQUAL002
   // CGWEB109_FIX4_NO_PERIODIC_LAYOUT001_NO_FORCED_SCROLL001
+// CGWEB110_IMPORT_REVIEW_RETIRE001_DIRECT_QUIZYPEDIA_IMPORT001_VALIDATION_UI_REMOVE001
   function organizeModules() {
     buildShell();
     hideLegacy();
@@ -393,11 +390,7 @@ if (!PAGES.has(page)) page = "directory";
       "cgimport002Panel",
       $("cgweb109SingleMount") ? "cgweb109SingleMount" : "cg16ImportUrlMount"
     );
-    move(
-      "cgweb024Panel",
-      $("cgweb109ReviewMount") ? "cgweb109ReviewMount" : "cg16ImportReviewMount"
-    );
-    move("cgimage002Panel", "cg16ImportImagesMount");
+move("cgimage002Panel", "cg16ImportImagesMount");
     move("cgimage005Panel", "cg16ImportMigrationMount");
     move("cgimage007Panel", "cg16Import404Mount");
     move("cgimage008Panel", "cg16ImportSemanticMount");
@@ -572,7 +565,7 @@ if (!PAGES.has(page)) page = "directory";
     // On n'agit que lorsqu'un panneau historique apparaît réellement.
     const latePanelIds = new Set([
       "cgweb031Panel","cgweb032Panel","cgweb030Panel","cgweb035Panel","cgweb017Panel",
-      "cgweb018Panel","cgweb006Panel","cgimport002Panel","cgweb024Panel",
+      "cgweb018Panel","cgweb006Panel","cgimport002Panel",
       "cgimage002Panel","cgimage005Panel","cgimage007Panel","cgimage008Panel",
       "cgweb025Panel","cgdedup001Panel","cgweb020Panel","cgweb021Panel",
       "cgweb022Panel","cgweb026Panel","cgweb027Panel","cgweb028Panel",

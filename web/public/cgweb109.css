@@ -256,3 +256,11 @@ body.cg16-installed .cg16-primary-nav > button{
     grid-template-columns:repeat(5,105px)!important;
   }
 }
+
+/* CGWEB110 · VALIDATION_UI_REMOVE001 */
+#cgweb024Panel,
+.cgweb109-review-block,
+[data-cg16-import-panel="review"],
+button[data-cg16-import="review"]{
+  display:none!important;
+}

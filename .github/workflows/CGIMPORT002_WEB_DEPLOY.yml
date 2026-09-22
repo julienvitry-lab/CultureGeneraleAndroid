@@ -122,7 +122,6 @@ jobs:
           grep -Fq 'cgweb021.js?v=CGWEB021_1' web/public/index.html
           grep -Fq 'cgweb023.js?v=CGWEB023_1' web/public/index.html
           grep -Fq 'cgweb022.js?v=CGWEB022_1' web/public/index.html
-          grep -Fq 'cgweb024.js?v=CGWEB024_1' web/public/index.html
           grep -Fq 'cgweb025.js?v=CGWEB025_1' web/public/index.html
           grep -Fq 'cgweb026.js?v=CGWEB026_DEDUP_PLAN001' web/public/index.html
           grep -Fq 'cgweb027.js?v=CGWEB027_1' web/public/index.html
@@ -196,7 +195,7 @@ jobs:
         run: |
           set -euo pipefail
           npx --yes firebase-tools@15.28.2 deploy \
-            --only hosting,functions:cgimport002Quizypedia,functions:cgimage005MigrateBatch,functions:cgimage007RecoverFailed,functions:cgimage008SuggestCandidates,functions:cgimage008ApplyCandidate,functions:cgweb018ThemeContains,functions:cgweb020QualityScan,functions:cgweb021Bulk,functions:cgweb022History,functions:cgweb024ImportReview,functions:cgweb025Duplicates,functions:cgweb026ImageCenter,functions:cgweb028Analytics,functions:cgweb029Restore,functions:cgweb030Lists,functions:cgweb031Home,functions:cgweb032Search,storage \
+            --only hosting,functions:cgimport002Quizypedia,functions:cgimage005MigrateBatch,functions:cgimage007RecoverFailed,functions:cgimage008SuggestCandidates,functions:cgimage008ApplyCandidate,functions:cgweb018ThemeContains,functions:cgweb020QualityScan,functions:cgweb021Bulk,functions:cgweb022History,functions:cgweb025Duplicates,functions:cgweb026ImageCenter,functions:cgweb028Analytics,functions:cgweb029Restore,functions:cgweb030Lists,functions:cgweb031Home,functions:cgweb032Search,storage \
             --project culturegeneralesync \
             --non-interactive \
             --force

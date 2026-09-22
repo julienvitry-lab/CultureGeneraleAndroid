@@ -1,4 +1,5 @@
 // CGIMPORT009 FIX4 · diagnostic exact des fiches manquantes + hard cache bust
+// CGWEB110_IMPORT_REVIEW_RETIRE001_DIRECT_QUIZYPEDIA_IMPORT001_VALIDATION_UI_REMOVE001
 // URL thème -> découverte des questionnaires -> capture séquentielle 1:1 -> import unique.
 // Le moteur individuel reste strictement verbatim : aucun contenu QCM n'est inventé.
 
@@ -585,27 +586,9 @@ async function importSelected(){
   const selected=drafts.filter(q=>q.selected);
   if(!selected.length){status('Aucune question sélectionnée.','err');return;}
 
-  // CGWEB024_STAGE_HOOK
-  if(window.CGWEB024_API?.stage){
-    if(!confirm(
-      `Placer ${selected.length} QCM dans la file de validation ?\n\n`+
-      `Aucune question définitive ne sera créée avant validation dans CGWEB024.`
-    ))return;
-    const btn=$('cgimp2Import');
-    btn.disabled=true;
-    btn.textContent='Mise en validation…';
-    try{
-      const result=await window.CGWEB024_API.stage(selected);
-      status(`✅ ${result.staged} question(s) placée(s) dans « Validation après import ».`, 'ok');
-      window.CGWEB024_API.refresh?.();
-    }catch(e){
-      status(`❌ Mise en validation impossible : ${e.message}`, 'err');
-    }finally{
-      btn.disabled=false;
-      btn.textContent='Envoyer en validation';
-    }
-    return;
-  }
+  // CGWEB110 · DIRECT_QUIZYPEDIA_IMPORT001
+// Validation intermédiaire retirée : l'import sélectionné continue directement
+// vers le moteur Firestore historique ci-dessous.
 
   if(!confirm(
     `Importer ${selected.length} QCM Quizypedia 1:1 ?\n\n`+
