@@ -1,6 +1,8 @@
 (() => {
   "use strict";
 
+  // CGWEB111_FIX2_MULTI_URL_MOUNT_RESTORE001_IMPORT_SCOPE_DECOUPLE001
+
   const STORAGE_KEY = "cgimport011.bulkThemeFile.v1";
   const MAX_URLS = 5000;
   const IMPORT_TIMEOUT_MS = 45 * 60 * 1000;
@@ -162,12 +164,20 @@
     return st.display !== "none" && st.visibility !== "hidden" && st.opacity !== "0";
   }
 
+  // CGWEB111 FIX2 · MULTI_URL_MOUNT_RESTORE001 / IMPORT_SCOPE_DECOUPLE001
+  // Depuis CGWEB111, le titre « Import Quizypedia par URL » a volontairement disparu.
+  // Le mode multi-URL ne doit donc plus dépendre d'un texte de présentation.
   function findImportHeading() {
     return [...document.querySelectorAll("h1,h2,h3,h4")]
-      .find((e) => lower(e.textContent).includes("import quizypedia par url"));
+      .find((e) => lower(e.textContent).includes("import quizypedia par url")) || null;
   }
 
   function findImportScope() {
+    // Référence structurelle actuelle, stable et indépendante du libellé affiché.
+    const direct = document.querySelector("#cgimport002Panel");
+    if (direct) return direct;
+
+    // Fallback historique uniquement pour rollback / anciennes versions.
     const heading = findImportHeading();
     if (!heading) return null;
     return heading.closest("section,.card,.panel,[class*='card'],[class*='panel']") || heading.parentElement;
@@ -317,8 +327,8 @@
 
   async function startQueue() {
     if (state.running || !state.items.length) return;
-    if (!findImportHeading()) {
-      setGlobalMessage("Ouvre d'abord l'onglet « Import Quizypedia » puis la vue « Import par URL ».", "error");
+    if (!findImportScope()) {
+      setGlobalMessage("Importeur Quizypedia introuvable.", "error");
       return;
     }
 
@@ -568,8 +578,6 @@
   }
 
   function ensureUi() {
-    const heading = findImportHeading();
-    if (!heading) return;
     if (document.querySelector("#cgimport011Bulk")) return;
 
     const scope = findImportScope();
@@ -589,7 +597,7 @@
   new MutationObserver(ensureUi).observe(document.documentElement, { childList: true, subtree: true });
 
   window.CGIMPORT011 = {
-    version: "BULK_THEME_FILE001",
+    version: "CGWEB111_FIX2_MULTI_URL_MOUNT_RESTORE001",
     state,
     parseFile,
     start: startQueue,
@@ -599,4 +607,3 @@
     downloadReport
   };
 })();
-
