@@ -102,7 +102,8 @@ jobs:
           test -f web/functions/cgweb032.js
           test -f web/functions/cgweb029.js
           test -f web/functions/cgweb025.js
-          grep -Fq 'CGIMPORT002' web/public/index.html
+          grep -Fq 'cgimport009fix4.js' web/public/index.html
+          grep -Fq 'cgweb109.js' web/public/index.html
           grep -Fq 'cgweb016fix2.js?v=' web/public/index.html
           grep -Fq 'cgweb016fix2.css?v=' web/public/index.html
           grep -Fq 'cgimport002Quizypedia' web/functions/index.js
@@ -177,7 +178,7 @@ jobs:
           node --check web/public/cgweb016fix2.js
           node --check web/public/app.js
           node --check web/functions/index.js
-          echo "CGIMPORT002 + CGIMAGE001 : fichiers et syntaxe OK"
+          echo "Quizypedia + CGIMAGE001 : fichiers et syntaxe OK"
 
       - name: Authentification Google Cloud / Firebase
         uses: google-github-actions/auth@v2
@@ -214,7 +215,7 @@ jobs:
 
             curl --fail --silent --show-error --location               --header 'Cache-Control: no-cache'               "https://culturegeneralesync.web.app/?cgdeploy=${STAMP}"               -o /tmp/cg-live.html || true
 
-            if test -s /tmp/cg-live.html               && grep -Fq 'CGIMPORT002' /tmp/cg-live.html               && grep -Fq 'cgimage001.js?v=CGIMAGE001_1' /tmp/cg-live.html               && grep -Fq 'cgimage002.js?v=CGIMAGE002_1' /tmp/cg-live.html               && grep -Fq 'cgimage005.js?v=CGIMAGE005_1' /tmp/cg-live.html               && grep -Fq 'cgimage006.js?v=CGIMAGE006_1' /tmp/cg-live.html               && grep -Fq 'cgimage007.js?v=CGIMAGE007_1' /tmp/cg-live.html
+            if test -s /tmp/cg-live.html               && grep -Fq 'cgimport009fix4.js' /tmp/cg-live.html               && grep -Fq 'cgweb109.js' /tmp/cg-live.html               && grep -Fq 'cgimage001.js?v=CGIMAGE001_1' /tmp/cg-live.html               && grep -Fq 'cgimage002.js?v=CGIMAGE002_1' /tmp/cg-live.html               && grep -Fq 'cgimage005.js?v=CGIMAGE005_1' /tmp/cg-live.html               && grep -Fq 'cgimage006.js?v=CGIMAGE006_1' /tmp/cg-live.html               && grep -Fq 'cgimage007.js?v=CGIMAGE007_1' /tmp/cg-live.html
             then
               if curl --fail --silent --show-error --location                 --header 'Cache-Control: no-cache'                 "https://culturegeneralesync.web.app/cgimage007.js?cgdeploy=${STAMP}"                 -o /tmp/cgimage007-live.js                 && grep -Fq 'CGIMAGE007_1' /tmp/cgimage007-live.js
               then
@@ -235,4 +236,4 @@ jobs:
             exit 1
           fi
 
-          echo "✅ CGIMPORT002 + CGIMAGE001/2/5/6/7 sont servis par culturegeneralesync.web.app"
+          echo "✅ Quizypedia + CGIMAGE001/2/5/6/7 sont servis par culturegeneralesync.web.app"
