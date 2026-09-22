@@ -1,5 +1,6 @@
 // CGIMPORT009 FIX4 · diagnostic exact des fiches manquantes + hard cache bust
 // CGWEB110_IMPORT_REVIEW_RETIRE001_DIRECT_QUIZYPEDIA_IMPORT001_VALIDATION_UI_REMOVE001
+// CGWEB111_QUIZYPEDIA_CLEAN_LAYOUT001_DUPLICATE_AUTO_GUARD001_SETTINGS_NAV001_PRIMARY_NAV_4PLUSGEAR001
 // URL thème -> découverte des questionnaires -> capture séquentielle 1:1 -> import unique.
 // Le moteur individuel reste strictement verbatim : aucun contenu QCM n'est inventé.
 
@@ -606,7 +607,8 @@ async function importSelected(){
       const q=selected[i];
       status(`Import ${i+1}/${selected.length}…`,'warn');
 
-      if($('cgimp2SkipDuplicates').checked&&apiSearch()?.questionPrefix){
+      // CGWEB111 · DUPLICATE_AUTO_GUARD001 : protection exacte automatique, sans option UI.
+      if(apiSearch()?.questionPrefix){
         const hits=await apiSearch().questionPrefix(q.question,50);
         const duplicate=hits.some(h=>
           norm(h.question)===norm(q.question)&&

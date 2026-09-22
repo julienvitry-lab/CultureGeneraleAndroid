@@ -50,7 +50,7 @@
         <button type="button" data-cg16-page="create">Création de questions</button>
         <button type="button" data-cg16-page="learning">Historique</button>
         <button type="button" data-cg16-page="directory">Répertoire</button>
-        <button type="button" data-cg16-page="more">Plus</button>
+        <button type="button" data-cg16-page="more" class="cg16-settings-tab" aria-label="Paramètres" title="Paramètres"><span aria-hidden="true">⚙</span></button>
       </nav>
 
       <nav id="cg16SecondaryNav" class="cg16-secondary-nav cg16-plus-nav-fix4c cg36-plus-grid" aria-label="Sous-navigation Plus">
@@ -370,6 +370,7 @@ if (!PAGES.has(page)) page = "directory";
   // CGWEB109_FIX4_NO_PERIODIC_LAYOUT001_NO_FORCED_SCROLL001
 // CGWEB110_IMPORT_REVIEW_RETIRE001_DIRECT_QUIZYPEDIA_IMPORT001_VALIDATION_UI_REMOVE001
 // CGWEB110_FIX1_AUTH_SHELL_VISIBILITY001_LOGIN_MODE_SYNC001
+// CGWEB111_QUIZYPEDIA_CLEAN_LAYOUT001_DUPLICATE_AUTO_GUARD001_SETTINGS_NAV001_PRIMARY_NAV_4PLUSGEAR001
   function organizeModules() {
     buildShell();
     hideLegacy();

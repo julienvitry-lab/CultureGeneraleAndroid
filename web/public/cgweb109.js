@@ -1,7 +1,8 @@
 (() => {
   "use strict";
 
-  const VERSION = "CGWEB110";
+  const VERSION = "CGWEB111";
+  // CGWEB111_QUIZYPEDIA_CLEAN_LAYOUT001_DUPLICATE_AUTO_GUARD001_SETTINGS_NAV001_PRIMARY_NAV_4PLUSGEAR001
   // CGWEB110_IMPORT_REVIEW_RETIRE001_DIRECT_QUIZYPEDIA_IMPORT001_VALIDATION_UI_REMOVE001
   // CGWEB109_FIX4_NO_PERIODIC_LAYOUT001_NO_FORCED_SCROLL001
   // CGWEB109_FIX2_SCROLL_STABILITY001_OBSERVER_SCOPE001
@@ -100,19 +101,8 @@
       flow.className = "cgweb109-quiz-flow";
       flow.innerHTML = `
         <section class="cgweb109-source-block">
-          <div class="cgweb109-flow-head">
-            <div>
-              <div class="cgweb109-kicker">QUIZYPEDIA</div>
-              <h2>Capture de questions</h2>
-              <p>Une seule chaîne de travail : une URL ou un fichier de thèmes, puis import direct des questions sélectionnées.</p>
-            </div>
-          </div>
           <article class="cgweb109-source-card cgweb109-source-unified">
             <div class="cgweb109-card-head cgweb109-source-head">
-              <div>
-                <strong>Source Quizypedia</strong>
-                <span>Choisis une URL unique ou un fichier contenant plusieurs URL.</span>
-              </div>
               <div class="cgweb109-source-switch" role="group" aria-label="Type de source Quizypedia">
                 <button type="button" id="cgweb109ModeUrl" aria-pressed="true">URL unique</button>
                 <button type="button" id="cgweb109ModeFile" aria-pressed="false">Plusieurs URL · CSV / ODS</button>
@@ -184,15 +174,6 @@
       q("#cgweb109MultiMount").appendChild(control);
     }
     wireQuizMode();
-
-    // Titres internes allégés : les nouvelles cartes donnent déjà le contexte.
-    const singleTitle = single && qa("h1,h2,h3", single)
-      .find(x => norm(x.textContent).toLowerCase().includes("import quizypedia par url"));
-    if (singleTitle) singleTitle.textContent = "Importer depuis une URL";
-
-    const multiTitle = multi && qa("h1,h2,h3", multi)
-      .find(x => norm(x.textContent).toLowerCase().includes("import de plusieurs thèmes"));
-    if (multiTitle) multiTitle.textContent = "Importer plusieurs thèmes";
 
   }
 
