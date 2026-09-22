@@ -369,6 +369,7 @@ if (!PAGES.has(page)) page = "directory";
   // CGWEB109_FIX3_IMPORT_MOUNT_OWNERSHIP001_PRIMARY_TABS_EQUAL002
   // CGWEB109_FIX4_NO_PERIODIC_LAYOUT001_NO_FORCED_SCROLL001
 // CGWEB110_IMPORT_REVIEW_RETIRE001_DIRECT_QUIZYPEDIA_IMPORT001_VALIDATION_UI_REMOVE001
+// CGWEB110_FIX1_AUTH_SHELL_VISIBILITY001_LOGIN_MODE_SYNC001
   function organizeModules() {
     buildShell();
     hideLegacy();
@@ -447,10 +448,20 @@ move("cgimage002Panel", "cg16ImportImagesMount");
     if (badge.textContent !== text) badge.textContent = text;
     if (badge.className !== className) badge.className = className;
 
-    // CGWEB109 FIX4 : ne jamais relancer toute la navigation pour un simple
-    // changement d'état de connexion.
+    // CGWEB110 FIX1 · AUTH_SHELL_VISIBILITY001 / LOGIN_MODE_SYNC001
+    // FIX4 avait cessé d'appeler renderNavigation() ici, ce qui était souhaité
+    // pour la stabilité du scroll, mais laissait parfois main.cg16-login-mode
+    // figé dans son état initial lorsque Firebase restaurait la session après
+    // le premier rendu. Le shell restait alors masqué malgré "Connecté".
+    const user = window.CGWEB001?.getUser?.() || null;
+    const loginView = $("loginView");
+    const loginVisible = Boolean(loginView && !loginView.classList.contains("hidden"));
+
+    const main = document.querySelector(".app-shell main");
+    if (main) main.classList.toggle("cg16-login-mode", loginVisible);
+
     const shell = $("cgweb016Shell");
-    if (shell) shell.classList.toggle("cg16-auth-hidden", !window.CGWEB001?.getUser?.());
+    if (shell) shell.classList.toggle("cg16-auth-hidden", !user || loginVisible);
   }
 
   function resetCreateForm({ preserveClassification = true } = {}) {
@@ -599,8 +610,16 @@ move("cgimage002Panel", "cg16ImportImagesMount");
     lateObserver.observe(document.body, {subtree:true, childList:true});
 
     // L'état Firebase peut changer sans modifier la structure de la page :
-    // seul le badge est rafraîchi, jamais les panneaux.
+    // seul le badge et la visibilité du shell sont rafraîchis, jamais les panneaux.
     window.setInterval(renderUnifiedConnection, 2500);
+
+    // Réaction immédiate au basculement Connexion -> application.
+    // Observer ultra-ciblé : aucun réagencement de contenu, aucun scroll.
+    const loginView = $("loginView");
+    if (loginView) {
+      const authUiObserver = new MutationObserver(renderUnifiedConnection);
+      authUiObserver.observe(loginView, {attributes:true, attributeFilter:["class"]});
+    }
 
     window.addEventListener("focus", renderUnifiedConnection);
   }
