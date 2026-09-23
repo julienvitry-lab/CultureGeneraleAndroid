@@ -499,3 +499,119 @@ body.cg16-installed #cg16PageImport .cg16-import-page > .cg16-mount > #cgimage00
 body.cg16-installed #cgweb006Panel.cg16-directory-legacy-hidden{
   display:none!important;
 }
+
+/* ==================================================================
+   CGWEB112 · CREATE_FORM_COMPACT001 / CREATE_FOUR_ROW_LAYOUT001
+              CORRECT_LETTER_ONLY001
+   ================================================================== */
+
+body.cg16-installed #cg16PageCreate .cg16-create-panel{
+  padding:14px 16px 15px!important;
+}
+
+body.cg16-installed #cg16PageCreate .cg16-section-head{
+  display:none!important;
+}
+
+body.cg16-installed #cg16PageCreate .cg112-create-form{
+  display:flex!important;
+  flex-direction:column;
+  gap:10px;
+}
+
+body.cg16-installed #cg16PageCreate .cg112-create-row{
+  display:grid;
+  gap:10px 12px;
+  width:100%;
+  min-width:0;
+}
+
+body.cg16-installed #cg16PageCreate .cg112-row-identity{
+  grid-template-columns:minmax(150px,.65fr) minmax(220px,.9fr) minmax(300px,1.8fr);
+}
+
+body.cg16-installed #cg16PageCreate .cg112-row-content{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+
+body.cg16-installed #cg16PageCreate .cg112-row-content textarea{
+  min-height:88px;
+  height:88px;
+  line-height:1.35;
+  resize:vertical;
+}
+
+body.cg16-installed #cg16PageCreate .cg112-row-answers{
+  grid-template-columns:repeat(4,minmax(0,1fr)) 112px;
+  align-items:end;
+}
+
+body.cg16-installed #cg16PageCreate .cg112-field-correct select{
+  text-align:center;
+  text-align-last:center;
+  font-weight:900;
+  font-size:1rem;
+}
+
+body.cg16-installed #cg16PageCreate .cg112-row-media{
+  grid-template-columns:minmax(0,2.3fr) minmax(220px,.7fr);
+  align-items:start;
+}
+
+body.cg16-installed #cg16PageCreate .cg112-field-image small{
+  margin-top:1px;
+  line-height:1.2;
+  opacity:.8;
+}
+
+body.cg16-installed #cg16PageCreate .cg112-create-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  width:100%;
+  padding-top:2px;
+}
+
+body.cg16-installed #cg16PageCreate .cg112-create-form .cg16-wide{
+  grid-column:auto!important;
+}
+
+@media(max-width:1250px){
+  body.cg16-installed #cg16PageCreate .cg112-row-identity{
+    grid-template-columns:minmax(130px,.6fr) minmax(190px,.85fr) minmax(250px,1.55fr);
+  }
+
+  body.cg16-installed #cg16PageCreate .cg112-row-answers{
+    grid-template-columns:repeat(2,minmax(0,1fr)) 100px;
+  }
+
+  body.cg16-installed #cg16PageCreate .cg112-field-correct{
+    grid-column:3;
+    grid-row:1 / span 2;
+    align-self:stretch;
+  }
+}
+
+@media(max-width:820px){
+  body.cg16-installed #cg16PageCreate .cg112-row-identity,
+  body.cg16-installed #cg16PageCreate .cg112-row-content,
+  body.cg16-installed #cg16PageCreate .cg112-row-media{
+    grid-template-columns:1fr;
+  }
+
+  body.cg16-installed #cg16PageCreate .cg112-row-answers{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
+  body.cg16-installed #cg16PageCreate .cg112-field-correct{
+    grid-column:auto;
+    grid-row:auto;
+  }
+}
+
+@media(max-width:520px){
+  body.cg16-installed #cg16PageCreate .cg112-row-answers{
+    grid-template-columns:1fr;
+  }
+}

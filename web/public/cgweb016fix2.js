@@ -1,3 +1,4 @@
+// CGWEB112 · CREATE_FORM_COMPACT001 / CREATE_FOUR_ROW_LAYOUT001 / CORRECT_LETTER_ONLY001
 // CGWEB016 FIX2 · chargement direct depuis index.html
 // CGWEB107_HISTORY_MAIN_TAB001
 // CGWEB108_DIRECTORY_COMPACT_LAYOUT001_MAIN_TABS_REORDER001_MASS_SELECTION_ENABLE001
@@ -114,78 +115,80 @@
         </section>
       <section id="cg16PageCreate" class="cg16-page" data-cg16-page-panel="create">
           <div class="cg16-create-panel">
-            <div class="cg16-section-head">
-              <div>
-                <div class="cg16-kicker">CRÉATION</div>
-                <h2>Nouvelle question</h2>
-                <p>Création directe dans Firestore avec le même moteur que CGWEB010.</p>
+            <!-- CGWEB112_CREATE_FORM_COMPACT001_CREATE_FOUR_ROW_LAYOUT001_CORRECT_LETTER_ONLY001 -->
+            <form id="cg16CreateForm" class="cg16-create-form cg112-create-form">
+
+              <div class="cg112-create-row cg112-row-identity">
+                <label class="cg112-field-id">ID
+                  <input id="cg16CreateId" placeholder="Vide = ID automatique">
+                </label>
+
+                <label class="cg112-field-mega">Mégathème
+                  <select id="cg16CreateMega">
+                    <option value=""></option>
+                    <option>Animaux et Plantes</option>
+                    <option>Culture Classique</option>
+                    <option>Culture Générale</option>
+                    <option>Culture Moderne</option>
+                    <option>Géographie</option>
+                    <option>Histoire</option>
+                    <option>Sciences et Techniques</option>
+                    <option>Sport</option>
+                  </select>
+                </label>
+
+                <label class="cg112-field-theme">Thème
+                  <input id="cg16CreateTheme">
+                </label>
               </div>
-            </div>
 
-            <form id="cg16CreateForm" class="cg16-create-form">
-              <label>ID
-                <input id="cg16CreateId" placeholder="Vide = ID automatique">
-              </label>
+              <div class="cg112-create-row cg112-row-content">
+                <label>Question
+                  <textarea id="cg16CreateQuestion" rows="3" required></textarea>
+                </label>
 
-              <label>Mégathème
-                <select id="cg16CreateMega">
-                  <option value=""></option>
-                  <option>Animaux et Plantes</option>
-                  <option>Culture Classique</option>
-                  <option>Culture Générale</option>
-                  <option>Culture Moderne</option>
-                  <option>Géographie</option>
-                  <option>Histoire</option>
-                  <option>Sciences et Techniques</option>
-                  <option>Sport</option>
-                </select>
-              </label>
+                <label>Détail
+                  <textarea id="cg16CreateDetail" rows="3"></textarea>
+                </label>
+              </div>
 
-              <label class="cg16-wide">Thème
-                <input id="cg16CreateTheme">
-              </label>
+              <div class="cg112-create-row cg112-row-answers">
+                <label>Proposition A
+                  <input id="cg16CreateA">
+                </label>
+                <label>Proposition B
+                  <input id="cg16CreateB">
+                </label>
+                <label>Proposition C
+                  <input id="cg16CreateC">
+                </label>
+                <label>Proposition D
+                  <input id="cg16CreateD">
+                </label>
 
-              <label class="cg16-wide">Question
-                <textarea id="cg16CreateQuestion" rows="3" required></textarea>
-              </label>
+                <label class="cg112-field-correct">Bonne réponse
+                  <select id="cg16CreateCorrect" aria-label="Bonne réponse">
+                    <option value=""></option>
+                    <option value="1">A</option>
+                    <option value="2">B</option>
+                    <option value="3">C</option>
+                    <option value="4">D</option>
+                  </select>
+                </label>
+              </div>
 
-              <label class="cg16-wide">Détail
-                <textarea id="cg16CreateDetail" rows="3"></textarea>
-              </label>
+              <div class="cg112-create-row cg112-row-media">
+                <label class="cgimg1-create-label cg112-field-image">Image
+                  <input id="cg16CreateImage" type="file" accept="image/*">
+                  <small>Firebase Storage sera la source officielle ; Android conservera uniquement un cache automatique.</small>
+                </label>
 
-              <label>Proposition A
-                <input id="cg16CreateA">
-              </label>
-              <label>Proposition B
-                <input id="cg16CreateB">
-              </label>
-              <label>Proposition C
-                <input id="cg16CreateC">
-              </label>
-              <label>Proposition D
-                <input id="cg16CreateD">
-              </label>
+                <label class="cg112-field-status">Statut
+                  <input id="cg16CreateStatus">
+                </label>
+              </div>
 
-              <label>Bonne réponse
-                <select id="cg16CreateCorrect">
-                  <option value=""></option>
-                  <option value="1">A</option>
-                  <option value="2">B</option>
-                  <option value="3">C</option>
-                  <option value="4">D</option>
-                </select>
-              </label>
-
-              <label>Statut
-                <input id="cg16CreateStatus">
-              </label>
-
-              <label class="cg16-wide cgimg1-create-label">Image de la question
-                <input id="cg16CreateImage" type="file" accept="image/*">
-                <small>Firebase Storage sera la source officielle ; Android conservera uniquement un cache automatique.</small>
-              </label>
-
-              <div class="cg16-create-actions cg16-wide">
+              <div class="cg16-create-actions cg112-create-actions">
                 <span id="cg16CreateState" class="cg16-create-state"></span>
                 <button id="cg16CreateReset" type="button" class="cg16-btn cg16-secondary">Réinitialiser</button>
                 <button id="cg16CreateSubmit" type="submit" class="cg16-btn cg16-primary">Créer la question</button>
