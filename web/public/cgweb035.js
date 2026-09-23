@@ -1,4 +1,5 @@
-const CGWEB035_VERSION='CGWEB113_HISTORY_SIMPLIFY001_DETAIL_DASHBOARD001_HISTORY_CARD_DETAIL001';
+const CGWEB035_VERSION='CGWEB113_FIX1B_DETAIL_SINGLE_REQUEST001_DETAIL_FETCH_STABILITY002';
+// CGWEB113_FIX1B_DETAIL_SINGLE_REQUEST001_DETAIL_FETCH_STABILITY002
 // CGWEB113_HISTORY_SIMPLIFY001_DETAIL_DASHBOARD001_HISTORY_CARD_DETAIL001_CROSS_SMART_RETIRE001
 // CGWEB107_HISTORY_MAIN_TAB001_HISTORY_CARD_COMPACT001_HISTORY_PAGING001
 const CG35_END='https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb032Search';
@@ -126,7 +127,10 @@ function cg113DetailTabs(domain){const a=[['','Total'],...CG35_DOMAINS.map(x=>[x
 async function cg35Detail(domain=''){
   try{
     CG35.detailDomain=domain||'';
-    const [ov,nv]=await Promise.all([cg35Api({mode:'overview'}),cg35Api({mode:'neverOverview'})]);
+    // CGWEB113 FIX1B · une seule invocation backend pour le panneau Détail.
+    const combined=await cg35Api({mode:'detailOverview'});
+    const ov=combined;
+    const nv=combined.never||{};
     const total=!domain, summary=ov.summary||{};
     const dr=total?null:(ov.domains||[]).find(x=>x.name===domain)||{};
     const nr=total?null:(nv.rows||[]).find(x=>x.name===domain)||{};

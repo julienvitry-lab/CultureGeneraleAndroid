@@ -5172,6 +5172,7 @@ async function smartLongStop(
   );
 }
 
+// CGWEB113_FIX1B_DETAIL_SINGLE_REQUEST001_DETAIL_FETCH_STABILITY002
 async function handleLearningHub(req,res){
   if(cors(req,res))return;
 
@@ -5374,6 +5375,19 @@ if(mode==='smartLongStart'){
 
               
     const learningModel=learningModelMeta(xPolicy);
+
+    // CGWEB113 FIX1B · DETAIL_SINGLE_REQUEST001
+    if(mode==='detailOverview'){
+      const never=await neverOverview(user.uid,analysis,xPolicy);
+      return json(res,200,{
+        ok:true,
+        summary:summaryOf(analysis),
+        domains:sortGroups(groupsFor(analysis,null),'mastery'),
+        never,
+        learningModel,
+        detailOverviewVersion:'CGWEB113_FIX1B'
+      });
+    }
 
     if(mode==='overview'){
       return json(res,200,{
