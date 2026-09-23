@@ -1,4 +1,5 @@
-const CGWEB035_VERSION='CGWEB107_HISTORY_MAIN_TAB001_HISTORY_CARD_COMPACT001_HISTORY_PAGING001';
+const CGWEB035_VERSION='CGWEB113_HISTORY_SIMPLIFY001_DETAIL_DASHBOARD001_HISTORY_CARD_DETAIL001';
+// CGWEB113_HISTORY_SIMPLIFY001_DETAIL_DASHBOARD001_HISTORY_CARD_DETAIL001_CROSS_SMART_RETIRE001
 // CGWEB107_HISTORY_MAIN_TAB001_HISTORY_CARD_COMPACT001_HISTORY_PAGING001
 const CG35_END='https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb032Search';
 const cg35$=id=>document.getElementById(id);
@@ -12,7 +13,9 @@ const cg35PriorityCount=n=>cg35Count(n,'prioritaire','prioritaires');
 const cg35DifficultyValue=v=>Number.isFinite(v)?`${cg35Fmt(v)}/100`:'—';
 const cg35Time=ms=>{const n=Number(ms||0);if(!n)return '—';if(n<60000)return `${(n/1000).toFixed(1).replace('.',',')} s`;return `${Math.floor(n/60000)} min ${Math.floor((n%60000)/1000)} s`};
 const cg35Date=ms=>ms?new Date(Number(ms)).toLocaleString('fr-FR'):'—';
-const CG35={tab:'history',domain:'',theme:'',historyFilter:'all',historyPageSize:100,historyOffset:0,historyRows:[],historyTotal:0,smartConfig:{count:20,duePct:40,weakPct:35,unseenPct:25,domain:''},smartRows:[]};
+const CG35={tab:'history',domain:'',theme:'',historyFilter:'all',historyPageSize:100,historyOffset:0,historyRows:[],historyTotal:0,smartConfig:{count:20,duePct:40,weakPct:35,unseenPct:25,domain:''},smartRows:[],detailDomain:''};
+
+const CG35_DOMAINS=['Animaux et Plantes','Culture Classique','Culture Générale','Culture Moderne','Géographie','Histoire','Sciences et Techniques','Sport'];
 
 async function cg35Api(body){
   const u=window.CGWEB001?.getUser?.();
@@ -29,7 +32,11 @@ function cg35Path(domain='',theme=''){return [domain,theme].filter(Boolean).map(
 function cg35QuestionButton(id,label='Ouvrir'){return id?`<button class="cg35-open" data-open="${cg35Esc(id)}">${label}</button>`:''}
 function cg35Copy(ids){const text=(ids||[]).filter(Boolean).join('\n');if(!text)return;navigator.clipboard?.writeText(text);cg35Status(`✅ ${ids.length} ID copié(s).`,'ok')}
 function cg35Tabs(){document.querySelectorAll('[data-cg35-tab]').forEach(b=>b.classList.toggle('active',b.dataset.cg35Tab===CG35.tab))}
-async function cg35Load(tab=CG35.tab){CG35.tab=tab;CG35.domain='';CG35.theme='';cg35Tabs();cg35Status('Chargement…');if(tab==='overview')return cg35Overview();if(tab==='history')return cg35History();if(tab==='never')return cg35NeverOverview();if(tab==='smart')return cg35Smart();return cg35Groups(tab,'')}
+async function cg35Load(tab=CG35.tab){
+  CG35.tab=tab;CG35.domain='';CG35.theme='';cg35Tabs();cg35Status('Chargement…');
+  if(tab==='detail'){CG35.detailDomain='';return cg35Detail('');}
+  CG35.historyFilter='all';return cg35History(true);
+}
 
 async function cg35Overview(){
   try{
@@ -53,73 +60,31 @@ function cg35HistoryResult(e){if(e.playType==='revision_reveal')return 'Révéla
 function cg35HistoryType(e){if(e.playType==='challenge_choice')return 'QCM';if(e.playType==='challenge_mental')return 'Mental';if(e.playType==='revision_reveal')return 'Révision';return e.playType||'Événement'}
 function cg35HistoryCard(e){
   const qcm=e.playType==='challenge_choice';
-  const attempt=e.attemptTotal>1
-    ? `<span class="cg35-history-attempt">Tentative ${e.attemptNumber}/${e.attemptTotal}</span>`
-    : '';
-
+  const attempt=e.attemptTotal>1?`<span class="cg35-history-attempt">Tentative ${e.attemptNumber}/${e.attemptTotal}</span>`:'';
   const right=qcm
     ? `<div class="cg35-history-answer"><span>Réponse donnée</span><b>${cg35Esc(e.selectedAnswer||'—')}</b></div>
        <div class="cg35-history-answer"><span>Bonne réponse au moment du jeu</span><b>${cg35Esc(e.correctAnswer||'—')}</b></div>
        ${e.bindingMismatch?'<div class="cg35-history-warning">⚠ incohérence ID historique/snapshot</div>':''}`
     : `<div class="cg35-history-answer"><span>Résultat</span><b>${cg35Esc(cg35HistoryResult(e))}</b></div>`;
-
-  return `<article class="cg35-event cg35-history-card">
+  return `<article class="cg35-event cg35-history-card cg113-history-card">
     <div class="cg35-history-left">
-      <header>
-        <b>${cg35Date(e.playedAtMs)} · ${cg35HistoryType(e)}</b>
-        ${attempt}
-      </header>
+      <header><b>${cg35Date(e.playedAtMs)} · ${cg35HistoryType(e)}</b>${attempt}</header>
       <small>${cg35Esc(cg35Path(e.domain,e.theme))}</small>
       <h3>${cg35Esc(e.question||'(question sans texte)')}</h3>
       <div class="cg35-result">${cg35Esc(cg35HistoryResult(e))}${e.responseTimeMs>0?` · ${cg35Time(e.responseTimeMs)}`:''}</div>
     </div>
-    <div class="cg35-history-right">
-      ${right}
-      ${cg35QuestionButton(e.questionId)}
-    </div>
+    <div class="cg113-history-detail"><span>Détail</span><p>${cg35Esc(e.detail||'—')}</p></div>
+    <div class="cg35-history-right">${right}${cg35QuestionButton(e.questionId)}</div>
   </article>`;
 }
 
 function cg35RenderHistory(){
-  const shown=CG35.historyRows.length;
-  const total=CG35.historyTotal;
-  const remaining=Math.max(0,total-shown);
-  const next=Math.min(CG35.historyPageSize,remaining);
-
+  const shown=CG35.historyRows.length,total=CG35.historyTotal,remaining=Math.max(0,total-shown),next=Math.min(CG35.historyPageSize,remaining);
   cg35SetBody(`
-    <div class="cg35-history-toolbar">
-      <div class="cg35-filterbar">
-        ${[['all','Tous'],['qcm','QCM'],['mental','Mental'],['revision','Révision']]
-          .map(([k,l])=>`<button data-history-filter="${k}" class="${CG35.historyFilter===k?'active':''}">${l}</button>`)
-          .join('')}
-      </div>
-      <div class="cg35-history-count">
-        <b>${cg35Fmt(shown)} affiché${shown===1?'':'s'}</b>
-        <span>sur ${cg35Fmt(total)} événement${total===1?'':'s'}</span>
-      </div>
-    </div>
-
-    <section class="cg35-list cg35-history-list">
-      ${CG35.historyRows.map(cg35HistoryCard).join('')||'<div class="cg35-empty">Aucun événement.</div>'}
-    </section>
-
-    ${remaining>0
-      ? `<div class="cg35-history-paging">
-           <button id="cg35HistoryMore" type="button">Afficher ${cg35Fmt(next)} de plus</button>
-           <span>${cg35Fmt(remaining)} restant${remaining===1?'':'s'}</span>
-         </div>`
-      : shown>0
-        ? `<div class="cg35-history-paging cg35-history-complete">Historique affiché en totalité.</div>`
-        : ''}
+    <div class="cg35-history-toolbar cg113-history-toolbar"><div class="cg35-history-count"><b>${cg35Fmt(shown)} affiché${shown===1?'':'s'}</b><span>sur ${cg35Fmt(total)} événement${total===1?'':'s'}</span></div></div>
+    <section class="cg35-list cg35-history-list">${CG35.historyRows.map(cg35HistoryCard).join('')||'<div class="cg35-empty">Aucun événement.</div>'}</section>
+    ${remaining>0?`<div class="cg35-history-paging"><button id="cg35HistoryMore" type="button">Afficher ${cg35Fmt(next)} de plus</button><span>${cg35Fmt(remaining)} restant${remaining===1?'':'s'}</span></div>`:shown>0?'<div class="cg35-history-paging cg35-history-complete">Historique affiché en totalité.</div>':''}
   `);
-
-  document.querySelectorAll('[data-history-filter]').forEach(
-    b=>b.onclick=()=>{
-      CG35.historyFilter=b.dataset.historyFilter;
-      cg35History(true);
-    }
-  );
-
   cg35$('cg35HistoryMore')?.addEventListener('click',()=>cg35History(false));
 }
 
@@ -133,7 +98,7 @@ async function cg35History(reset=true){
 
     const d=await cg35Api({
       mode:'history',
-      filter:CG35.historyFilter,
+      filter:'all',
       limit:CG35.historyPageSize,
       offset:CG35.historyOffset
     });
@@ -153,6 +118,49 @@ async function cg35History(reset=true){
     cg35SetBody(`<div class="cg35-error">${cg35Esc(e.message)}</div>`);
     cg35Status(`❌ ${e.message}`,'bad');
   }
+}
+
+function cg113Val(v,suffix=''){if(v===null||v===undefined||!Number.isFinite(Number(v)))return '—';return `${cg35Fmt(v)}${suffix}`;}
+function cg113Pct(v,n){return Number(n)>0?`${cg35Fmt(v)} %`:'—';}
+function cg113DetailTabs(domain){const a=[['','Total'],...CG35_DOMAINS.map(x=>[x,x])];return `<nav class="cg113-detail-tabs" aria-label="Détail par mégathème">${a.map(([k,l])=>`<button type="button" data-cg113-domain="${cg35Esc(k)}" class="${k===domain?'active':''}">${cg35Esc(l)}</button>`).join('')}</nav>`;}
+async function cg35Detail(domain=''){
+  try{
+    CG35.detailDomain=domain||'';
+    const [ov,nv]=await Promise.all([cg35Api({mode:'overview'}),cg35Api({mode:'neverOverview'})]);
+    const total=!domain, summary=ov.summary||{};
+    const dr=total?null:(ov.domains||[]).find(x=>x.name===domain)||{};
+    const nr=total?null:(nv.rows||[]).find(x=>x.name===domain)||{};
+    const src=total?summary:dr, m=src.mastery||{};
+    const totalQ=total?Number(nv.total||0):Number(nr.total||0);
+    const seen=total?Number(summary.seenQuestions||0):Number(nr.seen||dr.questionCount||0);
+    const unseen=total?Number(nv.unseen||Math.max(0,totalQ-seen)):Number(nr.unseen||0);
+    const attempts=Number(src.attempts||0), success=Number(src.successPercent||0);
+    const due=Number(src.dueCount||0), priority=Number(src.priorityCount||0);
+    const weak=Number(total?src.averageWeakness:src.weakness)||0;
+    const median=Number(src.medianResponseMs||0), average=Number(src.averageResponseMs||0), slow=Number(src.knownSlowCount||0);
+    const difficulty=total?src.averageDifficulty:src.difficulty, diffCount=Number(src.difficultyQuestionCount||0);
+    cg35SetBody(`<section class="cg113-detail">
+      ${cg113DetailTabs(CG35.detailDomain)}
+      <div class="cg113-summary-grid">
+        <article><span>Questions total</span><b>${cg113Val(totalQ)}</b></article><article><span>Questions vues</span><b>${cg113Val(seen)}</b></article>
+        <article><span>Jamais vues</span><b>${cg113Val(unseen)}</b></article><article><span>Réponses évaluées</span><b>${cg113Val(attempts)}</b></article>
+        <article><span>Réussite</span><b>${cg113Pct(success,attempts)}</b></article><article><span>À réviser</span><b>${cg113Val(due)}</b></article>
+        <article><span>Points faibles</span><b>${cg113Val(priority)}</b></article><article><span>Faiblesse moyenne</span><b>${cg113Val(weak,' / 100')}</b></article>
+      </div>
+      <section class="cg113-detail-section"><h3>Maîtrise</h3><div class="cg113-mastery-grid">
+        <article><span>Découverte</span><b>${cg113Val(m['Découverte']||0)}</b></article><article><span>Fragile</span><b>${cg113Val(m['Fragile']||0)}</b></article>
+        <article><span>Connue</span><b>${cg113Val(m['Connue']||0)}</b></article><article><span>Maîtrisée</span><b>${cg113Val(m['Maîtrisée']||0)}</b></article>
+        <article><span>À réviser</span><b>${cg113Val(m['À réviser']||0)}</b></article>
+      </div></section>
+      <section class="cg113-detail-section"><h3>Temps de réponse et difficulté</h3><div class="cg113-performance-grid">
+        <article><span>Temps médian</span><b>${cg35Time(median)}</b></article><article><span>Temps moyen</span><b>${cg35Time(average)}</b></article>
+        <article><span>Connues mais lentes</span><b>${cg113Val(slow)}</b></article><article><span>Difficulté</span><b>${difficulty==null?'—':`${cg35Fmt(difficulty)} / 100`}</b></article>
+        <article><span>Questions évaluées pour la difficulté</span><b>${cg113Val(diffCount)}</b></article>
+      </div></section>
+    </section>`);
+    document.querySelectorAll('[data-cg113-domain]').forEach(b=>b.onclick=()=>cg35Detail(b.dataset.cg113Domain||''));
+    cg35Status(`✅ Détail chargé · ${domain||'Total'}.`,'ok');
+  }catch(e){cg35SetBody(`<div class="cg35-error">${cg35Esc(e.message)}</div>`);cg35Status(`❌ ${e.message}`,'bad');}
 }
 
 const CG35_LABELS={mastery:'Maîtrise',due:'À réviser',weakness:'Points faibles',response:'Temps de réponse',difficulty:'Difficulté'};
@@ -2465,14 +2473,12 @@ async function cg35GenerateSmartLegacy(){
 
 function cg35Wire(){
   document.querySelectorAll('[data-cg35-tab]').forEach(b=>b.onclick=()=>cg35Load(b.dataset.cg35Tab));
-  cg35$('cg35Refresh').onclick=()=>cg35Load(CG35.tab);
   cg35$('cgweb035Panel').addEventListener('click',e=>{const b=e.target.closest('[data-open]');if(b?.dataset.open)window.CGWEB019_API?.open?.(b.dataset.open)});
 }
 function cg35Init(){
   if(cg35$('cgweb035Panel'))return;
-  const p=document.createElement('section');p.id='cgweb035Panel';p.className='cg35-panel';p.innerHTML=`<header class="cg35-head"><div><div class="cg35-kicker">CGWEB035 FIX2 · LEARNING_HUB002</div><h2>Historique</h2><p>Historique complet du jeu, maîtrise, révisions, points faibles, vitesse et difficulté.</p></div><button id="cg35Refresh">Actualiser</button></header>
-  <nav class="cg35-tabs" aria-label="Historique et analyses"><button data-cg35-tab="overview" class="active">Vue d’ensemble</button><button data-cg35-tab="history">Historique</button><button data-cg35-tab="mastery">Maîtrise</button><button data-cg35-tab="never">Jamais vues</button><button data-cg35-tab="due">À réviser</button><button data-cg35-tab="weakness">Points faibles</button><button data-cg35-tab="response">Temps de réponse</button><button data-cg35-tab="difficulty">Difficulté</button><button data-cg35-tab="smart">Session intelligente</button></nav>
-  <div id="cg35Body" class="cg35-body"></div><div id="cg35Status" class="cg35-status">Initialisation…</div>`;
+  const p=document.createElement('section');p.id='cgweb035Panel';p.className='cg35-panel cg113-panel';
+  p.innerHTML=`<nav class="cg35-tabs cg113-main-tabs" aria-label="Historique"><button data-cg35-tab="history" class="active">Historique</button><button data-cg35-tab="detail">Détail</button></nav><div id="cg35Body" class="cg35-body"></div><div id="cg35Status" class="cg35-status">Initialisation…</div>`;
   (document.querySelector('main')||document.body).appendChild(p);cg35Wire();setTimeout(()=>{if(window.CGWEB001?.getUser?.())cg35Load('history')},600);
 }
 window.CGWEB035_API={open:()=>{window.CGWEB016_API?.navigate?.('learning');cg35Load('history')},refresh:()=>cg35Load(CG35.tab)};
