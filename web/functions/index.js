@@ -1,6 +1,9 @@
-// CGIMPORT009 FIX4 · diagnostic exact des fiches manquantes + multi-session Firebase
+// CGIMPORT009 FIX5 · PORTRAIT_QUESTION_MATCH001 / IMAGE_CONTEXT_IDENTITY001
 // Règle : Culture Générale ne fabrique ni question, ni détail, ni distracteur.
 // Les 4 propositions sont capturées telles qu'affichées par Quizypedia.
+// Une question-image n'est acceptée que si l'identité portée par l'image
+// correspond de façon univoque à UNE des quatre réponses source.
+// CGIMPORT009_FIX5_PORTRAIT_QUESTION_MATCH001_IMAGE_CONTEXT_IDENTITY001
 
 const {onRequest} = require('firebase-functions/v2/https');
 const {initializeApp} = require('firebase-admin/app');
@@ -453,6 +456,113 @@ async function collectOptions(page,sourceValues){
     const answerWidth=Math.max(1,right-left);
 
     /*
+     * FIX5 · IMAGE_CONTEXT_IDENTITY001
+     *
+     * Les questions de type « portrait » n'ont parfois aucun indice textuel
+     * permettant d'identifier la fiche source. On collecte alors UNIQUEMENT
+     * l'identité exposée par le DOM de l'image visible :
+     * alt/title/aria-label/data-*, URL src/currentSrc/background-image,
+     * lien parent et éventuelle légende <figcaption>.
+     *
+     * Aucune reconnaissance visuelle, aucun OCR, aucune déduction externe.
+     */
+    const decodeSafe=value=>{
+      const raw=String(value??'');
+      try{return decodeURIComponent(raw);}catch{return raw;}
+    };
+
+    const imageCandidates=[];
+    const imageSelector=[
+      'img','picture img','svg image',
+      '[class*="portrait"]','[class*="photo"]','[class*="image"]','[class*="picture"]',
+      '[style*="background-image"]'
+    ].join(',');
+
+    for(const node of document.querySelectorAll(imageSelector)){
+      const el=node.tagName?.toLowerCase()==='image' ? (node.ownerSVGElement||node) : node;
+      if(!visible(el))continue;
+
+      const r=el.getBoundingClientRect();
+      if(r.width<45||r.height<45)continue;
+      if(r.top>top+80)continue;
+
+      const overlap=Math.max(0,Math.min(r.right,right)-Math.max(r.left,left));
+      const overlapRatio=overlap/Math.max(1,Math.min(r.width,answerWidth));
+      if(overlapRatio<0.20)continue;
+
+      const distance=Math.max(0,top-r.bottom);
+      if(distance>900)continue;
+
+      const attrs=[];
+      for(const a of [...(node.attributes||[])]){
+        if(!a?.value)continue;
+        if(a.name==='style'&&a.value.length>500)continue;
+        attrs.push(`${a.name}=${decodeSafe(a.value)}`);
+      }
+
+      let src='';
+      if(node.tagName?.toLowerCase()==='img'){
+        src=node.currentSrc||node.src||node.getAttribute('src')||
+          node.getAttribute('data-src')||node.getAttribute('data-original')||
+          node.getAttribute('data-lazy-src')||'';
+      }else if(node.tagName?.toLowerCase()==='image'){
+        src=node.getAttribute('href')||node.getAttribute('xlink:href')||'';
+      }
+
+      const bg=getComputedStyle(el).backgroundImage||'';
+      const bgUrl=(bg.match(/url\(["']?(.+?)["']?\)/)||[])[1]||'';
+
+      const figure=node.closest?.('figure');
+      const caption=figure?.querySelector?.('figcaption');
+      const link=node.closest?.('a[href]');
+
+      const meta=[
+        node.getAttribute?.('alt'),
+        node.getAttribute?.('title'),
+        node.getAttribute?.('aria-label'),
+        src,
+        bgUrl,
+        link?.href,
+        caption?.innerText,
+        attrs.join(' ')
+      ]
+        .map(decodeSafe)
+        .map(oneLine)
+        .filter(Boolean)
+        .join(' | ');
+
+      if(!meta)continue;
+
+      let score=overlapRatio*500+Math.max(0,500-distance);
+      score+=Math.min((r.width*r.height)/3500,220);
+      if(node.tagName?.toLowerCase()==='img')score+=80;
+      if(node.getAttribute?.('alt'))score+=100;
+      if(node.getAttribute?.('title')||node.getAttribute?.('aria-label'))score+=80;
+
+      imageCandidates.push({
+        meta,
+        score,
+        distance,
+        area:r.width*r.height
+      });
+    }
+
+    imageCandidates.sort((a,b)=>
+      b.score-a.score || a.distance-b.distance || b.area-a.area
+    );
+
+    const imageContextSources=[];
+    const imageSeen=new Set();
+    for(const candidate of imageCandidates){
+      const k=n(candidate.meta);
+      if(!k||imageSeen.has(k))continue;
+      imageSeen.add(k);
+      imageContextSources.push(candidate.meta);
+      if(imageContextSources.length>=4)break;
+    }
+    const imageContextText=oneLine(imageContextSources.join(' | '));
+
+    /*
      * FIX6 : trouver le PANNEAU DE QUESTION, pas seulement le wrapper A/B/C/D.
      *
      * On cherche un bloc visible situé au-dessus des quatre propositions,
@@ -615,6 +725,55 @@ async function collectOptions(page,sourceValues){
       }
     }
 
+    /*
+     * FIX5 : un panneau portrait peut ne contenir aucune valeur textuelle
+     * provenant de la fiche. Dans ce cas, chercher prudemment un intitulé
+     * interrogatif visible au-dessus des quatre réponses.
+     */
+    if(!questionText&&imageContextText){
+      const qCandidates=[];
+      for(const node of document.querySelectorAll('h1,h2,h3,h4,h5,h6,p,div,span,strong,b')){
+        if(!visible(node))continue;
+        const raw=oneLine(node.innerText||node.textContent||'');
+        if(raw.length<4||raw.length>260||!/[?？]/.test(raw))continue;
+
+        const nk=n(raw);
+        if(!nk||optionNorms.has(nk))continue;
+
+        const r=node.getBoundingClientRect();
+        if(r.top>=top+40||r.bottom>top+80)continue;
+
+        const overlap=Math.max(0,Math.min(r.right,right)-Math.max(r.left,left));
+        const overlapRatio=overlap/Math.max(1,Math.min(r.width,answerWidth));
+        if(overlapRatio<0.25)continue;
+
+        const distance=Math.max(0,top-r.bottom);
+        if(distance>900)continue;
+
+        const tag=node.tagName.toLowerCase();
+        const cs=getComputedStyle(node);
+        const size=parseFloat(cs.fontSize)||0;
+        const weight=parseInt(cs.fontWeight,10)||400;
+
+        let score=1800+overlapRatio*300+Math.max(0,500-distance);
+        if(/^h[1-6]$/.test(tag))score+=200;
+        if(weight>=600)score+=100;
+        score+=Math.min(size,40)*3;
+
+        qCandidates.push({raw,score,distance});
+      }
+
+      qCandidates.sort((a,b)=>b.score-a.score||a.distance-b.distance);
+      if(qCandidates[0]){
+        questionText=qCandidates[0].raw;
+        if(!panelText){
+          panelText=questionText;
+          panelRaw=questionText;
+          lines=[questionText];
+        }
+      }
+    }
+
     const qNorm=n(questionText);
     let qIndex=qNorm ? lines.findIndex(line=>n(line)===qNorm) : -1;
 
@@ -673,7 +832,8 @@ async function collectOptions(page,sourceValues){
     const signature=
       options.map(n).join('|')+'||'+
       n(questionText)+'||'+
-      n(detailText).slice(0,1800);
+      n(detailText).slice(0,1800)+'||'+
+      n(imageContextText).slice(0,1200);
 
     return {
       ok:true,
@@ -686,13 +846,15 @@ async function collectOptions(page,sourceValues){
       verbatimPanel:Boolean(questionText),
       contextText,
       contextHits:contextHits.map(h=>h.text),
+      imageContextText,
+      imageContextSources,
       url:location.href,
       signature
     };
   },sourceValues);
 }
 
-function identifySourceFiche(fiches,options,contextText){
+function identifySourceFiche(fiches,options,contextText,imageContextText=''){
   const optionNorms=new Set(options.map(norm));
   const coverage=new Map();
 
@@ -756,6 +918,79 @@ function identifySourceFiche(fiches,options,contextText){
   );
 
   if(!candidates.length){
+    /*
+     * FIX5 · PORTRAIT_QUESTION_MATCH001
+     *
+     * Aucun indice textuel : on peut utiliser les métadonnées de l'image,
+     * mais uniquement si elles désignent sans ambiguïté UNE réponse parmi
+     * les quatre propositions visibles.
+     */
+    const imageVisible=norm(imageContextText);
+    const imageCompact=imageVisible.replace(/\s+/g,'');
+
+    if(imageVisible){
+      const imageMatches=[];
+
+      for(const fiche of fiches){
+        const values=[{label:'Nom',value:fiche.name},...(fiche.fields||[])];
+        const answerFields=values.filter(f=>
+          norm(f.label)===answerLabelKey&&optionNorms.has(norm(f.value))
+        );
+        if(answerFields.length!==1)continue;
+
+        const answer=one(answerFields[0].value);
+        const answerKey=norm(answer);
+        const answerCompact=answerKey.replace(/\s+/g,'');
+
+        if(answerKey.length<4||answerCompact.length<4)continue;
+
+        const phraseMatch=imageVisible.includes(answerKey);
+        const compactMatch=
+          answerCompact.length>=6&&imageCompact.includes(answerCompact);
+
+        if(!phraseMatch&&!compactMatch)continue;
+
+        imageMatches.push({
+          fiche,
+          answer,
+          evidence:answerKey,
+          phraseMatch,
+          compactMatch
+        });
+      }
+
+      const unique=new Map();
+      for(const x of imageMatches)unique.set(Number(x.fiche.number),x);
+      const matches=[...unique.values()];
+
+      if(matches.length===1){
+        const hit=matches[0];
+        const correctIndex=options.findIndex(v=>norm(v)===norm(hit.answer))+1;
+        if(correctIndex<1){
+          return {ok:false,error:'Identité image trouvée mais réponse absente des quatre propositions visibles.'};
+        }
+
+        return {
+          ok:true,
+          sourceFiche:hit.fiche.name,
+          sourceNumber:hit.fiche.number,
+          answerLabel:answerLabel.label,
+          detail:'',
+          correctIndex,
+          correctText:hit.answer,
+          matchScore:1000,
+          matchMode:'image-context'
+        };
+      }
+
+      if(matches.length>1){
+        return {
+          ok:false,
+          error:'Contexte image ambigu : plusieurs réponses visibles sont présentes dans les métadonnées de l’image.'
+        };
+      }
+    }
+
     return {ok:false,error:'Aucune fiche source ne correspond au contexte complet de la question.'};
   }
   if(candidates.length>1 &&
@@ -785,7 +1020,8 @@ function identifySourceFiche(fiches,options,contextText){
     detail,
     correctIndex,
     correctText:hit.answer,
-    matchScore:hit.score
+    matchScore:hit.score,
+    matchMode:'text-context'
   };
 }
 
@@ -974,7 +1210,7 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
             break;
           }
 
-          const match=identifySourceFiche(fiches,state.options,state.contextText);
+          const match=identifySourceFiche(fiches,state.options,state.contextText,state.imageContextText);
           if(!match.ok){
             sessionEnd='question non identifiable';
             diagnostics.push(`Session ${session}, tour ${turn}: ${match.error}`);
@@ -982,6 +1218,11 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
             if(state.contextHits?.length){
               diagnostics.push(
                 `Valeurs source dans le contexte: ${state.contextHits.slice(0,8).join(' | ')}`
+              );
+            }
+            if(state.imageContextSources?.length){
+              diagnostics.push(
+                `Contexte image: ${state.imageContextSources.slice(0,3).join(' | ')}`
               );
             }
             if(state.panelLines?.length){
@@ -1013,6 +1254,7 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
               source_fiche:match.sourceFiche,
               source_number:match.sourceNumber,
               answer_label:match.answerLabel,
+              match_mode:match.matchMode||'text-context',
               verbatim_panel:true
             });
             seen.add(match.sourceNumber);
@@ -1193,7 +1435,7 @@ exports.cgimport002Quizypedia=onRequest({
      * Le frontend CGIMPORT009 enchaîne ces appels un par un pour éviter un énorme
      * traitement serveur unique.
      */
-    console.log('CGIMPORT009 FIX4 capture start:',{
+    console.log('CGIMPORT009 FIX5 capture start:',{
       url:parsed.url.toString(),
       questionnaire:parsed.questionnaire
     });
@@ -1219,7 +1461,7 @@ exports.cgimport002Quizypedia=onRequest({
       parsed.pathname
     );
 
-    console.log('CGIMPORT009 FIX4 capture end:',{
+    console.log('CGIMPORT009 FIX5 capture end:',{
       questionnaire:parsed.questionnaire,
       questions:capture.questions.length,
       fiches:fiches.length,
@@ -1252,11 +1494,11 @@ exports.cgimport002Quizypedia=onRequest({
       sessionStats:capture.sessionStats||[]
     });
   }catch(e){
-    console.error('CGIMPORT009 FIX4',e);
+    console.error('CGIMPORT009 FIX5',e);
     return res.status(e.status||500).json({
       ok:false,
       strict:true,
-      error:e.message||'Erreur serveur CGIMPORT009 FIX4.'
+      error:e.message||'Erreur serveur CGIMPORT009 FIX5.'
     });
   }
 });
