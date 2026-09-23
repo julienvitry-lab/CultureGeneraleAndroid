@@ -1,12 +1,12 @@
-// CGIMPORT009 FIX6 · PORTRAIT_RESOURCE_TRACE001 / IMAGE_RESOURCE_IDENTITY002
-// Règle : Culture Générale ne fabrique ni question, ni détail, ni distracteur.
-// Les 4 propositions sont capturées telles qu'affichées par Quizypedia.
-// Ordre d'identification strict : texte -> métadonnées DOM image ->
-// ressources image réellement chargées par Chromium.
-// Une identité image/ressource n'est acceptée que si elle correspond
-// sans ambiguïté à UNE des quatre propositions visibles.
+// CGIMPORT010 · LEGACY_PLAYWRIGHT_PORT001 / DIRECT_QUIZ_CAPTURE001
+// Moteur primaire : capture directe du payload réseau Quizypedia get_quiz_game.
+// Champs historiques utilisés tels quels : quiz_items, question,
+// proposed_responses, response_index, hints.
+// Aucune reconstruction de la bonne réponse à partir des fiches source.
+// CGIMPORT009 FIX5/FIX6 restent présents comme fallback de compatibilité.
 // CGIMPORT009_FIX5_PORTRAIT_QUESTION_MATCH001_IMAGE_CONTEXT_IDENTITY001
 // CGIMPORT009_FIX6_PORTRAIT_RESOURCE_TRACE001_IMAGE_RESOURCE_IDENTITY002
+// CGIMPORT010_LEGACY_PLAYWRIGHT_PORT001_DIRECT_QUIZ_CAPTURE001
 
 const {onRequest} = require('firebase-functions/v2/https');
 const {initializeApp} = require('firebase-admin/app');
@@ -1315,6 +1315,399 @@ async function startGame(page){
   return true;
 }
 
+
+/* ==================================================================
+   CGIMPORT010 · LEGACY_PLAYWRIGHT_PORT001 / DIRECT_QUIZ_CAPTURE001
+
+   Port du moteur historique quizypedia_extract_v8_playwright.py :
+   - ouvrir le questionnaire ;
+   - cliquer « Jeu normal » ;
+   - capturer la réponse réseau get_quiz_game ;
+   - lire quiz_items / question / proposed_responses /
+     response_index / hints directement depuis Quizypedia.
+
+   Le DOM et les fiches sources ne servent PLUS à déterminer la bonne
+   réponse lorsque ce payload officiel est disponible.
+   ================================================================== */
+
+function cgimport010Plain(value){
+  if(value===null||value===undefined)return '';
+  let text='';
+
+  if(typeof value==='string'){
+    text=value;
+  }else if(typeof value==='number'||typeof value==='boolean'){
+    text=String(value);
+  }else if(typeof value==='object'){
+    const preferred=[
+      'text','label','response','answer','value','name','title',
+      'question','content','description'
+    ];
+    for(const key of preferred){
+      if(value[key]!==undefined&&value[key]!==null){
+        const candidate=cgimport010Plain(value[key]);
+        if(candidate){text=candidate;break;}
+      }
+    }
+  }
+
+  text=String(text||'').trim();
+  if(!text)return '';
+
+  if(/<[^>]+>/.test(text)){
+    try{
+      const $=cheerio.load(`<div>${text}</div>`);
+      text=$('div').text();
+    }catch{}
+  }
+
+  return one(text);
+}
+
+function cgimport010FlattenHints(value,depth=0,out=[]){
+  if(depth>5||value===null||value===undefined)return out;
+
+  if(typeof value==='string'||typeof value==='number'){
+    const t=cgimport010Plain(value);
+    if(t)out.push(t);
+    return out;
+  }
+
+  if(Array.isArray(value)){
+    for(const item of value)cgimport010FlattenHints(item,depth+1,out);
+    return out;
+  }
+
+  if(typeof value==='object'){
+    const preferred=[
+      'hint','hints','text','label','content','description',
+      'value','title'
+    ];
+
+    let used=false;
+    for(const key of preferred){
+      if(value[key]!==undefined){
+        used=true;
+        cgimport010FlattenHints(value[key],depth+1,out);
+      }
+    }
+
+    if(!used){
+      for(const [key,val] of Object.entries(value)){
+        if(/^(id|index|response_index|correct|order|position)$/i.test(key))continue;
+        cgimport010FlattenHints(val,depth+1,out);
+      }
+    }
+  }
+
+  return out;
+}
+
+function cgimport010FindImageUrl(value,depth=0){
+  if(depth>6||value===null||value===undefined)return '';
+
+  if(typeof value==='string'){
+    const raw=String(value).trim();
+    if(
+      /^https?:\/\//i.test(raw)&&
+      (
+        /\.(?:avif|gif|jpe?g|jfif|png|svg|webp)(?:[?#].*)?$/i.test(raw)||
+        /(?:image|img|photo|portrait|picture|media|thumbnail|thumb)/i.test(raw)
+      )
+    )return raw;
+    return '';
+  }
+
+  if(Array.isArray(value)){
+    for(const item of value){
+      const hit=cgimport010FindImageUrl(item,depth+1);
+      if(hit)return hit;
+    }
+    return '';
+  }
+
+  if(typeof value==='object'){
+    const priority=[
+      'image','image_url','imageUrl','img','photo','picture',
+      'media','src','url'
+    ];
+
+    for(const key of priority){
+      if(value[key]!==undefined){
+        const hit=cgimport010FindImageUrl(value[key],depth+1);
+        if(hit)return hit;
+      }
+    }
+
+    for(const [key,val] of Object.entries(value)){
+      if(priority.includes(key))continue;
+      const hit=cgimport010FindImageUrl(val,depth+1);
+      if(hit)return hit;
+    }
+  }
+
+  return '';
+}
+
+function cgimport010FindQuizItems(payload,depth=0){
+  if(depth>7||payload===null||payload===undefined)return null;
+
+  if(Array.isArray(payload)){
+    if(
+      payload.length&&
+      payload.some(item=>
+        item&&typeof item==='object'&&
+        ('question' in item)&&
+        ('proposed_responses' in item)
+      )
+    )return payload;
+
+    for(const item of payload){
+      const hit=cgimport010FindQuizItems(item,depth+1);
+      if(hit)return hit;
+    }
+    return null;
+  }
+
+  if(typeof payload!=='object')return null;
+
+  if(Array.isArray(payload.quiz_items))return payload.quiz_items;
+
+  const priority=[
+    'data','result','quiz_game','quizGame','game','quiz',
+    'payload','response'
+  ];
+
+  for(const key of priority){
+    if(payload[key]!==undefined){
+      const hit=cgimport010FindQuizItems(payload[key],depth+1);
+      if(hit)return hit;
+    }
+  }
+
+  for(const [key,val] of Object.entries(payload)){
+    if(priority.includes(key)||key==='quiz_items')continue;
+    const hit=cgimport010FindQuizItems(val,depth+1);
+    if(hit)return hit;
+  }
+
+  return null;
+}
+
+function cgimport010Responses(raw){
+  let value=raw;
+
+  if(typeof value==='string'){
+    const trimmed=value.trim();
+    if(
+      (trimmed.startsWith('[')&&trimmed.endsWith(']'))||
+      (trimmed.startsWith('{')&&trimmed.endsWith('}'))
+    ){
+      try{value=JSON.parse(trimmed);}catch{}
+    }
+  }
+
+  if(value&&typeof value==='object'&&!Array.isArray(value)){
+    value=Object.keys(value)
+      .sort((a,b)=>Number(a)-Number(b))
+      .map(k=>value[k]);
+  }
+
+  if(!Array.isArray(value))return [];
+
+  return value
+    .map(cgimport010Plain)
+    .map(one)
+    .filter(Boolean);
+}
+
+function cgimport010CorrectIndex(item,options){
+  const raw=
+    item?.response_index ??
+    item?.responseIndex ??
+    item?.correct_index ??
+    item?.correctIndex;
+
+  // Le payload historique get_quiz_game expose response_index :
+  // il s'agit d'un index de tableau, donc 0..3.
+  if(raw!==null&&raw!==undefined&&raw!==''){
+    if(typeof raw==='string'&&/^[A-D]$/i.test(raw.trim())){
+      return raw.trim().toUpperCase().charCodeAt(0)-64;
+    }
+
+    const n=Number(raw);
+    if(Number.isInteger(n)&&n>=0&&n<options.length)return n+1;
+  }
+
+  // Fallback uniquement si Quizypedia fournit aussi explicitement
+  // le texte de la bonne réponse dans SON payload.
+  const explicit=
+    item?.correct_response ??
+    item?.correctResponse ??
+    item?.correct_answer ??
+    item?.correctAnswer ??
+    item?.response;
+
+  const good=cgimport010Plain(explicit);
+  if(good){
+    const k=norm(good);
+    const at=options.findIndex(v=>norm(v)===k);
+    if(at>=0)return at+1;
+  }
+
+  return 0;
+}
+
+function cgimport010ParsePayload(payload,fiches=[]){
+  const items=cgimport010FindQuizItems(payload);
+  if(!Array.isArray(items)||!items.length){
+    return {
+      ok:false,
+      questions:[],
+      diagnostics:['Payload get_quiz_game reçu mais quiz_items introuvable.']
+    };
+  }
+
+  const ficheByName=new Map(
+    (fiches||[]).map(f=>[norm(f.name),f])
+  );
+
+  const questions=[];
+  const diagnostics=[];
+  const seen=new Set();
+
+  for(let i=0;i<items.length;i++){
+    const item=items[i]||{};
+
+    const question=cgimport010Plain(
+      item.question ??
+      item.question_text ??
+      item.questionText ??
+      item.label
+    );
+
+    const options=cgimport010Responses(
+      item.proposed_responses ??
+      item.proposedResponses ??
+      item.responses ??
+      item.answers ??
+      item.options
+    );
+
+    const correctIndex=cgimport010CorrectIndex(item,options);
+
+    const hints=[
+      ...new Set(
+        cgimport010FlattenHints(item.hints ?? item.hint ?? [])
+          .map(one)
+          .filter(Boolean)
+      )
+    ];
+
+    const detail=hints.join(' · ');
+    const imageUrl=cgimport010FindImageUrl(item);
+
+    if(!question){
+      diagnostics.push(`quiz_items[${i}] ignoré : question vide.`);
+      continue;
+    }
+    if(options.length!==4){
+      diagnostics.push(
+        `quiz_items[${i}] ignoré : ${options.length} proposition(s), 4 attendues.`
+      );
+      continue;
+    }
+    if(correctIndex<1||correctIndex>4){
+      diagnostics.push(
+        `quiz_items[${i}] ignoré : response_index invalide ou absent.`
+      );
+      continue;
+    }
+
+    const signature=
+      norm(question)+'||'+options.map(norm).join('|');
+
+    if(seen.has(signature))continue;
+    seen.add(signature);
+
+    const correctText=options[correctIndex-1];
+    const fiche=ficheByName.get(norm(correctText))||null;
+
+    questions.push({
+      question,
+      detail,
+      options,
+      correct_index:correctIndex,
+      correct_text:correctText,
+      source_fiche:fiche?.name||correctText||'',
+      source_number:Number(fiche?.number||0),
+      answer_label:'response_index',
+      match_mode:'browser-get-quiz-game',
+      source:'browser_get_quiz_game',
+      image_url:imageUrl||'',
+      verbatim_panel:false
+    });
+  }
+
+  return {
+    ok:questions.length>0,
+    questions,
+    diagnostics,
+    rawCount:items.length
+  };
+}
+
+function cgimport010AttachGetQuizGameTap(page){
+  const payloads=[];
+  const urls=[];
+  let active=true;
+
+  const handler=async response=>{
+    if(!active)return;
+
+    const url=String(response.url?.()||'');
+    if(!/get[_-]?quiz[_-]?game/i.test(url))return;
+
+    urls.push(url);
+
+    try{
+      let payload=null;
+
+      try{
+        payload=await response.json();
+      }catch{
+        const text=await response.text().catch(()=>'');
+        if(text){
+          try{payload=JSON.parse(text);}catch{}
+        }
+      }
+
+      if(payload!==null&&payload!==undefined){
+        payloads.push(payload);
+      }
+    }catch{}
+  };
+
+  page.on('response',handler);
+
+  return {
+    async wait(timeoutMs=5000){
+      const until=Date.now()+timeoutMs;
+      while(Date.now()<until){
+        if(payloads.length)return payloads[payloads.length-1];
+        await sleep(100);
+      }
+      return payloads.length?payloads[payloads.length-1]:null;
+    },
+    cancel(){
+      active=false;
+      try{page.off('response',handler);}catch{}
+    },
+    urls,
+    payloads
+  };
+}
+
 async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnairePath){
   if(typeof chromium.executablePath!=='function'){
     throw new Error(
@@ -1388,7 +1781,54 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
           allowStartsWith:false
         }).catch(()=>{});
 
+        const cgimport010Tap=cgimport010AttachGetQuizGameTap(page);
         const started=await startGame(page);
+
+        if(started){
+          const directPayload=await cgimport010Tap.wait(5000);
+          const direct=cgimport010ParsePayload(directPayload,fiches);
+
+          if(directPayload){
+            diagnostics.push(
+              `CGIMPORT010 get_quiz_game: ${direct.questions.length}/${direct.rawCount||0} question(s) valides.`
+            );
+            diagnostics.push(...(direct.diagnostics||[]).slice(0,8));
+          }else{
+            diagnostics.push(
+              `CGIMPORT010: aucune réponse get_quiz_game interceptée ; fallback DOM strict.`
+            );
+          }
+
+          if(direct.ok&&direct.questions.length===expected){
+            cgimport010Tap.cancel();
+
+            sessionStats.push({
+              session,
+              captured:direct.questions.length,
+              expected,
+              mode:'browser_get_quiz_game'
+            });
+
+            diagnostics.push(
+              `CGIMPORT010 DIRECT_QUIZ_CAPTURE001 réussi : ${direct.questions.length}/${expected} en une session.`
+            );
+
+            await page.close().catch(()=>{});
+
+            return {
+              questions:direct.questions,
+              complete:true,
+              diagnostics,
+              missingFiches:[],
+              sessionsUsed:1,
+              sessionStats,
+              captureMode:'browser_get_quiz_game'
+            };
+          }
+        }
+
+        cgimport010Tap.cancel();
+
         if(!started){
           sessionEnd='démarrage du jeu introuvable';
           diagnostics.push(`Session ${session}: bouton Jeu normal / Entraînement introuvable.`);
@@ -1654,7 +2094,7 @@ exports.cgimport002Quizypedia=onRequest({
      * Le frontend CGIMPORT009 enchaîne ces appels un par un pour éviter un énorme
      * traitement serveur unique.
      */
-    console.log('CGIMPORT009 FIX6 capture start:',{
+    console.log('CGIMPORT010 capture start:',{
       url:parsed.url.toString(),
       questionnaire:parsed.questionnaire
     });
@@ -1680,7 +2120,7 @@ exports.cgimport002Quizypedia=onRequest({
       parsed.pathname
     );
 
-    console.log('CGIMPORT009 FIX6 capture end:',{
+    console.log('CGIMPORT010 capture end:',{
       questionnaire:parsed.questionnaire,
       questions:capture.questions.length,
       fiches:fiches.length,
@@ -1713,11 +2153,11 @@ exports.cgimport002Quizypedia=onRequest({
       sessionStats:capture.sessionStats||[]
     });
   }catch(e){
-    console.error('CGIMPORT009 FIX6',e);
+    console.error('CGIMPORT010',e);
     return res.status(e.status||500).json({
       ok:false,
       strict:true,
-      error:e.message||'Erreur serveur CGIMPORT009 FIX6.'
+      error:e.message||'Erreur serveur CGIMPORT010.'
     });
   }
 });
