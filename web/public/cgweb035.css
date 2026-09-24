@@ -857,3 +857,71 @@ body.cg16-installed #cgweb035Panel .cg113-summary-grid b,body.cg16-installed #cg
 @media(max-width:1200px){body.cg16-installed #cgweb035Panel .cg113-detail-tabs{grid-template-columns:repeat(3,minmax(0,1fr))}body.cg16-installed #cgweb035Panel .cg113-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}body.cg16-installed #cgweb035Panel .cg113-mastery-grid,body.cg16-installed #cgweb035Panel .cg113-performance-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:900px){body.cg16-installed #cgweb035Panel .cg113-history-card{grid-template-columns:1fr!important}body.cg16-installed #cgweb035Panel .cg113-history-detail{padding:0!important}body.cg16-installed #cgweb035Panel .cg35-history-right{padding-left:0!important;padding-top:10px!important;border-left:0!important;border-top:1px solid rgba(130,160,190,.22)!important}}
 @media(max-width:650px){body.cg16-installed #cgweb035Panel .cg113-main-tabs,body.cg16-installed #cgweb035Panel .cg113-detail-tabs,body.cg16-installed #cgweb035Panel .cg113-summary-grid,body.cg16-installed #cgweb035Panel .cg113-mastery-grid,body.cg16-installed #cgweb035Panel .cg113-performance-grid{grid-template-columns:1fr!important}}
+/* ==================================================================
+   CGWEB114 · HISTORY_CARD_CLICK001 / HISTORY_RESULT_BORDER001
+              HISTORY_MIDDLE_EXPAND001
+   ================================================================== */
+/* CGWEB114_HISTORY_CARD_CLICK001_HISTORY_RESULT_BORDER001_HISTORY_MIDDLE_EXPAND001 */
+
+body.cg16-installed #cgweb035Panel .cg114-history-card{
+  /* Ancienne colonne gauche ≈ 48 %. On lui retire exactement 3 cm.
+     Le milieu récupère automatiquement cet espace. */
+  grid-template-columns:
+    minmax(260px,calc(48% - 3cm))
+    minmax(0,1fr)
+    minmax(190px,16.4%)!important;
+  gap:14px!important;
+  transition:border-color .12s ease,background .12s ease,box-shadow .12s ease;
+}
+
+body.cg16-installed #cgweb035Panel .cg114-history-card.cg114-result-good{
+  border:4px solid #1aa866!important;
+}
+
+body.cg16-installed #cgweb035Panel .cg114-history-card.cg114-result-bad{
+  border:4px solid #d84b4b!important;
+}
+
+body.cg16-installed #cgweb035Panel .cg114-history-card.cg114-result-neutral{
+  border:1px solid rgba(130,160,190,.22)!important;
+}
+
+body.cg16-installed #cgweb035Panel .cg114-history-clickable{
+  cursor:pointer!important;
+}
+
+body.cg16-installed #cgweb035Panel .cg114-history-clickable:hover{
+  background:rgba(255,255,255,.055)!important;
+  box-shadow:0 0 0 1px rgba(255,255,255,.035) inset;
+}
+
+body.cg16-installed #cgweb035Panel .cg114-history-detail{
+  padding-left:0!important;
+}
+
+body.cg16-installed #cgweb035Panel .cg114-history-detail>p{
+  margin:0!important;
+  line-height:1.32!important;
+  overflow-wrap:anywhere;
+}
+
+body.cg16-installed #cgweb035Panel .cg114-history-time{
+  margin-top:2px!important;
+  font-weight:800!important;
+}
+
+body.cg16-installed #cgweb035Panel .cg114-history-card .cg35-history-right{
+  gap:5px!important;
+}
+
+/* Le bouton Ouvrir n'existe plus dans CGWEB114.
+   Garde-fou au cas où un ancien fragment DOM subsisterait. */
+body.cg16-installed #cgweb035Panel .cg114-history-card .cg35-open{
+  display:none!important;
+}
+
+@media(max-width:900px){
+  body.cg16-installed #cgweb035Panel .cg114-history-card{
+    grid-template-columns:1fr!important;
+  }
+}

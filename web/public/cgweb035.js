@@ -1,4 +1,5 @@
-const CGWEB035_VERSION='CGWEB113_FIX3_AUTH_BOOT_RETRY001_HISTORY_BOOT_RELIABLE001';
+const CGWEB035_VERSION='CGWEB114_HISTORY_CARD_CLICK001_HISTORY_RESULT_BORDER001_HISTORY_MIDDLE_EXPAND001';
+// CGWEB114_HISTORY_CARD_CLICK001_HISTORY_RESULT_BORDER001_HISTORY_MIDDLE_EXPAND001
 // CGWEB113_FIX3_AUTH_BOOT_RETRY001_HISTORY_BOOT_RELIABLE001
 // CGWEB113_FIX2_HISTORY_FAST_PAGE001_HISTORY_COLD_START001
 // CGWEB113_FIX1B_DETAIL_SINGLE_REQUEST001_DETAIL_FETCH_STABILITY002
@@ -100,20 +101,38 @@ function cg35HistoryCard(e){
   const attempt=attemptMeta?.attemptTotal>1
     ? `<span class="cg35-history-attempt" data-cg35-attempt="${cg35Esc(e.id)}">Tentative ${attemptMeta.attemptNumber}/${attemptMeta.attemptTotal}</span>`
     : `<span class="cg35-history-attempt" data-cg35-attempt="${cg35Esc(e.id)}" hidden></span>`;
+
+  const resultClass=
+    e.positive===true
+      ? 'cg114-result-good'
+      : e.positive===false
+        ? 'cg114-result-bad'
+        : 'cg114-result-neutral';
+
+  const openClass=e.questionId?' cg114-history-clickable':'';
+  const openAttr=e.questionId
+    ? ` data-open="${cg35Esc(e.questionId)}" title="Ouvrir la question"`
+    : '';
+
   const right=qcm
     ? `<div class="cg35-history-answer"><span>Réponse donnée</span><b>${cg35Esc(e.selectedAnswer||'—')}</b></div>
        <div class="cg35-history-answer"><span>Bonne réponse au moment du jeu</span><b>${cg35Esc(e.correctAnswer||'—')}</b></div>
        ${e.bindingMismatch?'<div class="cg35-history-warning">⚠ incohérence ID historique/snapshot</div>':''}`
     : `<div class="cg35-history-answer"><span>Résultat</span><b>${cg35Esc(cg35HistoryResult(e))}</b></div>`;
-  return `<article class="cg35-event cg35-history-card cg113-history-card">
+
+  const time=e.responseTimeMs>0
+    ? `<div class="cg35-result cg114-history-time">${cg35Time(e.responseTimeMs)}</div>`
+    : '';
+
+  return `<article class="cg35-event cg35-history-card cg113-history-card cg114-history-card ${resultClass}${openClass}"${openAttr}>
     <div class="cg35-history-left">
-      <header><b>${cg35Date(e.playedAtMs)} · ${cg35HistoryType(e)}</b>${attempt}</header>
+      <header><b>${cg35Date(e.playedAtMs)}</b>${attempt}</header>
       <small>${cg35Esc(cg35Path(e.domain,e.theme))}</small>
       <h3>${cg35Esc(e.question||'(question sans texte)')}</h3>
-      <div class="cg35-result">${cg35Esc(cg35HistoryResult(e))}${e.responseTimeMs>0?` · ${cg35Time(e.responseTimeMs)}`:''}</div>
+      ${time}
     </div>
-    <div class="cg113-history-detail"><span>Détail</span><p>${cg35Esc(e.detail||'—')}</p></div>
-    <div class="cg35-history-right">${right}${cg35QuestionButton(e.questionId)}</div>
+    <div class="cg113-history-detail cg114-history-detail"><p>${cg35Esc(e.detail||'—')}</p></div>
+    <div class="cg35-history-right">${right}</div>
   </article>`;
 }
 
