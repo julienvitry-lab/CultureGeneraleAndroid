@@ -579,3 +579,300 @@
   }
 
 })();
+
+/* ============================================================
+   CGWEB115 FIX3
+   TABS_EQUAL001 / HISTORY_RESULT_COMPACT001
+   SELECT_TRIANGLE002 / CSV_ODS_FUSION001
+   ============================================================ */
+/* CGWEB115_FIX3_TABS_EQUAL001 */
+
+(() => {
+  "use strict";
+
+  const esc = (value) => String(value ?? "")
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#39;");
+
+
+  /* ----------------------------------------------------------
+     1. HISTORIQUE
+     ---------------------------------------------------------- */
+
+  function fixHistoryCard(card) {
+    if (!card || card.dataset.cg115Fix3 === "1") return;
+
+    const left =
+      card.querySelector(".cg35-history-left");
+
+    const right =
+      card.querySelector(".cg35-history-right");
+
+    if (!left || !right) return;
+
+
+    /*
+      Horodatage d'origine.
+    */
+    const dateNode =
+      left.querySelector("header b");
+
+    const header =
+      left.querySelector("header");
+
+    const timeNode =
+      left.querySelector(".cg114-history-time");
+
+
+    if (dateNode && header) {
+      const date =
+        dateNode.textContent.trim();
+
+      const time =
+        timeNode?.textContent.trim() || "";
+
+      /*
+        Format final :
+        24/09/2026 05:58:51 (5,5 s)
+      */
+      header.innerHTML =
+        `<b class="cg115-fix3-date">${
+          esc(date)
+        }${
+          time ? ` (${esc(time)})` : ""
+        }</b>`;
+    }
+
+    if (timeNode) {
+      timeNode.remove();
+    }
+
+
+    /*
+      Les réponses sont actuellement contenues dans :
+        .cg35-history-answer > span + b
+
+      On ne récupère QUE le texte des <b>.
+      Ainsi les libellés gris :
+        "Réponse donnée"
+        "Bonne réponse au moment du jeu"
+      disparaissent totalement.
+    */
+    const answers =
+      [...right.querySelectorAll(
+        ".cg35-history-answer b"
+      )]
+      .map(el => el.textContent.trim())
+      .filter(Boolean);
+
+
+    const isGood =
+      card.classList.contains(
+        "cg114-result-good"
+      );
+
+    const isBad =
+      card.classList.contains(
+        "cg114-result-bad"
+      );
+
+
+    if (isGood) {
+      /*
+        Bonne réponse :
+        une seule ligne VERTE.
+      */
+      const correct =
+        answers[1] ||
+        answers[0] ||
+        "—";
+
+      right.innerHTML =
+        `<div class="cg115-fix3-good">${
+          esc(correct)
+        }</div>`;
+
+    } else if (isBad) {
+      /*
+        Mauvaise réponse :
+        ligne 1 = réponse donnée ROUGE
+        ligne 2 = bonne réponse VERTE.
+      */
+      const given =
+        answers[0] || "—";
+
+      const correct =
+        answers[1] || "—";
+
+      right.innerHTML =
+        `<div class="cg115-fix3-bad">${
+          esc(given)
+        }</div>` +
+        `<div class="cg115-fix3-good">${
+          esc(correct)
+        }</div>`;
+    }
+
+    card.dataset.cg115Fix3 = "1";
+  }
+
+
+  function fixHistory() {
+    document
+      .querySelectorAll(
+        "#cgweb035Panel .cg114-history-card"
+      )
+      .forEach(fixHistoryCard);
+  }
+
+
+  /* ----------------------------------------------------------
+     2. FUSION IMPORT CSV / ODS
+     ---------------------------------------------------------- */
+
+  function fuseImportPanels() {
+    const bulk =
+      document.getElementById(
+        "cgimport011Bulk"
+      );
+
+    const control =
+      document.getElementById(
+        "cgweb040ControlCenter"
+      );
+
+    if (!bulk || !control) {
+      return false;
+    }
+
+
+    bulk.classList.add(
+      "cg115-import-host"
+    );
+
+    control.classList.add(
+      "cg115-import-fused"
+    );
+
+
+    /*
+      On transfère le bouton Actualiser dans
+      l'en-tête du bloc CSV / ODS.
+    */
+    const bulkHead =
+      bulk.querySelector(
+        ".cgimport011-head"
+      );
+
+    const refresh =
+      control.querySelector(
+        "#cgweb040Refresh"
+      );
+
+    if (
+      bulkHead &&
+      refresh &&
+      !bulkHead.contains(refresh)
+    ) {
+      bulkHead.appendChild(refresh);
+    }
+
+
+    /*
+      Le Centre de contrôle devient une sous-zone
+      du même bloc, juste après les contrôles
+      CSV / ODS.
+    */
+    if (
+      control.parentElement !== bulk
+    ) {
+      bulk.appendChild(control);
+    }
+
+
+    /*
+      Libellé plus court du seul bouton
+      réellement spécifique conservé.
+    */
+    const retry =
+      control.querySelector(
+        "#cgweb040Retry"
+      );
+
+    if (retry) {
+      retry.textContent =
+        "Relancer les erreurs";
+    }
+
+
+    control.dataset.cg115Fix3 =
+      "1";
+
+    return true;
+  }
+
+
+  /* ----------------------------------------------------------
+     3. INSTALLATION
+     ---------------------------------------------------------- */
+
+  function installFix3() {
+    /*
+      Paramètres a déjà été retiré par FIX2.
+      Les 4 éléments restants sont donc
+      automatiquement distribués par le CSS.
+    */
+    fixHistory();
+    fuseImportPanels();
+  }
+
+
+  /*
+    L'historique et les outils d'import sont rendus
+    dynamiquement : observer nécessaire.
+  */
+  let scheduled = false;
+
+  function scheduleInstall() {
+    if (scheduled) return;
+
+    scheduled = true;
+
+    requestAnimationFrame(() => {
+      scheduled = false;
+      installFix3();
+    });
+  }
+
+
+  if (
+    document.readyState ===
+    "loading"
+  ) {
+    document.addEventListener(
+      "DOMContentLoaded",
+      installFix3,
+      { once:true }
+    );
+  } else {
+    installFix3();
+  }
+
+
+  const observer =
+    new MutationObserver(
+      scheduleInstall
+    );
+
+  observer.observe(
+    document.documentElement,
+    {
+      childList:true,
+      subtree:true
+    }
+  );
+
+})();

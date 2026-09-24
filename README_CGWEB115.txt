@@ -41,3 +41,45 @@ HISTORY
   - centrage vertical
   - séparation des colonnes
   - retrait File d'apprentissage / Plan de révision
+
+
+CGWEB115 FIX3
+=============
+
+TABS_EQUAL001
+-------------
+- 4 onglets principaux strictement de même largeur
+
+HISTORY_RESULT_COMPACT001
+-------------------------
+- temps de réponse déplacé après l'horodatage
+- exemple :
+  24/09/2026 05:58:51 (5,5 s)
+- suppression des libellés gris de la colonne réponse
+- réponse correcte :
+  une seule ligne verte
+- réponse incorrecte :
+  réponse donnée rouge
+  bonne réponse verte
+- centrage vertical conservé
+
+SELECT_TRIANGLE002
+------------------
+- triangle blanc plein
+- fermé : pointe vers la droite
+- ouvert : pointe vers le bas
+
+CSV_ODS_FUSION001
+-----------------
+- CGIMPORT011 devient le bloc principal unique
+- CGWEB040 est intégré au bloc CSV / ODS
+- bouton Actualiser placé dans l'en-tête principal
+- conservation :
+  lot actuel
+  progression
+  questions ajoutées
+  erreurs
+  relance des erreurs
+- suppression des commandes redondantes
+- suppression de l'historique local détaillé de l'affichage
+- moteurs existants conservés
