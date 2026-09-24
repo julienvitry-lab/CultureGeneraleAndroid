@@ -876,3 +876,189 @@
   );
 
 })();
+
+/* ============================================================
+   CGWEB115 FIX4
+   CSV_ODS_COMPACT002 / IMPORT_ACTION_ROW001
+   ============================================================ */
+/* CGWEB115_FIX4_CSV_ODS_COMPACT002 */
+
+(() => {
+  "use strict";
+
+  function compactCsvImport() {
+    const root =
+      document.getElementById(
+        "cgimport011Bulk"
+      );
+
+    if (!root) return false;
+
+    const fileLine =
+      root.querySelector(
+        ".cgimport011-fileline"
+      );
+
+    const load =
+      root.querySelector(
+        "#cgimport011Load"
+      );
+
+    const start =
+      root.querySelector(
+        "#cgimport011Start"
+      );
+
+    const pause =
+      root.querySelector(
+        "#cgimport011Pause"
+      );
+
+    const resume =
+      root.querySelector(
+        "#cgimport011Resume"
+      );
+
+    const stop =
+      root.querySelector(
+        "#cgimport011Stop"
+      );
+
+    const reset =
+      root.querySelector(
+        "#cgimport011Reset"
+      );
+
+    const report =
+      root.querySelector(
+        "#cgimport011Report"
+      );
+
+    if (
+      !fileLine ||
+      !load ||
+      !start ||
+      !pause ||
+      !resume ||
+      !stop
+    ) {
+      return false;
+    }
+
+
+    /* ---------------------------------------------
+       Libellé demandé
+       --------------------------------------------- */
+
+    load.textContent = "Lire";
+
+
+    /* ---------------------------------------------
+       Ordre final :
+
+       fichier
+       Lire
+       Lancer l'import
+       Pause
+       Reprendre
+       Arrêter
+       Effacer la liste
+       Actualiser
+       --------------------------------------------- */
+
+    [
+      load,
+      start,
+      pause,
+      resume,
+      stop,
+      reset
+    ]
+      .filter(Boolean)
+      .forEach(button => {
+        fileLine.appendChild(button);
+      });
+
+
+    /*
+      Le bouton Actualiser de CGWEB040 a été
+      transféré dans l'en-tête par FIX3.
+      On le place maintenant au bout de la même ligne.
+    */
+    const refresh =
+      document.getElementById(
+        "cgweb040Refresh"
+      );
+
+    if (refresh) {
+      fileLine.appendChild(refresh);
+    }
+
+
+    /*
+      Rapport CSV :
+      on le laisse techniquement dans le DOM si un moteur
+      le référence encore, mais il est caché par CSS.
+    */
+    if (report) {
+      report.setAttribute(
+        "aria-hidden",
+        "true"
+      );
+      report.tabIndex = -1;
+    }
+
+
+    root.dataset.cg115Fix4 = "1";
+
+    return true;
+  }
+
+
+  function installFix4() {
+    compactCsvImport();
+  }
+
+
+  /*
+    CGIMPORT011 est monté dynamiquement.
+  */
+  let scheduled = false;
+
+  function schedule() {
+    if (scheduled) return;
+
+    scheduled = true;
+
+    requestAnimationFrame(() => {
+      scheduled = false;
+      installFix4();
+    });
+  }
+
+
+  if (
+    document.readyState ===
+    "loading"
+  ) {
+    document.addEventListener(
+      "DOMContentLoaded",
+      installFix4,
+      { once:true }
+    );
+  } else {
+    installFix4();
+  }
+
+
+  new MutationObserver(
+    schedule
+  ).observe(
+    document.documentElement,
+    {
+      childList:true,
+      subtree:true
+    }
+  );
+
+})();

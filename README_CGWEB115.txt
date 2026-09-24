@@ -83,3 +83,31 @@ CSV_ODS_FUSION001
 - suppression des commandes redondantes
 - suppression de l'historique local détaillé de l'affichage
 - moteurs existants conservés
+
+
+CGWEB115 FIX4
+=============
+
+CSV_ODS_COMPACT002
+------------------
+- suppression du titre "Import de plusieurs thèmes"
+- suppression du texte explicatif CSV / ODS
+- suppression de la note "Traitement séquentiel..."
+- suppression visuelle de "Aucun fichier chargé"
+- suppression de la jauge de progression
+- suppression du bouton Télécharger le rapport CSV
+
+IMPORT_ACTION_ROW001
+--------------------
+- champ fichier réduit à environ 5 cm
+- "Lire le fichier" devient "Lire"
+- ligne unique :
+  Choisir un fichier
+  Lire
+  Lancer l'import
+  Pause
+  Reprendre
+  Arrêter
+  Effacer la liste
+  Actualiser
+- aucune modification du moteur CGIMPORT011

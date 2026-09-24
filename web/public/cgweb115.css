@@ -511,3 +511,114 @@ body.cg16-installed
   }
 }
 
+
+/* ============================================================
+   CGWEB115 FIX4
+   CSV_ODS_COMPACT002 / IMPORT_ACTION_ROW001
+   ============================================================ */
+/* CGWEB115_FIX4_CSV_ODS_COMPACT002 */
+
+
+/* ------------------------------------------------------------
+   A. SUPPRESSION DES TEXTES INUTILES
+   ------------------------------------------------------------ */
+
+/* PJ A : titre + explication */
+body.cg16-installed
+#cgimport011Bulk
+.cgimport011-head > div {
+  display:none!important;
+}
+
+/* PJ B : note de traitement séquentiel */
+body.cg16-installed
+#cgimport011Bulk
+.cgimport011-note {
+  display:none!important;
+}
+
+/* PJ D + "Aucun fichier chargé" */
+body.cg16-installed
+#cgimport011Bulk
+#cgimport011Summary,
+body.cg16-installed
+#cgimport011Bulk
+#cgimport011Progress {
+  display:none!important;
+}
+
+
+/* ------------------------------------------------------------
+   B. UNE SEULE LIGNE DE COMMANDES
+   ------------------------------------------------------------ */
+
+body.cg16-installed
+#cgimport011Bulk
+.cgimport011-fileline {
+  display:flex!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+  gap:8px!important;
+  flex-wrap:wrap!important;
+  width:100%!important;
+  margin:0!important;
+}
+
+
+/* Champ fichier : largeur totale ≈ 5 cm */
+body.cg16-installed
+#cgimport011Bulk
+#cgimport011File {
+  width:5cm!important;
+  min-width:5cm!important;
+  max-width:5cm!important;
+  flex:0 0 5cm!important;
+  box-sizing:border-box!important;
+}
+
+
+/* Tous les boutons de cette ligne restent compacts */
+body.cg16-installed
+#cgimport011Bulk
+.cgimport011-fileline > button {
+  flex:0 0 auto!important;
+  width:auto!important;
+  min-width:0!important;
+  margin:0!important;
+  white-space:nowrap!important;
+}
+
+
+/* Ancienne ligne d'actions devenue vide/inutile */
+body.cg16-installed
+#cgimport011Bulk
+.cgimport011-actions {
+  margin:0!important;
+  padding:0!important;
+  min-height:0!important;
+}
+
+
+/* Rapport CSV : supprimé visuellement */
+body.cg16-installed
+#cgimport011Bulk
+#cgimport011Report {
+  display:none!important;
+}
+
+
+/* ------------------------------------------------------------
+   C. BLOC DE SUIVI FUSIONNE : ENCORE PLUS COMPACT
+   ------------------------------------------------------------ */
+
+body.cg16-installed
+#cgweb040ControlCenter.cg115-import-fused {
+  margin-top:8px!important;
+  padding-top:8px!important;
+}
+
+
+/* ============================================================
+   FIN FIX4
+   ============================================================ */
+
