@@ -1,191 +1,224 @@
 /* ============================================================
-   CGWEB115
-   CREATE_FORM_REWORK001 / HISTORY_CLEANUP001
+   CGWEB115 FIX1
+   HISTORY_CLEANUP002 / CREATE_FORM_TIGHTEN002 / NAV_PRUNE001
    ============================================================ */
 
 (() => {
   "use strict";
 
-  const VERSION = "CGWEB115";
+  const LETTER_TO_NUMBER = { A: "1", B: "2", C: "3", D: "4" };
+  const NUMBER_TO_LETTER = { "1": "A", "2": "B", "3": "C", "4": "D" };
 
   function fieldLabel(el) {
     return el?.closest("label") || null;
   }
 
-  function installCreateForm() {
-    const form = document.getElementById("cg16CreateForm");
-    if (!form || form.dataset.cgweb115 === "1") return false;
+  function normalizeAnswerDisplay(value) {
+    const raw = String(value || "").trim().toUpperCase();
+    if (NUMBER_TO_LETTER[raw]) return NUMBER_TO_LETTER[raw];
+    if (LETTER_TO_NUMBER[raw]) return raw;
+    return "";
+  }
 
-    const identityRow = form.querySelector(".cg112-row-identity");
-    const mediaRow = form.querySelector(".cg112-row-media");
+  function normalizeText(s) {
+    return String(s || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+  }
 
-    const idInput = document.getElementById("cg16CreateId");
-    const imageInput = document.getElementById("cg16CreateImage");
-    const statusOld = document.getElementById("cg16CreateStatus");
-    const correctOld = document.getElementById("cg16CreateCorrect");
+  function replaceStatusWithSelect(statusOld) {
+    if (!statusOld) return null;
+    if (statusOld.tagName === "SELECT") return statusOld;
 
-    if (!identityRow || !imageInput || !statusOld || !correctOld) {
-      return false;
+    const statusSelect = document.createElement("select");
+    statusSelect.id = "cg16CreateStatus";
+    statusSelect.name = statusOld.name || "";
+    statusSelect.setAttribute("aria-label", "Statut");
+
+    const currentValue = String(statusOld.value || "").trim();
+
+    [
+      ["", ""],
+      ["A", "A"],
+      ["R", "R"],
+      ["P", "P"],
+      ["T", "T"]
+    ].forEach(([value, label]) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      statusSelect.appendChild(option);
+    });
+
+    if (["A","R","P","T"].includes(currentValue)) {
+      statusSelect.value = currentValue;
     }
 
+    statusOld.replaceWith(statusSelect);
+    return statusSelect;
+  }
 
-    /* --------------------------------------------------------
-       1. ID automatique
-       -------------------------------------------------------- */
+  function replaceCorrectWithLetterInput(correctOld) {
+    if (!correctOld) return null;
+
+    if (correctOld.tagName === "INPUT") {
+      correctOld.placeholder = "A, B, C, D";
+      correctOld.value = normalizeAnswerDisplay(correctOld.value);
+      return correctOld;
+    }
+
+    const correctInput = document.createElement("input");
+    correctInput.id = "cg16CreateCorrect";
+    correctInput.name = correctOld.name || "";
+    correctInput.type = "text";
+    correctInput.autocomplete = "off";
+    correctInput.maxLength = 1;
+    correctInput.placeholder = "A, B, C, D";
+    correctInput.setAttribute("aria-label", "Bonne réponse");
+    correctInput.value = normalizeAnswerDisplay(correctOld.value);
+
+    correctInput.addEventListener("input", () => {
+      let raw = String(correctInput.value || "").toUpperCase().replace(/[^ABCD1234]/g, "");
+      if (raw.length > 1) raw = raw.slice(0, 1);
+      correctInput.value = normalizeAnswerDisplay(raw);
+    });
+
+    correctOld.replaceWith(correctInput);
+    return correctInput;
+  }
+
+  function installCreateForm() {
+    const form = document.getElementById("cg16CreateForm");
+    if (!form) return false;
+
+    const identityRow = form.querySelector(".cg112-row-identity");
+    const idInput = document.getElementById("cg16CreateId");
+    const imageInput = document.getElementById("cg16CreateImage");
+    let statusField = document.getElementById("cg16CreateStatus");
+    let correctField = document.getElementById("cg16CreateCorrect");
+
+    if (!identityRow || !imageInput || !statusField || !correctField) return false;
 
     if (idInput) {
-      /*
-       * On ne détruit volontairement PAS le contrôle :
-       * createQuestion() dans CGWEB016 le connaît encore.
-       * Il reste donc vide et invisible.
-       */
       idInput.value = "";
       idInput.setAttribute("type", "hidden");
       idInput.removeAttribute("placeholder");
       idInput.tabIndex = -1;
     }
 
-
-    /* --------------------------------------------------------
-       2. Image sur la première ligne
-       -------------------------------------------------------- */
-
     const imageLabel = fieldLabel(imageInput);
     if (imageLabel && imageLabel.parentElement !== identityRow) {
       identityRow.appendChild(imageLabel);
     }
-
     imageLabel?.querySelectorAll("small").forEach(el => el.remove());
 
-
-    /* --------------------------------------------------------
-       3. Statut -> menu A/R/P/T
-       -------------------------------------------------------- */
-
-    let statusSelect;
-
-    if (statusOld.tagName === "SELECT") {
-      statusSelect = statusOld;
-    } else {
-      statusSelect = document.createElement("select");
-      statusSelect.id = "cg16CreateStatus";
-      statusSelect.name = statusOld.name || "";
-      statusSelect.setAttribute("aria-label", "Statut");
-
-      const currentValue = String(statusOld.value || "").trim();
-
-      [
-        ["", ""],
-        ["A", "A"],
-        ["R", "R"],
-        ["P", "P"],
-        ["T", "T"]
-      ].forEach(([value, label]) => {
-        const option = document.createElement("option");
-        option.value = value;
-        option.textContent = label;
-        statusSelect.appendChild(option);
-      });
-
-      if (["A","R","P","T"].includes(currentValue)) {
-        statusSelect.value = currentValue;
-      }
-
-      statusOld.replaceWith(statusSelect);
-    }
-
-    const statusLabel = fieldLabel(statusSelect);
+    statusField = replaceStatusWithSelect(statusField);
+    const statusLabel = fieldLabel(statusField);
     if (statusLabel && statusLabel.parentElement !== identityRow) {
       identityRow.appendChild(statusLabel);
     }
 
+    correctField = replaceCorrectWithLetterInput(correctField);
 
-    /* --------------------------------------------------------
-       4. Bonne réponse -> saisie simple
-       --------------------------------------------------------
+    if (!form.dataset.cgweb115SubmitHook) {
+      form.addEventListener("submit", () => {
+        const correct = document.getElementById("cg16CreateCorrect");
+        if (!correct) return;
+        const raw = String(correct.value || "").trim().toUpperCase();
+        if (LETTER_TO_NUMBER[raw]) {
+          correct.value = LETTER_TO_NUMBER[raw];
+        }
+      }, true);
 
-       Le schéma historique stocke correct_index sous forme numérique.
-       On conserve donc 1 / 2 / 3 / 4 :
-         1 = A
-         2 = B
-         3 = C
-         4 = D
-
-       Pas de menu déroulant.
-       -------------------------------------------------------- */
-
-    if (correctOld.tagName === "SELECT") {
-      const correctInput = document.createElement("input");
-
-      correctInput.id = "cg16CreateCorrect";
-      correctInput.name = correctOld.name || "";
-      correctInput.type = "text";
-      correctInput.inputMode = "numeric";
-      correctInput.maxLength = 1;
-      correctInput.autocomplete = "off";
-      correctInput.placeholder = "1–4";
-      correctInput.setAttribute("aria-label", "Bonne réponse");
-      correctInput.value = correctOld.value || "";
-
-      /*
-       * Nettoyage léger de saisie :
-       * seules les valeurs 1 à 4 sont conservées.
-       */
-      correctInput.addEventListener("input", () => {
-        let v = correctInput.value.replace(/[^1-4]/g, "");
-        if (v.length > 1) v = v.slice(0,1);
-        correctInput.value = v;
-      });
-
-      correctOld.replaceWith(correctInput);
+      form.dataset.cgweb115SubmitHook = "1";
     }
 
+    form.dataset.cgweb115 = "fix1";
+    return true;
+  }
 
-    /* --------------------------------------------------------
-       5. Ligne média devenue vide
-       -------------------------------------------------------- */
+  function removeLearningCards() {
+    const root = document.getElementById("cg16PageLearning") || document;
+    if (!root || root.dataset.cgweb115LearningPruned === "1") return false;
 
-    if (mediaRow) {
-      const usefulChildren = [...mediaRow.children]
-        .filter(el => el.offsetParent !== null);
+    const targets = new Set([
+      "file d'apprentissage",
+      "file d’apprentissage",
+      "plan de revision",
+      "plan de révision"
+    ]);
 
-      if (!usefulChildren.length || !mediaRow.textContent.trim()) {
-        mediaRow.style.display = "none";
+    let removed = 0;
+
+    root.querySelectorAll("h1,h2,h3,h4").forEach(title => {
+      const text = normalizeText(title.textContent);
+      if (!targets.has(text)) return;
+
+      let block =
+        title.closest("section") ||
+        title.closest("article") ||
+        title.parentElement?.parentElement ||
+        title.parentElement;
+
+      if (block && block !== root && block.parentElement) {
+        block.remove();
+        removed += 1;
       }
+    });
+
+    if (removed > 0) {
+      root.dataset.cgweb115LearningPruned = "1";
     }
 
+    return removed > 0;
+  }
 
-    form.dataset.cgweb115 = "1";
-    document.documentElement.dataset.cgweb115 = "active";
+  function installDirectoryBackupButton() {
+    const directoryPage = document.getElementById("cg16PageDirectory");
+    const directoryMount = document.getElementById("cg16DirectoryMount");
+    if (!directoryPage || !directoryMount) return false;
+    if (document.getElementById("cg115DirectoryTools")) return true;
 
-    console.info(
-      VERSION,
-      "CREATE_FORM_REWORK001 installé"
-    );
+    const tools = document.createElement("div");
+    tools.id = "cg115DirectoryTools";
+    tools.className = "cg115-directory-tools";
+    tools.innerHTML = `
+      <button type="button" id="cg115OpenBackup">Sauvegardes</button>
+    `;
+
+    directoryMount.parentElement.insertBefore(tools, directoryMount);
+
+    tools.querySelector("#cg115OpenBackup")?.addEventListener("click", () => {
+      if (window.CGWEB016_API?.navigatePlus) {
+        window.CGWEB016_API.navigatePlus("backup");
+      }
+    });
 
     return true;
   }
 
-
   function install() {
-    if (installCreateForm()) return;
-
-    const observer = new MutationObserver(() => {
-      if (installCreateForm()) observer.disconnect();
-    });
-
-    observer.observe(document.documentElement, {
-      childList:true,
-      subtree:true
-    });
-
-    setTimeout(() => observer.disconnect(), 30000);
+    installCreateForm();
+    removeLearningCards();
+    installDirectoryBackupButton();
   }
 
+  let obs;
+  function startObserver() {
+    install();
+    obs = new MutationObserver(() => install());
+    obs.observe(document.documentElement, {
+      childList: true,
+      subtree: true
+    });
+  }
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", install, { once:true });
+    document.addEventListener("DOMContentLoaded", startObserver, { once: true });
   } else {
-    install();
+    startObserver();
   }
 })();
