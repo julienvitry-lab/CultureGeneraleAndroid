@@ -1,4 +1,5 @@
-const CGWEB035_VERSION='CGWEB113_FIX2_HISTORY_FAST_PAGE001_HISTORY_COLD_START001';
+const CGWEB035_VERSION='CGWEB113_FIX3_AUTH_BOOT_RETRY001_HISTORY_BOOT_RELIABLE001';
+// CGWEB113_FIX3_AUTH_BOOT_RETRY001_HISTORY_BOOT_RELIABLE001
 // CGWEB113_FIX2_HISTORY_FAST_PAGE001_HISTORY_COLD_START001
 // CGWEB113_FIX1B_DETAIL_SINGLE_REQUEST001_DETAIL_FETCH_STABILITY002
 // CGWEB113_HISTORY_SIMPLIFY001_DETAIL_DASHBOARD001_HISTORY_CARD_DETAIL001_CROSS_SMART_RETIRE001
@@ -15,18 +16,51 @@ const cg35PriorityCount=n=>cg35Count(n,'prioritaire','prioritaires');
 const cg35DifficultyValue=v=>Number.isFinite(v)?`${cg35Fmt(v)}/100`:'—';
 const cg35Time=ms=>{const n=Number(ms||0);if(!n)return '—';if(n<60000)return `${(n/1000).toFixed(1).replace('.',',')} s`;return `${Math.floor(n/60000)} min ${Math.floor((n%60000)/1000)} s`};
 const cg35Date=ms=>ms?new Date(Number(ms)).toLocaleString('fr-FR'):'—';
-const CG35={tab:'history',domain:'',theme:'',historyFilter:'all',historyPageSize:100,historyOffset:0,historyCursor:'',historyRows:[],historyTotal:0,historyAttemptMeta:{},smartConfig:{count:20,duePct:40,weakPct:35,unseenPct:25,domain:''},smartRows:[],detailDomain:''};
+const CG35={tab:'history',domain:'',theme:'',historyFilter:'all',historyPageSize:100,historyOffset:0,historyCursor:'',historyRows:[],historyTotal:0,historyAttemptMeta:{},smartConfig:{count:20,duePct:40,weakPct:35,unseenPct:25,domain:''},smartRows:[],detailDomain:'',bootStarted:false,userChosenTab:false};
 
 const CG35_DOMAINS=['Animaux et Plantes','Culture Classique','Culture Générale','Culture Moderne','Géographie','Histoire','Sciences et Techniques','Sport'];
 
+const cg35Sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+
+async function cg35WaitUser(timeoutMs=15000){
+  const until=Date.now()+timeoutMs;
+  while(Date.now()<until){
+    const u=window.CGWEB001?.getUser?.();
+    if(u?.getIdToken)return u;
+    await cg35Sleep(100);
+  }
+  throw new Error('Connexion Firebase indisponible après 15 s.');
+}
+
 async function cg35Api(body){
-  const u=window.CGWEB001?.getUser?.();
-  if(!u?.getIdToken)throw new Error('Utilisateur Firebase non connecté.');
+  const u=await cg35WaitUser();
   const token=await u.getIdToken();
-  const r=await fetch(CG35_END,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({cgweb035:true,...(body||{})})});
-  const d=await r.json();
-  if(!r.ok||!d.ok)throw new Error(d.error||`HTTP ${r.status}`);
-  return d;
+
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),45000);
+
+  try{
+    const r=await fetch(CG35_END,{
+      method:'POST',
+      headers:{
+        'content-type':'application/json',
+        authorization:`Bearer ${token}`
+      },
+      body:JSON.stringify({cgweb035:true,...(body||{})}),
+      signal:controller.signal
+    });
+
+    const d=await r.json();
+    if(!r.ok||!d.ok)throw new Error(d.error||`HTTP ${r.status}`);
+    return d;
+  }catch(e){
+    if(e?.name==='AbortError'){
+      throw new Error('La requête Historique a dépassé 45 s.');
+    }
+    throw e;
+  }finally{
+    clearTimeout(timer);
+  }
 }
 function cg35Status(text,type=''){const e=cg35$('cg35Status');if(e){e.textContent=text;e.className=`cg35-status${type?` cg35-${type}`:''}`}}
 function cg35SetBody(html){const e=cg35$('cg35Body');if(e)e.innerHTML=html}
@@ -2528,14 +2562,40 @@ async function cg35GenerateSmartLegacy(){
 }
 
 function cg35Wire(){
-  document.querySelectorAll('[data-cg35-tab]').forEach(b=>b.onclick=()=>cg35Load(b.dataset.cg35Tab));
-  cg35$('cgweb035Panel').addEventListener('click',e=>{const b=e.target.closest('[data-open]');if(b?.dataset.open)window.CGWEB019_API?.open?.(b.dataset.open)});
+  document.querySelectorAll('[data-cg35-tab]').forEach(b=>b.onclick=()=>{
+    CG35.userChosenTab=true;
+    cg35Load(b.dataset.cg35Tab);
+  });
+  cg35$('cgweb035Panel').addEventListener('click',e=>{
+    const b=e.target.closest('[data-open]');
+    if(b?.dataset.open)window.CGWEB019_API?.open?.(b.dataset.open);
+  });
 }
 function cg35Init(){
   if(cg35$('cgweb035Panel'))return;
   const p=document.createElement('section');p.id='cgweb035Panel';p.className='cg35-panel cg113-panel';
   p.innerHTML=`<nav class="cg35-tabs cg113-main-tabs" aria-label="Historique"><button data-cg35-tab="history" class="active">Historique</button><button data-cg35-tab="detail">Détail</button></nav><div id="cg35Body" class="cg35-body"></div><div id="cg35Status" class="cg35-status">Initialisation…</div>`;
-  (document.querySelector('main')||document.body).appendChild(p);cg35Wire();setTimeout(()=>{if(window.CGWEB001?.getUser?.())cg35Load('history')},600);
+  (document.querySelector('main')||document.body).appendChild(p);
+  cg35Wire();
+  cg35Boot();
+}
+
+async function cg35Boot(){
+  if(CG35.bootStarted)return;
+  CG35.bootStarted=true;
+
+  cg35Status('Connexion…');
+
+  try{
+    await cg35WaitUser();
+
+    if(!CG35.userChosenTab){
+      await cg35Load('history');
+    }
+  }catch(e){
+    cg35SetBody(`<div class="cg35-error">${cg35Esc(e.message)}</div>`);
+    cg35Status(`❌ ${e.message}`,'bad');
+  }
 }
 window.CGWEB035_API={open:()=>{window.CGWEB016_API?.navigate?.('learning');cg35Load('history')},refresh:()=>cg35Load(CG35.tab)};
 document.readyState==='loading'?document.addEventListener('DOMContentLoaded',cg35Init):cg35Init();
