@@ -622,3 +622,175 @@ body.cg16-installed
    FIN FIX4
    ============================================================ */
 
+
+/* ============================================================
+   CGWEB115 FIX5
+   DETAIL_METRICS_DENSITY001
+   ============================================================ */
+/* CGWEB115_FIX5_DETAIL_METRICS_DENSITY001 */
+
+
+/* ------------------------------------------------------------
+   A. 8 INDICATEURS GENERAUX SUR UNE SEULE LIGNE
+   ------------------------------------------------------------ */
+
+body.cg16-installed
+#cgweb035Panel
+.cg113-summary-grid {
+  display:grid!important;
+  grid-template-columns:repeat(8,minmax(0,1fr))!important;
+  gap:7px!important;
+}
+
+
+/* ------------------------------------------------------------
+   B. 10 INDICATEURS MAITRISE + PERFORMANCE
+      SUR UNE SEULE LIGNE
+   ------------------------------------------------------------ */
+
+body.cg16-installed
+#cgweb035Panel
+.cg115-detail-metrics-combined {
+  display:grid!important;
+  gap:6px!important;
+  width:100%!important;
+  margin-top:5px!important;
+}
+
+body.cg16-installed
+#cgweb035Panel
+.cg115-detail-metrics-head {
+  display:grid!important;
+  grid-template-columns:repeat(10,minmax(0,1fr))!important;
+  gap:7px!important;
+  align-items:end!important;
+}
+
+body.cg16-installed
+#cgweb035Panel
+.cg115-detail-metrics-head
+.cg115-mastery-title {
+  grid-column:1 / span 5!important;
+}
+
+body.cg16-installed
+#cgweb035Panel
+.cg115-detail-metrics-head
+.cg115-performance-title {
+  grid-column:6 / span 5!important;
+}
+
+body.cg16-installed
+#cgweb035Panel
+.cg115-detail-metrics-head > div {
+  font-size:1rem!important;
+  font-weight:700!important;
+  line-height:1.15!important;
+}
+
+body.cg16-installed
+#cgweb035Panel
+.cg115-detail-metrics-row {
+  display:grid!important;
+  grid-template-columns:repeat(10,minmax(0,1fr))!important;
+  gap:7px!important;
+  width:100%!important;
+}
+
+
+/* ------------------------------------------------------------
+   C. CARTES PLUS COMPACTES
+   ------------------------------------------------------------ */
+
+body.cg16-installed
+#cgweb035Panel
+.cg113-summary-grid > article,
+
+body.cg16-installed
+#cgweb035Panel
+.cg115-detail-metrics-row > article {
+  min-width:0!important;
+  padding:7px 8px!important;
+  border-radius:10px!important;
+  box-sizing:border-box!important;
+}
+
+body.cg16-installed
+#cgweb035Panel
+.cg113-summary-grid > article span,
+
+body.cg16-installed
+#cgweb035Panel
+.cg115-detail-metrics-row > article span {
+  display:block!important;
+  font-size:.70rem!important;
+  line-height:1.12!important;
+  min-height:0!important;
+}
+
+body.cg16-installed
+#cgweb035Panel
+.cg113-summary-grid > article b,
+
+body.cg16-installed
+#cgweb035Panel
+.cg115-detail-metrics-row > article b {
+  display:block!important;
+  margin-top:4px!important;
+  font-size:1.12rem!important;
+  line-height:1.1!important;
+}
+
+
+/* ------------------------------------------------------------
+   D. LES DEUX ANCIENS BLOCS SONT MASQUES
+   après transfert de leurs cartes
+   ------------------------------------------------------------ */
+
+body.cg16-installed
+#cgweb035Panel
+.cg115-detail-source-hidden {
+  display:none!important;
+}
+
+
+/* ------------------------------------------------------------
+   E. RESPONSIVE
+   Le mode 8/10 colonnes reste prioritaire sur écran desktop.
+   ------------------------------------------------------------ */
+
+@media(max-width:1050px) {
+
+  body.cg16-installed
+  #cgweb035Panel
+  .cg113-summary-grid {
+    grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  }
+
+  body.cg16-installed
+  #cgweb035Panel
+  .cg115-detail-metrics-row {
+    grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  }
+
+  body.cg16-installed
+  #cgweb035Panel
+  .cg115-detail-metrics-head {
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+
+  body.cg16-installed
+  #cgweb035Panel
+  .cg115-detail-metrics-head
+  .cg115-mastery-title {
+    grid-column:1!important;
+  }
+
+  body.cg16-installed
+  #cgweb035Panel
+  .cg115-detail-metrics-head
+  .cg115-performance-title {
+    grid-column:2!important;
+  }
+}
+

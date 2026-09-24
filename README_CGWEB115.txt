@@ -111,3 +111,39 @@ IMPORT_ACTION_ROW001
   Effacer la liste
   Actualiser
 - aucune modification du moteur CGIMPORT011
+
+
+CGWEB115 FIX5
+=============
+
+DETAIL_METRICS_DENSITY001
+-------------------------
+- 8 indicateurs généraux sur une seule ligne :
+  Questions total
+  Questions vues
+  Jamais vues
+  Réponses évaluées
+  Réussite
+  À réviser
+  Points faibles
+  Faiblesse moyenne
+
+- fusion visuelle des blocs :
+  Maîtrise
+  Temps de réponse et difficulté
+
+- 10 indicateurs sur une seule ligne :
+  Découverte
+  Fragile
+  Connue
+  Maîtrisée
+  À réviser
+  Temps médian
+  Temps moyen
+  Connues mais lentes
+  Difficulté
+  Questions évaluées pour la difficulté
+
+- aucune modification des données ou calculs
+- cartes plus compactes
+- responsive conservé

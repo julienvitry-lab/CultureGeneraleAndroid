@@ -1062,3 +1062,205 @@
   );
 
 })();
+
+/* ============================================================
+   CGWEB115 FIX5
+   DETAIL_METRICS_DENSITY001
+   ============================================================ */
+/* CGWEB115_FIX5_DETAIL_METRICS_DENSITY001 */
+
+(() => {
+  "use strict";
+
+  function compactDetailMetrics() {
+
+    const root =
+      document.querySelector(
+        "#cgweb035Panel .cg113-detail"
+      );
+
+    if (!root) return false;
+
+
+    const summary =
+      root.querySelector(
+        ".cg113-summary-grid"
+      );
+
+    const mastery =
+      root.querySelector(
+        ".cg113-mastery-grid"
+      );
+
+    const performance =
+      root.querySelector(
+        ".cg113-performance-grid"
+      );
+
+    if (
+      !summary ||
+      !mastery ||
+      !performance
+    ) {
+      return false;
+    }
+
+
+    /*
+      Si le bloc compact existe déjà pour ce rendu,
+      aucune nouvelle intervention.
+    */
+    if (
+      root.querySelector(
+        ".cg115-detail-metrics-combined"
+      )
+    ) {
+      return true;
+    }
+
+
+    const masterySection =
+      mastery.closest(
+        ".cg113-detail-section"
+      );
+
+    const performanceSection =
+      performance.closest(
+        ".cg113-detail-section"
+      );
+
+
+    const combined =
+      document.createElement("section");
+
+    combined.className =
+      "cg115-detail-metrics-combined";
+
+
+    /*
+      Ligne des deux intitulés :
+      5 cartes Maîtrise | 5 cartes Performance
+    */
+    const headings =
+      document.createElement("div");
+
+    headings.className =
+      "cg115-detail-metrics-head";
+
+    headings.innerHTML = `
+      <div class="cg115-mastery-title">
+        Maîtrise
+      </div>
+      <div class="cg115-performance-title">
+        Temps de réponse et difficulté
+      </div>
+    `;
+
+
+    /*
+      Ligne unique de 10 cartes.
+    */
+    const row =
+      document.createElement("div");
+
+    row.className =
+      "cg115-detail-metrics-row";
+
+
+    /*
+      On déplace les 5 cartes de Maîtrise,
+      puis les 5 cartes Temps/Difficulté.
+      Les éléments eux-mêmes sont conservés :
+      aucune valeur n'est recalculée.
+    */
+    [
+      ...mastery.querySelectorAll(
+        ":scope > article"
+      ),
+      ...performance.querySelectorAll(
+        ":scope > article"
+      )
+    ].forEach(card => {
+      row.appendChild(card);
+    });
+
+
+    combined.appendChild(headings);
+    combined.appendChild(row);
+
+
+    /*
+      Le nouveau bloc vient juste après les
+      8 indicateurs généraux.
+    */
+    summary.insertAdjacentElement(
+      "afterend",
+      combined
+    );
+
+
+    /*
+      Les anciennes coquilles avec leurs titres
+      sont désormais inutiles.
+    */
+    masterySection?.classList.add(
+      "cg115-detail-source-hidden"
+    );
+
+    performanceSection?.classList.add(
+      "cg115-detail-source-hidden"
+    );
+
+
+    return true;
+  }
+
+
+  function installFix5() {
+    compactDetailMetrics();
+  }
+
+
+  /*
+    Le panneau Détail est reconstruit lorsqu'on
+    passe de Total à un mégathème.
+  */
+  let scheduled = false;
+
+  function schedule() {
+    if (scheduled) return;
+
+    scheduled = true;
+
+    requestAnimationFrame(() => {
+      scheduled = false;
+      installFix5();
+    });
+  }
+
+
+  if (
+    document.readyState ===
+    "loading"
+  ) {
+    document.addEventListener(
+      "DOMContentLoaded",
+      installFix5,
+      { once:true }
+    );
+  } else {
+    installFix5();
+  }
+
+
+  new MutationObserver(
+    schedule
+  ).observe(
+    document.documentElement,
+    {
+      childList:true,
+      subtree:true
+    }
+  );
+
+})();
