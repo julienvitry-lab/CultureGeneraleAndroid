@@ -1,194 +1,291 @@
 /* ============================================================
-   CGWEB115 FIX1
-   HISTORY_CLEANUP002 / CREATE_FORM_TIGHTEN002 / NAV_PRUNE001
+   CGWEB115 FIX2
+   NAV_REMOVE002 / BACKUP_REHOME002
+   CREATE_WIDTH_BALANCE003 / CUSTOM_SELECT001
    ============================================================ */
 
-/* ------------------------------------------------------------
-   1. TYPOGRAPHIE / CONTROLES
-   ------------------------------------------------------------ */
+
+/* ============================================================
+   1. CREATION DE QUESTIONS
+   ============================================================ */
 
 body.cg16-installed #cg16PageCreate,
 body.cg16-installed #cg16PageCreate input,
 body.cg16-installed #cg16PageCreate textarea,
-body.cg16-installed #cg16PageCreate select,
-body.cg16-installed #cg16PageCreate option,
-body.cg16-installed #cg16PageCreate optgroup,
 body.cg16-installed #cg16PageCreate button {
-  font-family: "Comfortaa", sans-serif !important;
+  font-family:"Comfortaa",sans-serif!important;
 }
-
-body.cg16-installed #cg16PageCreate input:not([type="file"]),
-body.cg16-installed #cg16PageCreate select {
-  min-height: 38px !important;
-  line-height: 1.2 !important;
-}
-
-/* ------------------------------------------------------------
-   2. FORMULAIRE DE CREATION
-   ------------------------------------------------------------ */
 
 body.cg16-installed #cg16PageCreate .cg112-field-id {
-  display: none !important;
+  display:none!important;
 }
 
-/* Première ligne resserrée :
-   Mégathème | Thème | Image | Statut
+
+/*
+  Répartition demandée :
+
+  FIX1 :
+  Mégathème .24
+  Thème     .30
+  Image     .62
+  Statut    3 cm
+
+  FIX2 :
+  Mégathème .24  = inchangé
+  Thème     .61  = récupère toute la largeur retirée à Image
+  Image     .31  = largeur divisée par deux
+  Statut    3 cm = inchangé
 */
 body.cg16-installed #cg16PageCreate .cg112-row-identity {
-  display: grid !important;
+  display:grid!important;
   grid-template-columns:
-    minmax(130px, .24fr)
-    minmax(160px, .30fr)
-    minmax(250px, .62fr)
-    3cm !important;
-  gap: 12px !important;
-  align-items: end !important;
+    minmax(130px,.24fr)
+    minmax(280px,.61fr)
+    minmax(160px,.31fr)
+    3cm!important;
+  gap:12px!important;
+  align-items:end!important;
 }
 
 body.cg16-installed #cg16PageCreate .cg112-field-mega,
 body.cg16-installed #cg16PageCreate .cg112-field-theme,
 body.cg16-installed #cg16PageCreate .cg112-field-image,
 body.cg16-installed #cg16PageCreate .cg112-field-status {
-  min-width: 0 !important;
-  width: 100% !important;
+  width:100%!important;
+  min-width:0!important;
 }
 
 body.cg16-installed #cg16PageCreate .cg112-field-image {
-  overflow: hidden !important;
+  overflow:hidden!important;
 }
 
 body.cg16-installed #cg16PageCreate .cg112-field-image input[type="file"] {
-  display: block !important;
-  box-sizing: border-box !important;
-  width: 100% !important;
-  min-width: 0 !important;
-  max-width: 100% !important;
-  overflow: hidden !important;
+  display:block!important;
+  box-sizing:border-box!important;
+  width:100%!important;
+  min-width:0!important;
+  max-width:100%!important;
+  overflow:hidden!important;
 }
 
 body.cg16-installed #cg16PageCreate .cg112-field-image small {
-  display: none !important;
+  display:none!important;
 }
 
 body.cg16-installed #cg16PageCreate .cg112-field-status {
-  width: 3cm !important;
-  min-width: 3cm !important;
-  max-width: 3cm !important;
-}
-
-body.cg16-installed #cg16PageCreate .cg112-field-status select,
-body.cg16-installed #cg16PageCreate .cg112-field-correct input {
-  width: 100% !important;
-  min-width: 0 !important;
-  box-sizing: border-box !important;
-}
-
-body.cg16-installed #cg16PageCreate .cg112-row-answers {
-  display: grid !important;
-  grid-template-columns:
-    repeat(4, minmax(0, 1fr))
-    minmax(120px, .34fr) !important;
-  gap: 12px !important;
+  width:3cm!important;
+  min-width:3cm!important;
+  max-width:3cm!important;
 }
 
 body.cg16-installed #cg16PageCreate .cg112-row-media {
-  display: none !important;
+  display:none!important;
 }
 
-/* ------------------------------------------------------------
-   3. HISTORIQUE / APPRENTISSAGE
-   ------------------------------------------------------------ */
-
-/* Bordures 2 px */
-body.cg16-installed #cgweb035Panel .cg114-history-card.cg114-result-good,
-body.cg16-installed #cgweb035Panel .cg114-history-card.cg114-result-bad,
-body.cg16-installed #cgweb035Panel .cg114-history-card.cg114-result-neutral {
-  border-width: 2px !important;
+body.cg16-installed #cg16PageCreate .cg112-row-answers {
+  display:grid!important;
+  grid-template-columns:
+    repeat(4,minmax(0,1fr))
+    minmax(120px,.34fr)!important;
+  gap:12px!important;
 }
 
-/* Séparation entre partie 1 et partie 2 */
+
+/* ============================================================
+   2. MENUS CUSTOM COMFORTAA
+   ============================================================ */
+
+/*
+  Le SELECT natif reste présent pour le moteur CGWEB,
+  mais n'est plus l'élément visuel utilisé par l'utilisateur.
+*/
+body.cg16-installed #cg16PageCreate select.cg115-native-select {
+  position:absolute!important;
+  width:1px!important;
+  height:1px!important;
+  padding:0!important;
+  margin:-1px!important;
+  overflow:hidden!important;
+  clip:rect(0,0,0,0)!important;
+  white-space:nowrap!important;
+  border:0!important;
+  opacity:0!important;
+  pointer-events:none!important;
+}
+
+body.cg16-installed #cg16PageCreate .cg115-select {
+  position:relative!important;
+  width:100%!important;
+  min-width:0!important;
+  font-family:"Comfortaa",sans-serif!important;
+}
+
+body.cg16-installed #cg16PageCreate .cg115-select-button {
+  display:flex!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  width:100%!important;
+  min-width:0!important;
+  height:38px!important;
+  box-sizing:border-box!important;
+
+  padding:0 11px!important;
+
+  border:1px solid rgba(255,255,255,.18)!important;
+  border-radius:10px!important;
+
+  background:#092844!important;
+  color:#fff!important;
+
+  font-family:"Comfortaa",sans-serif!important;
+  font-size:14px!important;
+  font-weight:400!important;
+  line-height:1!important;
+
+  cursor:pointer!important;
+}
+
+body.cg16-installed #cg16PageCreate .cg115-select-button::after {
+  content:"⌄";
+  flex:0 0 auto;
+  margin-left:8px;
+  font-family:"Comfortaa",sans-serif!important;
+  font-size:15px;
+}
+
+body.cg16-installed #cg16PageCreate .cg115-select.open
+.cg115-select-button {
+  border-color:#59ccf5!important;
+}
+
+body.cg16-installed #cg16PageCreate .cg115-select-menu {
+  display:none;
+  position:absolute!important;
+  z-index:100000!important;
+  left:0!important;
+  right:0!important;
+  top:calc(100% + 4px)!important;
+
+  max-height:300px!important;
+  overflow:auto!important;
+
+  padding:5px!important;
+
+  background:#092844!important;
+  border:1px solid rgba(101,214,255,.45)!important;
+  border-radius:10px!important;
+  box-shadow:0 12px 28px rgba(0,0,0,.38)!important;
+
+  font-family:"Comfortaa",sans-serif!important;
+}
+
+body.cg16-installed #cg16PageCreate
+.cg115-select.open .cg115-select-menu {
+  display:block!important;
+}
+
+body.cg16-installed #cg16PageCreate .cg115-select-option {
+  display:block!important;
+  width:100%!important;
+  box-sizing:border-box!important;
+
+  padding:8px 9px!important;
+  border:0!important;
+  border-radius:7px!important;
+
+  text-align:left!important;
+
+  background:transparent!important;
+  color:#fff!important;
+
+  font-family:"Comfortaa",sans-serif!important;
+  font-size:14px!important;
+  font-weight:400!important;
+
+  cursor:pointer!important;
+}
+
+body.cg16-installed #cg16PageCreate .cg115-select-option:hover,
+body.cg16-installed #cg16PageCreate .cg115-select-option.active {
+  background:rgba(79,195,247,.16)!important;
+}
+
+
+/* ============================================================
+   3. HISTORIQUE — FIX1 CONSERVE
+   ============================================================ */
+
+body.cg16-installed #cgweb035Panel
+.cg114-history-card.cg114-result-good,
+body.cg16-installed #cgweb035Panel
+.cg114-history-card.cg114-result-bad,
+body.cg16-installed #cgweb035Panel
+.cg114-history-card.cg114-result-neutral {
+  border-width:2px!important;
+}
+
 body.cg16-installed #cgweb035Panel .cg113-history-detail {
-  border-left: 1px solid rgba(135,165,195,.25) !important;
-  padding-left: 14px !important;
+  border-left:1px solid rgba(135,165,195,.25)!important;
+  padding-left:14px!important;
 }
 
-/* Centrage vertical des 3 colonnes */
 body.cg16-installed #cgweb035Panel .cg35-history-left,
 body.cg16-installed #cgweb035Panel .cg113-history-detail,
 body.cg16-installed #cgweb035Panel .cg35-history-right {
-  display: flex !important;
-  flex-direction: column !important;
-  justify-content: center !important;
-  min-height: 100% !important;
+  display:flex!important;
+  flex-direction:column!important;
+  justify-content:center!important;
+  min-height:100%!important;
 }
 
 body.cg16-installed #cgweb035Panel .cg113-history-detail p {
-  margin: 0 !important;
+  margin:0!important;
 }
 
-/* ------------------------------------------------------------
-   4. SUPPRESSION DE PARAMETRES
-   ------------------------------------------------------------ */
 
-body.cg16-installed [data-cg16-page="more"] {
-  display: none !important;
-}
+/* ============================================================
+   4. PARAMETRES : PLUS RIEN DANS LA NAVIGATION
+   ============================================================ */
 
+/* Sécurité CSS en complément de la suppression JS. */
+body.cg16-installed [data-cg16-page="more"],
 body.cg16-installed #cg16SecondaryNav {
-  display: none !important;
+  display:none!important;
 }
 
-/* Quand la page "more" est appelée pour Sauvegardes,
-   on ne conserve visuellement que backup. */
-body.cg16-installed #cg16PageMore [data-cg16-plus-panel]:not([data-cg16-plus-panel="backup"]) {
-  display: none !important;
+
+/* ============================================================
+   5. SAUVEGARDES DANS LA BARRE D'ACTIONS DU REPERTOIRE
+   ============================================================ */
+
+body.cg16-installed #cg115OpenBackup {
+  font-family:"Comfortaa",sans-serif!important;
 }
 
-/* ------------------------------------------------------------
-   5. BOUTON SAUVEGARDES DANS REPERTOIRE
-   ------------------------------------------------------------ */
 
-body.cg16-installed .cg115-directory-tools {
-  display: flex !important;
-  justify-content: flex-end !important;
-  gap: 10px !important;
-  margin: 0 0 12px !important;
-}
-
-body.cg16-installed .cg115-directory-tools button {
-  border: 1px solid rgba(255,255,255,.24) !important;
-  background: transparent !important;
-  color: #fff !important;
-  border-radius: 10px !important;
-  padding: 9px 13px !important;
-  font-family: "Comfortaa", sans-serif !important;
-  font-weight: 700 !important;
-  cursor: pointer !important;
-}
-
-/* ------------------------------------------------------------
+/* ============================================================
    6. RESPONSIVE
-   ------------------------------------------------------------ */
+   ============================================================ */
 
-@media (max-width: 980px) {
+@media(max-width:980px) {
   body.cg16-installed #cg16PageCreate .cg112-row-identity {
-    grid-template-columns: 1fr !important;
+    grid-template-columns:1fr!important;
   }
 
   body.cg16-installed #cg16PageCreate .cg112-field-status {
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: none !important;
+    width:100%!important;
+    min-width:0!important;
+    max-width:none!important;
   }
 
   body.cg16-installed #cg16PageCreate .cg112-row-answers {
-    grid-template-columns: 1fr !important;
+    grid-template-columns:1fr!important;
   }
 
   body.cg16-installed #cgweb035Panel .cg113-history-detail {
-    border-left: 0 !important;
-    border-top: 1px solid rgba(135,165,195,.25) !important;
-    padding-left: 0 !important;
-    padding-top: 10px !important;
+    border-left:0!important;
+    border-top:1px solid rgba(135,165,195,.25)!important;
+    padding-left:0!important;
+    padding-top:10px!important;
   }
 }
