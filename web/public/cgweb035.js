@@ -1,4 +1,5 @@
-const CGWEB035_VERSION='CGWEB113_FIX1B_DETAIL_SINGLE_REQUEST001_DETAIL_FETCH_STABILITY002';
+const CGWEB035_VERSION='CGWEB113_FIX2_HISTORY_FAST_PAGE001_HISTORY_COLD_START001';
+// CGWEB113_FIX2_HISTORY_FAST_PAGE001_HISTORY_COLD_START001
 // CGWEB113_FIX1B_DETAIL_SINGLE_REQUEST001_DETAIL_FETCH_STABILITY002
 // CGWEB113_HISTORY_SIMPLIFY001_DETAIL_DASHBOARD001_HISTORY_CARD_DETAIL001_CROSS_SMART_RETIRE001
 // CGWEB107_HISTORY_MAIN_TAB001_HISTORY_CARD_COMPACT001_HISTORY_PAGING001
@@ -14,7 +15,7 @@ const cg35PriorityCount=n=>cg35Count(n,'prioritaire','prioritaires');
 const cg35DifficultyValue=v=>Number.isFinite(v)?`${cg35Fmt(v)}/100`:'—';
 const cg35Time=ms=>{const n=Number(ms||0);if(!n)return '—';if(n<60000)return `${(n/1000).toFixed(1).replace('.',',')} s`;return `${Math.floor(n/60000)} min ${Math.floor((n%60000)/1000)} s`};
 const cg35Date=ms=>ms?new Date(Number(ms)).toLocaleString('fr-FR'):'—';
-const CG35={tab:'history',domain:'',theme:'',historyFilter:'all',historyPageSize:100,historyOffset:0,historyRows:[],historyTotal:0,smartConfig:{count:20,duePct:40,weakPct:35,unseenPct:25,domain:''},smartRows:[],detailDomain:''};
+const CG35={tab:'history',domain:'',theme:'',historyFilter:'all',historyPageSize:100,historyOffset:0,historyCursor:'',historyRows:[],historyTotal:0,historyAttemptMeta:{},smartConfig:{count:20,duePct:40,weakPct:35,unseenPct:25,domain:''},smartRows:[],detailDomain:''};
 
 const CG35_DOMAINS=['Animaux et Plantes','Culture Classique','Culture Générale','Culture Moderne','Géographie','Histoire','Sciences et Techniques','Sport'];
 
@@ -61,7 +62,10 @@ function cg35HistoryResult(e){if(e.playType==='revision_reveal')return 'Révéla
 function cg35HistoryType(e){if(e.playType==='challenge_choice')return 'QCM';if(e.playType==='challenge_mental')return 'Mental';if(e.playType==='revision_reveal')return 'Révision';return e.playType||'Événement'}
 function cg35HistoryCard(e){
   const qcm=e.playType==='challenge_choice';
-  const attempt=e.attemptTotal>1?`<span class="cg35-history-attempt">Tentative ${e.attemptNumber}/${e.attemptTotal}</span>`:'';
+  const attemptMeta=CG35.historyAttemptMeta?.[e.id]||null;
+  const attempt=attemptMeta?.attemptTotal>1
+    ? `<span class="cg35-history-attempt" data-cg35-attempt="${cg35Esc(e.id)}">Tentative ${attemptMeta.attemptNumber}/${attemptMeta.attemptTotal}</span>`
+    : `<span class="cg35-history-attempt" data-cg35-attempt="${cg35Esc(e.id)}" hidden></span>`;
   const right=qcm
     ? `<div class="cg35-history-answer"><span>Réponse donnée</span><b>${cg35Esc(e.selectedAnswer||'—')}</b></div>
        <div class="cg35-history-answer"><span>Bonne réponse au moment du jeu</span><b>${cg35Esc(e.correctAnswer||'—')}</b></div>
@@ -79,12 +83,52 @@ function cg35HistoryCard(e){
   </article>`;
 }
 
+
+async function cg113LoadAttemptMeta(rows){
+  const page=(rows||[]).filter(x=>x?.id&&x?.questionId&&x?.playType);
+  if(!page.length)return;
+
+  try{
+    const d=await cg35Api({
+      mode:'historyAttemptMeta',
+      rows:page.map(x=>({
+        id:x.id,
+        questionId:x.questionId,
+        playType:x.playType,
+        playedAtMs:x.playedAtMs,
+        bindingSource:x.bindingSource
+      }))
+    });
+
+    const meta=d.meta||{};
+    Object.assign(CG35.historyAttemptMeta,meta);
+
+    for(const [id,m] of Object.entries(meta)){
+      const el=document.querySelector(`[data-cg35-attempt="${CSS.escape(id)}"]`);
+      if(!el)continue;
+
+      const total=Number(m.attemptTotal||0);
+      const number=Number(m.attemptNumber||0);
+
+      if(total>1&&number>0){
+        el.textContent=`Tentative ${number}/${total}`;
+        el.hidden=false;
+      }else{
+        el.textContent='';
+        el.hidden=true;
+      }
+    }
+  }catch(e){
+    console.warn('CGWEB113 FIX2 · historyAttemptMeta',e);
+  }
+}
+
 function cg35RenderHistory(){
-  const shown=CG35.historyRows.length,total=CG35.historyTotal,remaining=Math.max(0,total-shown),next=Math.min(CG35.historyPageSize,remaining);
+  const shown=CG35.historyRows.length,total=CG35.historyTotal,remaining=Math.max(0,total-shown),next=Math.min(CG35.historyPageSize,remaining),hasMore=Boolean(CG35.historyCursor)&&remaining>0;
   cg35SetBody(`
     <div class="cg35-history-toolbar cg113-history-toolbar"><div class="cg35-history-count"><b>${cg35Fmt(shown)} affiché${shown===1?'':'s'}</b><span>sur ${cg35Fmt(total)} événement${total===1?'':'s'}</span></div></div>
     <section class="cg35-list cg35-history-list">${CG35.historyRows.map(cg35HistoryCard).join('')||'<div class="cg35-empty">Aucun événement.</div>'}</section>
-    ${remaining>0?`<div class="cg35-history-paging"><button id="cg35HistoryMore" type="button">Afficher ${cg35Fmt(next)} de plus</button><span>${cg35Fmt(remaining)} restant${remaining===1?'':'s'}</span></div>`:shown>0?'<div class="cg35-history-paging cg35-history-complete">Historique affiché en totalité.</div>':''}
+    ${hasMore?`<div class="cg35-history-paging"><button id="cg35HistoryMore" type="button">Afficher ${cg35Fmt(next)} de plus</button><span>${cg35Fmt(remaining)} restant${remaining===1?'':'s'}</span></div>`:shown>0?'<div class="cg35-history-paging cg35-history-complete">Historique affiché en totalité.</div>':''}
   `);
   cg35$('cg35HistoryMore')?.addEventListener('click',()=>cg35History(false));
 }
@@ -93,21 +137,27 @@ async function cg35History(reset=true){
   try{
     if(reset){
       CG35.historyOffset=0;
+      CG35.historyCursor='';
       CG35.historyRows=[];
       CG35.historyTotal=0;
+      CG35.historyAttemptMeta={};
     }
+
+    cg35Status(reset?'Chargement des 100 derniers événements…':'Chargement de 100 événements supplémentaires…');
 
     const d=await cg35Api({
       mode:'history',
       filter:'all',
       limit:CG35.historyPageSize,
-      offset:CG35.historyOffset
+      cursor:reset?'':CG35.historyCursor
     });
 
     const page=d.rows||[];
+
     CG35.historyRows=reset?page:CG35.historyRows.concat(page);
     CG35.historyOffset=CG35.historyRows.length;
     CG35.historyTotal=Number(d.filteredTotal??d.total??CG35.historyRows.length);
+    CG35.historyCursor=String(d.nextCursor||'');
 
     cg35RenderHistory();
 
@@ -115,6 +165,8 @@ async function cg35History(reset=true){
       `✅ Historique chargé · ${cg35Fmt(CG35.historyRows.length)} / ${cg35Fmt(CG35.historyTotal)}.`,
       'ok'
     );
+
+    void cg113LoadAttemptMeta(page);
   }catch(e){
     cg35SetBody(`<div class="cg35-error">${cg35Esc(e.message)}</div>`);
     cg35Status(`❌ ${e.message}`,'bad');

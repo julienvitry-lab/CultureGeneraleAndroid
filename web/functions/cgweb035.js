@@ -154,6 +154,179 @@ async function loadHistory(uid,force=false){
   CACHE.set(uid,{at:Date.now(),events});
   return events;
 }
+
+// CGWEB113 FIX2 · HISTORY_FAST_PAGE001 / HISTORY_COLD_START001
+// Le mode Historique ne charge plus toute la collection play_history.
+// Il lit uniquement la page demandée. L'analyse complète reste réservée
+// aux vues Détail/statistiques.
+// CGWEB113_FIX2_HISTORY_FAST_PAGE001_HISTORY_COLD_START001
+
+async function loadHistoryFastPage(uid,limit=100,cursor=''){
+  const col=
+    getFirestore()
+      .collection('users')
+      .doc(uid)
+      .collection('play_history');
+
+  let q=
+    col
+      .orderBy('client_played_at_ms','desc')
+      .limit(limit);
+
+  if(cursor){
+    const cursorDoc=await col.doc(cursor).get();
+    if(cursorDoc.exists){
+      q=q.startAfter(cursorDoc);
+    }
+  }
+
+  const [snap,countSnap]=await Promise.all([
+    q.get(),
+    col.count().get()
+  ]);
+
+  const rows=snap.docs.map(d=>{
+    const e=eventFromDoc(d);
+    return {
+      ...e,
+      attemptNumber:null,
+      attemptTotal:null,
+      positive:isEvaluable(e)?isPositive(e):null
+    };
+  });
+
+  const total=Number(countSnap.data().count||0);
+  const nextCursor=
+    snap.size===limit && rows.length<total
+      ? snap.docs[snap.docs.length-1]?.id||''
+      : '';
+
+  return {
+    rows,
+    total,
+    nextCursor
+  };
+}
+
+function cg113HistoryMetaRow(doc){
+  const e=eventFromDoc(doc);
+  return {
+    id:e.id,
+    questionId:one(e.questionId),
+    playType:one(e.playType),
+    playedAtMs:num(e.playedAtMs),
+    bindingSource:one(e.bindingSource)
+  };
+}
+
+async function loadHistoryAttemptMeta(uid,requestedRows){
+  const requested=(Array.isArray(requestedRows)?requestedRows:[])
+    .map(x=>({
+      id:one(x?.id),
+      questionId:one(x?.questionId),
+      playType:one(x?.playType),
+      playedAtMs:num(x?.playedAtMs),
+      bindingSource:one(x?.bindingSource)
+    }))
+    .filter(x=>x.id&&x.questionId&&x.playType)
+    .slice(0,150);
+
+  if(!requested.length)return {};
+
+  const col=
+    getFirestore()
+      .collection('users')
+      .doc(uid)
+      .collection('play_history');
+
+  const fetched=new Map();
+
+  async function fetchByField(field,rows,convert=v=>v){
+    const values=[
+      ...new Set(
+        rows
+          .map(x=>convert(x.questionId))
+          .filter(v=>v!==''&&v!==null&&v!==undefined)
+      )
+    ];
+
+    for(let i=0;i<values.length;i+=10){
+      const part=values.slice(i,i+10);
+      if(!part.length)continue;
+
+      const snap=
+        await col
+          .where(field,'in',part)
+          .select(
+            'question_id',
+            'question_snapshot',
+            'question_row_number',
+            'play_type',
+            'client_played_at_ms',
+            'played_at'
+          )
+          .get()
+          .catch(()=>({docs:[]}));
+
+      for(const d of snap.docs||[]){
+        fetched.set(d.id,d);
+      }
+    }
+  }
+
+  const explicit=requested.filter(x=>x.bindingSource==='question_id');
+  const snapshot=requested.filter(x=>x.bindingSource==='question_snapshot.question_id');
+  const legacy=requested.filter(x=>x.bindingSource==='question_row_number');
+
+  await Promise.all([
+    fetchByField('question_id',explicit),
+    fetchByField('question_snapshot.question_id',snapshot),
+    fetchByField(
+      'question_row_number',
+      legacy,
+      v=>{
+        const n=Number(v);
+        return Number.isFinite(n)&&String(n)===String(v).trim()?n:v;
+      }
+    )
+  ]);
+
+  const groups=new Map();
+
+  for(const d of fetched.values()){
+    const e=cg113HistoryMetaRow(d);
+    const key=`${e.playType}|${e.questionId}`;
+    if(!groups.has(key))groups.set(key,[]);
+    groups.get(key).push(e);
+  }
+
+  for(const list of groups.values()){
+    list.sort(
+      (a,b)=>
+        a.playedAtMs-b.playedAtMs ||
+        a.id.localeCompare(b.id,'fr',{numeric:true})
+    );
+  }
+
+  const meta={};
+
+  for(const row of requested){
+    const key=`${row.playType}|${row.questionId}`;
+    const list=groups.get(key)||[];
+    if(!list.length)continue;
+
+    const index=list.findIndex(x=>x.id===row.id);
+    if(index<0)continue;
+
+    meta[row.id]={
+      attemptNumber:index+1,
+      attemptTotal:list.length
+    };
+  }
+
+  return meta;
+}
+
 async function loadXPolicy(uid,force=false){
   const cached=X_POLICY_CACHE.get(uid);
   if(!force&&cached&&Date.now()-cached.at<X_POLICY_TTL_MS)return cached.policy;
@@ -5182,26 +5355,34 @@ async function handleLearningHub(req,res){
     const user=await requireUser(req);
     const body=req.body&&typeof req.body==='object'?req.body:{};
     const mode=one(body.mode)||'overview';
-    const events=await loadHistory(user.uid,Boolean(body.forceRefresh));
 
-    // L'historique brut reste intact, y compris les anciens événements Mental.
     if(mode==='history'){
-      const filter=['qcm','mental','revision'].includes(one(body.filter))
-        ? one(body.filter)
-        : 'all';
-      const limit=clamp(Math.floor(num(body.limit)||100),1,500);
-      const offset=Math.max(0,Math.floor(num(body.offset)||0));
-      const filteredTotal=historyFilteredCount(events,filter);
+      const limit=clamp(Math.floor(num(body.limit)||100),1,200);
+      const cursor=one(body.cursor);
+      const page=await loadHistoryFastPage(user.uid,limit,cursor);
+
       return json(res,200,{
         ok:true,
-        total:events.length,
-        filteredTotal,
-        filter,
-        offset,
+        total:page.total,
+        filteredTotal:page.total,
+        filter:'all',
         limit,
-        rows:historyRows(events,filter,limit,offset)
+        rows:page.rows,
+        nextCursor:page.nextCursor,
+        historyFastPageVersion:'CGWEB113_FIX2_HISTORY_FAST_PAGE001'
       });
     }
+
+    if(mode==='historyAttemptMeta'){
+      const meta=await loadHistoryAttemptMeta(user.uid,body.rows);
+      return json(res,200,{
+        ok:true,
+        meta,
+        historyColdStartVersion:'CGWEB113_FIX2_HISTORY_COLD_START001'
+      });
+    }
+
+    const events=await loadHistory(user.uid,Boolean(body.forceRefresh));
 
     // Les modes susceptibles de proposer une question rechargent X immédiatement.
     const forceX=
