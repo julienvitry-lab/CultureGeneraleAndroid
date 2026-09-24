@@ -1,0 +1,204 @@
+/* ============================================================
+   CGWEB115
+   CREATE_FORM_REWORK001 / HISTORY_CLEANUP001
+
+   Surcouche uniquement.
+   Aucun moteur Firestore modifié.
+   ============================================================ */
+
+
+/* ------------------------------------------------------------
+   A. TYPOGRAPHIE
+   Comfortaa également dans les listes déroulantes natives.
+   ------------------------------------------------------------ */
+
+body.cg16-installed #cg16PageCreate select,
+body.cg16-installed #cg16PageCreate option,
+body.cg16-installed #cg16PageCreate input,
+body.cg16-installed #cg16PageCreate textarea,
+body.cg16-installed #cg16PageCreate button {
+  font-family:"Comfortaa",sans-serif!important;
+}
+
+
+/* ------------------------------------------------------------
+   B. FORMULAIRE DE CRÉATION
+   ------------------------------------------------------------ */
+
+/* L'ID reste techniquement présent pour compatibilité avec le
+   moteur existant, mais il n'est plus affiché ni éditable. */
+body.cg16-installed #cg16PageCreate .cg112-field-id {
+  display:none!important;
+}
+
+
+/* Première ligne :
+   Mégathème | Thème | Image | Statut
+*/
+body.cg16-installed #cg16PageCreate .cg112-row-identity {
+  display:grid!important;
+  grid-template-columns:
+    minmax(190px,.55fr)
+    minmax(280px,1fr)
+    5cm
+    3cm!important;
+  gap:12px!important;
+  align-items:end!important;
+}
+
+
+/* Les deux champs principaux sont désormais nettement plus courts. */
+body.cg16-installed #cg16PageCreate .cg112-field-mega,
+body.cg16-installed #cg16PageCreate .cg112-field-theme {
+  min-width:0!important;
+  width:100%!important;
+}
+
+
+/* Image : largeur physique demandée ≈ 5 cm. */
+body.cg16-installed #cg16PageCreate .cg112-field-image {
+  width:5cm!important;
+  min-width:5cm!important;
+  max-width:5cm!important;
+  overflow:hidden!important;
+}
+
+body.cg16-installed #cg16PageCreate .cg112-field-image input[type="file"] {
+  display:block!important;
+  box-sizing:border-box!important;
+  width:5cm!important;
+  max-width:5cm!important;
+  min-width:0!important;
+  overflow:hidden!important;
+  white-space:nowrap!important;
+}
+
+
+/* La phrase historique sous Image disparaît. */
+body.cg16-installed #cg16PageCreate .cg112-field-image small {
+  display:none!important;
+}
+
+
+/* Statut : largeur physique demandée ≈ 3 cm. */
+body.cg16-installed #cg16PageCreate .cg112-field-status {
+  width:3cm!important;
+  min-width:3cm!important;
+  max-width:3cm!important;
+}
+
+body.cg16-installed #cg16PageCreate .cg112-field-status select {
+  width:100%!important;
+  min-width:0!important;
+}
+
+
+/* L'ancienne ligne Image / Statut devient inutile une fois les champs
+   déplacés dans la première ligne. */
+body.cg16-installed #cg16PageCreate .cg112-row-media:empty {
+  display:none!important;
+}
+
+
+/* Bonne réponse : champ texte simple, plus de <select>. */
+body.cg16-installed #cg16PageCreate .cg112-field-correct input {
+  width:100%!important;
+  box-sizing:border-box!important;
+}
+
+
+/* On conserve les quatre propositions + bonne réponse sur une ligne. */
+body.cg16-installed #cg16PageCreate .cg112-row-answers {
+  display:grid!important;
+  grid-template-columns:
+    repeat(4,minmax(0,1fr))
+    minmax(105px,.34fr)!important;
+  gap:12px!important;
+}
+
+
+/* ------------------------------------------------------------
+   C. HISTORIQUE
+   ------------------------------------------------------------ */
+
+/* PJ E : suppression des deux grands encarts
+   "Historique" / "Détail".
+   CGWEB113/114 les génère via .cg113-main-tabs. */
+body.cg16-installed #cgweb035Panel .cg113-main-tabs {
+  display:none!important;
+}
+
+
+/* Réduction du liseré résultat 4 px -> 2 px. */
+body.cg16-installed #cgweb035Panel
+.cg114-history-card.cg114-result-good {
+  border-width:2px!important;
+}
+
+body.cg16-installed #cgweb035Panel
+.cg114-history-card.cg114-result-bad {
+  border-width:2px!important;
+}
+
+
+/* Même principe sur l'éventuel état neutre : on ne change ni
+   sa couleur ni sa logique, seulement son épaisseur si une bordure
+   est définie par CGWEB114. */
+body.cg16-installed #cgweb035Panel
+.cg114-history-card.cg114-result-neutral {
+  border-width:2px!important;
+}
+
+
+/* Nouvelle séparation entre partie 1 et partie 2.
+   La séparation partie 2 / partie 3 reste celle existante. */
+body.cg16-installed #cgweb035Panel .cg113-history-detail {
+  border-left:1px solid rgba(135,165,195,.25)!important;
+  padding-left:14px!important;
+}
+
+
+/* Nettoyage de l'espace libéré par la disparition des deux onglets. */
+body.cg16-installed #cgweb035Panel .cg113-history-toolbar {
+  margin-top:0!important;
+}
+
+
+/* ------------------------------------------------------------
+   D. RESPONSIVE
+   ------------------------------------------------------------ */
+
+@media(max-width:1100px) {
+  body.cg16-installed #cg16PageCreate .cg112-row-identity {
+    grid-template-columns:
+      minmax(170px,.7fr)
+      minmax(240px,1fr)
+      5cm
+      3cm!important;
+  }
+}
+
+@media(max-width:820px) {
+  body.cg16-installed #cg16PageCreate .cg112-row-identity {
+    grid-template-columns:1fr!important;
+  }
+
+  body.cg16-installed #cg16PageCreate .cg112-field-image,
+  body.cg16-installed #cg16PageCreate .cg112-field-image input[type="file"],
+  body.cg16-installed #cg16PageCreate .cg112-field-status {
+    width:100%!important;
+    max-width:none!important;
+    min-width:0!important;
+  }
+
+  body.cg16-installed #cg16PageCreate .cg112-row-answers {
+    grid-template-columns:1fr!important;
+  }
+
+  body.cg16-installed #cgweb035Panel .cg113-history-detail {
+    border-left:0!important;
+    border-top:1px solid rgba(135,165,195,.25)!important;
+    padding-left:0!important;
+    padding-top:10px!important;
+  }
+}
