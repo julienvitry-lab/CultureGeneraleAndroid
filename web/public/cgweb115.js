@@ -1,3 +1,4 @@
+/* CGWEB116_FIX3_FIX4_FIX1_MULTI_READ_CLICK_FIX001 */
 /* ============================================================
    CGWEB115 FIX2
    NAV_REMOVE002 / BACKUP_REHOME002
@@ -893,6 +894,45 @@
       );
 
     if (!root) return false;
+
+    /*
+      CGWEB116 FIX3 FIX4 FIX1
+      MULTI_READ_CLICK_FIX001
+
+      CGWEB115 FIX4 déplaçait à nouveau les mêmes boutons
+      à chaque mutation du DOM. Ces appendChild répétés
+      entretenaient leur propre MutationObserver et pouvaient
+      annuler un clic tactile.
+
+      Après la première mise en place, aucune nouvelle
+      réorganisation des boutons n'est effectuée.
+      Seul Actualiser peut encore être rattaché s'il apparaît
+      plus tard.
+    */
+    if (root.dataset.cg115Fix4 === "1") {
+
+      const stableFileLine =
+        root.querySelector(
+          ".cgimport011-fileline"
+        );
+
+      const lateRefresh =
+        document.getElementById(
+          "cgweb040Refresh"
+        );
+
+      if (
+        stableFileLine &&
+        lateRefresh &&
+        lateRefresh.parentElement !== stableFileLine
+      ) {
+        stableFileLine.appendChild(
+          lateRefresh
+        );
+      }
+
+      return true;
+    }
 
     const fileLine =
       root.querySelector(
