@@ -1,3 +1,4 @@
+// CGWEB116_FIX3_FIX2_MULTI_URL_PIPELINE_REPAIR001
 (() => {
   "use strict";
 
@@ -192,13 +193,52 @@
     }) || inputs.find((e) => lower(e.closest("label")?.textContent).includes("adresse quizypedia"));
   }
 
+  // CGWEB116 FIX3 FIX2 · STABLE_CONTROL_IDS001
+  // Les automatismes ne doivent plus dépendre d'un libellé visible.
   function findAnalyzeButton(scope) {
+    const direct = document.getElementById("cgimp2Analyze");
+
+    if (
+      direct &&
+      direct.isConnected &&
+      (!scope || scope.contains(direct)) &&
+      !direct.closest("#cgimport011Bulk")
+    ) {
+      return direct;
+    }
+
     return [...(scope || document).querySelectorAll("button")]
       .find((b) => {
         if (b.closest("#cgimport011Bulk")) return false;
+
         const t = lower(b.textContent);
-        return t === "analyser l'url" || (t.startsWith("analyser") && t.includes("url"));
-      });
+
+        return (
+          t === "analyser" ||
+          t === "analyser l'url" ||
+          t === "analyser l’url"
+        );
+      }) || null;
+  }
+
+  function findImportButton(scope) {
+    const direct = document.getElementById("cgimp2Import");
+
+    if (
+      direct &&
+      direct.isConnected &&
+      (!scope || scope.contains(direct)) &&
+      !direct.closest("#cgimport011Bulk")
+    ) {
+      return direct;
+    }
+
+    return [...(scope || document).querySelectorAll("button")]
+      .find((b) => {
+        if (b.closest("#cgimport011Bulk")) return false;
+
+        return lower(b.textContent) === "importer";
+      }) || null;
   }
 
   function findThemeInput(scope) {
@@ -250,7 +290,12 @@
     };
   }
 
-  async function waitImporterCycle(scope, button, beforeText) {
+  async function waitImporterCycle(
+    scope,
+    button,
+    beforeText,
+    resolver = findAnalyzeButton
+  ) {
     const started = Date.now();
     let sawDisabled = !!button.disabled;
     let lastMutation = Date.now();
@@ -267,7 +312,10 @@
       while (Date.now() - started < IMPORT_TIMEOUT_MS) {
         await sleep(500);
         if (!button.isConnected) {
-          button = findAnalyzeButton(scope) || findAnalyzeButton(document);
+          button =
+            resolver(scope) ||
+            resolver(document);
+
           if (!button) continue;
         }
         if (button.disabled) sawDisabled = true;
@@ -294,36 +342,243 @@
   }
 
   async function runOne(item) {
-    const scope = findImportScope();
-    if (!scope) throw new Error("Écran « Import Quizypedia par URL » introuvable.");
-    const input = findUrlInput(scope);
-    const analyze = findAnalyzeButton(scope);
-    if (!input) throw new Error("Champ « Adresse Quizypedia » introuvable.");
-    if (!analyze) throw new Error("Bouton « Analyser l’URL » introuvable.");
 
-    for (let i = 0; i < 60 && analyze.disabled; i++) await sleep(500);
-    if (analyze.disabled) throw new Error("L'importeur actuel est encore occupé.");
+    const scope =
+      findImportScope();
 
-    const themeInput = findThemeInput(scope);
-    nativeSetValue(themeInput, "");
-    nativeSetValue(input, item.url);
+    if (!scope) {
+      throw new Error(
+        "Importeur Quizypedia introuvable."
+      );
+    }
 
-    const beforeText = snapshotText(scope);
-    item.status = "running";
-    item.startedAt = new Date().toISOString();
-    item.message = "Analyse/import en cours…";
-    saveState(); render();
+
+    const input =
+      findUrlInput(scope);
+
+    let analyze =
+      findAnalyzeButton(scope);
+
+    let importer =
+      findImportButton(scope);
+
+
+    if (!input) {
+      throw new Error(
+        "Champ « Adresse Quizypedia » introuvable."
+      );
+    }
+
+    if (!analyze) {
+      throw new Error(
+        "Bouton « Analyser » introuvable."
+      );
+    }
+
+    if (!importer) {
+      throw new Error(
+        "Bouton « Importer » introuvable."
+      );
+    }
+
+
+    /* --------------------------------------------
+       Attendre que l'analyseur soit libre.
+       -------------------------------------------- */
+
+    for (
+      let i = 0;
+      i < 60 && analyze.disabled;
+      i++
+    ) {
+      await sleep(500);
+    }
+
+    if (analyze.disabled) {
+      throw new Error(
+        "L'importeur actuel est encore occupé."
+      );
+    }
+
+
+    /* --------------------------------------------
+       Préparation du thème.
+       Le thème reste détecté depuis l'URL.
+       -------------------------------------------- */
+
+    const themeInput =
+      findThemeInput(scope);
+
+    nativeSetValue(
+      themeInput,
+      ""
+    );
+
+    nativeSetValue(
+      input,
+      item.url
+    );
+
+
+    item.status =
+      "running";
+
+    item.startedAt =
+      new Date().toISOString();
+
+    item.message =
+      "Analyse / capture en cours…";
+
+    saveState();
+    render();
+
+
+    /* ============================================
+       ETAPE 1 : ANALYSER / CAPTURER
+       ============================================ */
+
+    const beforeAnalysis =
+      snapshotText(scope);
 
     analyze.click();
-    const result = await waitImporterCycle(scope, analyze, beforeText);
-    const stats = extractStats(result.text);
-    Object.assign(item, stats);
-    item.status = result.ok ? "done" : "error";
-    item.message = result.ok ? "Terminé" : "Échec signalé par l'importeur";
-    item.endedAt = new Date().toISOString();
-    item.durationSec = Math.max(1, Math.round((new Date(item.endedAt) - new Date(item.startedAt)) / 1000));
-    saveState(); render();
+
+
+    const analysisResult =
+      await waitImporterCycle(
+        scope,
+        analyze,
+        beforeAnalysis,
+        findAnalyzeButton
+      );
+
+
+    if (!analysisResult.ok) {
+      throw new Error(
+        "Échec pendant l’analyse/capture Quizypedia."
+      );
+    }
+
+
+    /*
+      Le DOM peut avoir évolué pendant la capture.
+      On récupère de nouveau le vrai bouton Importer.
+    */
+    importer =
+      findImportButton(scope) ||
+      findImportButton(document);
+
+
+    if (!importer) {
+      throw new Error(
+        "Bouton « Importer » introuvable après analyse."
+      );
+    }
+
+
+    /* --------------------------------------------
+       Attendre qu'Importer devienne disponible.
+       -------------------------------------------- */
+
+    for (
+      let i = 0;
+      i < 240 && importer.disabled;
+      i++
+    ) {
+      await sleep(500);
+
+      if (!importer.isConnected) {
+        importer =
+          findImportButton(scope) ||
+          findImportButton(document);
+
+        if (!importer) continue;
+      }
+    }
+
+
+    if (
+      !importer ||
+      importer.disabled
+    ) {
+      throw new Error(
+        "L'analyse est terminée mais aucune question n'est prête à être importée."
+      );
+    }
+
+
+    /* ============================================
+       ETAPE 2 : IMPORTER REELLEMENT
+       ============================================ */
+
+    item.message =
+      "Import en cours…";
+
+    saveState();
+    render();
+
+
+    const beforeImport =
+      snapshotText(scope);
+
+    importer.click();
+
+
+    const importResult =
+      await waitImporterCycle(
+        scope,
+        importer,
+        beforeImport,
+        findImportButton
+      );
+
+
+    const finalText =
+      importResult.text ||
+      snapshotText(scope);
+
+
+    const stats =
+      extractStats(finalText);
+
+
+    Object.assign(
+      item,
+      stats
+    );
+
+
+    item.status =
+      importResult.ok
+        ? "done"
+        : "error";
+
+
+    item.message =
+      importResult.ok
+        ? "Terminé"
+        : "Échec signalé pendant l’import";
+
+
+    item.endedAt =
+      new Date().toISOString();
+
+
+    item.durationSec =
+      Math.max(
+        1,
+        Math.round(
+          (
+            new Date(item.endedAt) -
+            new Date(item.startedAt)
+          ) / 1000
+        )
+      );
+
+
+    saveState();
+    render();
   }
+
 
   async function startQueue() {
     if (state.running || !state.items.length) return;
