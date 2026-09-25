@@ -1,3 +1,4 @@
+// CGWEB116_FIX3_FIX3_TXT_ONLY001_BATCH_MEGATHEME001_BATCH_CLASSIFICATION_LOCK001
 // CGWEB116_FIX3_FIX2_MULTI_URL_PIPELINE_REPAIR001
 (() => {
   "use strict";
@@ -16,6 +17,7 @@
     stopRequested: false,
     currentIndex: -1,
     sourceName: "",
+    megatheme: "",
     startedAt: null
   };
 
@@ -31,6 +33,7 @@
       const payload = {
         items: state.items,
         sourceName: state.sourceName,
+        megatheme: state.megatheme,
         startedAt: state.startedAt,
         currentIndex: state.currentIndex
       };
@@ -53,6 +56,7 @@
         return item;
       });
       state.sourceName = saved.sourceName || "";
+      state.megatheme = saved.megatheme || "";
       state.startedAt = saved.startedAt || null;
       state.currentIndex = Number.isInteger(saved.currentIndex) ? saved.currentIndex : -1;
     } catch (_) {}
@@ -76,88 +80,137 @@
     }
   }
 
-  function extractRowsWithXlsx(arrayBuffer) {
-    if (!window.XLSX) throw new Error("Le lecteur ODS/CSV n'est pas chargé.");
-    const wb = window.XLSX.read(arrayBuffer, { type: "array", cellDates: false });
-    const sheetName = wb.SheetNames && wb.SheetNames[0];
-    if (!sheetName) throw new Error("Le tableur ne contient aucune feuille.");
-    return window.XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {
-      header: 1,
-      raw: false,
-      blankrows: false,
-      defval: ""
-    });
-  }
+  // CGWEB116 FIX3 FIX3 · TXT_ONLY001
+  // Un fichier TXT = un lot.
+  // Une URL Quizypedia par ligne.
+  async function parseFile(file, megatheme) {
 
-  async function parseFile(file) {
-    if (!file) throw new Error("Sélectionne d'abord un fichier .csv ou .ods.");
-    const ext = (file.name.split(".").pop() || "").toLowerCase();
-    if (!["csv", "ods"].includes(ext)) {
-      throw new Error("Format non pris en charge. Utilise un fichier .csv ou .ods.");
+    if (!file) {
+      throw new Error(
+        "Sélectionne d’abord un fichier .txt."
+      );
     }
+
+    const ext =
+      (file.name.split(".").pop() || "")
+        .toLowerCase();
+
+    if (ext !== "txt") {
+      throw new Error(
+        "Format non pris en charge. Utilise uniquement un fichier .txt."
+      );
+    }
+
+    if (!String(megatheme || "").trim()) {
+      throw new Error(
+        "Choisis le mégathème du lot avant de lire le fichier."
+      );
+    }
+
     if (file.size > 20 * 1024 * 1024) {
-      throw new Error("Fichier trop volumineux (maximum 20 Mo).");
+      throw new Error(
+        "Fichier trop volumineux (maximum 20 Mo)."
+      );
     }
 
-    let rows;
-    const buffer = await file.arrayBuffer();
-    if (window.XLSX) {
-      rows = extractRowsWithXlsx(buffer);
-    } else if (ext === "csv") {
-      const text = new TextDecoder("utf-8").decode(buffer).replace(/^\uFEFF/, "");
-      rows = text.split(/\r?\n/).map((line) => {
-        let cell = "", quoted = false;
-        for (let i = 0; i < line.length; i++) {
-          const ch = line[i];
-          if (ch === '"') {
-            if (quoted && line[i + 1] === '"') { cell += '"'; i++; }
-            else quoted = !quoted;
-          } else if (!quoted && (ch === "," || ch === ";" || ch === "\t")) break;
-          else cell += ch;
-        }
-        return [cell];
-      });
-    } else {
-      throw new Error("Le lecteur ODS n'est pas disponible.");
-    }
+    const text =
+      (await file.text())
+        .replace(/^\uFEFF/, "");
 
-    const rawA = rows.map((r) => norm(Array.isArray(r) ? r[0] : "")).filter(Boolean);
-    if (rawA.length && /^(url|adresse|adresse quizypedia|lien)$/i.test(rawA[0])) rawA.shift();
+    const rawLines =
+      text
+        .split(/\r?\n/)
+        .map(line => norm(line))
+        .filter(
+          line =>
+            line &&
+            !line.startsWith("#")
+        );
 
-    const unique = new Map();
-    let invalid = 0, duplicates = 0;
+    const unique =
+      new Map();
 
-    for (const raw of rawA) {
-      const url = canonicalizeUrl(raw);
-      if (!url) { invalid++; continue; }
-      if (unique.has(url)) { duplicates++; continue; }
-      unique.set(url, {
+    let invalid = 0;
+    let duplicates = 0;
+
+    for (const raw of rawLines) {
+
+      const url =
+        canonicalizeUrl(raw);
+
+      if (!url) {
+        invalid++;
+        continue;
+      }
+
+      if (unique.has(url)) {
+        duplicates++;
+        continue;
+      }
+
+      unique.set(
         url,
-        status: "pending",
-        message: "",
-        startedAt: null,
-        endedAt: null,
-        durationSec: null,
-        added: null,
-        duplicates: null,
-        errors: null
-      });
-      if (unique.size > MAX_URLS) throw new Error(`Trop d'URL : maximum ${MAX_URLS}.`);
+        {
+          url,
+          megatheme:
+            String(megatheme).trim(),
+
+          status:"pending",
+          message:"",
+          startedAt:null,
+          endedAt:null,
+          durationSec:null,
+          added:null,
+          duplicates:null,
+          errors:null
+        }
+      );
+
+      if (unique.size > MAX_URLS) {
+        throw new Error(
+          `Trop d’URL : maximum ${MAX_URLS}.`
+        );
+      }
     }
 
-    if (!unique.size) throw new Error("Aucune URL Quizypedia valide trouvée en colonne A.");
+    if (!unique.size) {
+      throw new Error(
+        "Aucune URL Quizypedia valide trouvée dans le fichier TXT."
+      );
+    }
 
-    state.items = [...unique.values()];
-    state.sourceName = file.name;
-    state.currentIndex = -1;
-    state.startedAt = new Date().toISOString();
-    state.pauseRequested = false;
-    state.stopRequested = false;
+    state.items =
+      [...unique.values()];
+
+    state.sourceName =
+      file.name;
+
+    state.megatheme =
+      String(megatheme).trim();
+
+    state.currentIndex =
+      -1;
+
+    state.startedAt =
+      new Date().toISOString();
+
+    state.pauseRequested =
+      false;
+
+    state.stopRequested =
+      false;
+
     saveState();
     render();
 
-    return { count: state.items.length, invalid, duplicates };
+    return {
+      count:state.items.length,
+      invalid,
+      duplicates,
+      megatheme:state.megatheme
+    };
   }
+
 
   function visible(el) {
     if (!el || !el.isConnected) return false;
@@ -259,6 +312,73 @@
     el.dispatchEvent(new Event("input", { bubbles: true }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
   }
+
+  // CGWEB116 FIX3 FIX3 · BATCH_CLASSIFICATION_LOCK001
+  function applyBatchMegatheme(scope, requestedMega) {
+
+    const mega =
+      String(requestedMega || "")
+        .trim();
+
+    if (!mega) {
+      throw new Error(
+        "Aucun mégathème n’est associé à ce lot."
+      );
+    }
+
+    const select =
+      document.getElementById(
+        "cgimp2Mega"
+      );
+
+    if (!select) {
+      throw new Error(
+        "Menu Mégathème de l’importeur introuvable."
+      );
+    }
+
+    const target =
+      [...select.options]
+        .find(option => {
+
+          const value =
+            norm(option.value);
+
+          const label =
+            norm(option.textContent);
+
+          return (
+            value === norm(mega) ||
+            label === norm(mega)
+          );
+        });
+
+    if (!target) {
+      throw new Error(
+        `Mégathème inconnu : ${mega}`
+      );
+    }
+
+    select.value =
+      target.value;
+
+    select.dispatchEvent(
+      new Event(
+        "input",
+        { bubbles:true }
+      )
+    );
+
+    select.dispatchEvent(
+      new Event(
+        "change",
+        { bubbles:true }
+      )
+    );
+
+    return true;
+  }
+
 
   function snapshotText(scope) {
     return norm((scope || document.body).innerText).slice(-12000);
@@ -402,7 +522,25 @@
 
 
     /* --------------------------------------------
-       Préparation du thème.
+       Préparation du lot.
+
+       Le mégathème du fichier TXT est réappliqué
+       avant CHAQUE URL.
+       -------------------------------------------- */
+
+    const batchMega =
+      String(
+        item.megatheme ||
+        state.megatheme ||
+        ""
+      ).trim();
+
+    applyBatchMegatheme(
+      scope,
+      batchMega
+    );
+
+    /* --------------------------------------------
        Le thème reste détecté depuis l'URL.
        -------------------------------------------- */
 
@@ -582,6 +720,15 @@
 
   async function startQueue() {
     if (state.running || !state.items.length) return;
+
+    if (!state.megatheme) {
+      setGlobalMessage(
+        "Choisis le mégathème du lot avant de lancer l’import.",
+        "error"
+      );
+      return;
+    }
+
     if (!findImportScope()) {
       setGlobalMessage("Importeur Quizypedia introuvable.", "error");
       return;
@@ -656,6 +803,7 @@
     if (state.running) return;
     state.items = [];
     state.sourceName = "";
+    state.megatheme = "";
     state.currentIndex = -1;
     state.startedAt = null;
     localStorage.removeItem(STORAGE_KEY);
@@ -743,8 +891,8 @@
     const summary = root.querySelector("#cgimport011Summary");
     if (summary) {
       summary.textContent = state.items.length
-        ? `${s.total} thème(s) · ${s.done} terminé(s) · ${s.errors} erreur(s) · ${s.pending} en attente${state.sourceName ? ` · ${state.sourceName}` : ""}`
-        : "Aucun fichier chargé.";
+        ? `${s.total} thème(s) · ${s.done} terminé(s) · ${s.errors} erreur(s) · ${s.pending} en attente${state.sourceName ? ` · ${state.sourceName}` : ""}${state.megatheme ? ` · Mégathème : ${state.megatheme}` : " · Mégathème à définir"}`
+        : "Aucun fichier TXT chargé.";
     }
     const progress = root.querySelector("#cgimport011Progress");
     if (progress) {
@@ -758,10 +906,37 @@
     const stop = root.querySelector("#cgimport011Stop");
     const report = root.querySelector("#cgimport011Report");
     const reset = root.querySelector("#cgimport011Reset");
+    const megaSelect = root.querySelector("#cgimport011Mega");
 
-    if (start) start.disabled = state.running || !state.items.length;
+    if (megaSelect) {
+
+      if (
+        state.megatheme &&
+        megaSelect.value !== state.megatheme
+      ) {
+        megaSelect.value =
+          state.megatheme;
+      }
+
+      megaSelect.disabled =
+        state.running ||
+        (
+          state.items.length > 0 &&
+          Boolean(state.megatheme)
+        );
+    }
+
+    if (start) start.disabled =
+      state.running ||
+      !state.items.length ||
+      !state.megatheme;
     if (pause) pause.disabled = !state.running || state.pauseRequested;
-    if (resume) resume.disabled = state.running || !state.items.some((x) => x.status !== "done");
+    if (resume) resume.disabled =
+      state.running ||
+      !state.megatheme ||
+      !state.items.some(
+        (x) => x.status !== "done"
+      );
     if (stop) stop.disabled = !state.running;
     if (report) report.disabled = !state.items.length;
     if (reset) reset.disabled = state.running;
@@ -775,14 +950,40 @@
     root.innerHTML = `
       <div class="cgimport011-head">
         <div>
-          <h3>Import de plusieurs thèmes</h3>
-          <p>Charge un fichier <strong>.csv</strong> ou <strong>.ods</strong>. La colonne A doit contenir une URL de thème Quizypedia par ligne.</p>
+          <h3>Import multiple</h3>
+          <p>Un fichier <strong>.txt</strong> = un lot d’un seul mégathème. Une URL Quizypedia par ligne.</p>
         </div>
       </div>
 
       <div class="cgimport011-fileline">
-        <input id="cgimport011File" type="file" accept=".csv,.ods,text/csv,application/vnd.oasis.opendocument.spreadsheet">
-        <button id="cgimport011Load" type="button">Lire le fichier</button>
+
+        <input
+          id="cgimport011File"
+          type="file"
+          accept=".txt,text/plain"
+          aria-label="Fichier TXT d’URL Quizypedia"
+        >
+
+        <select
+          id="cgimport011Mega"
+          aria-label="Mégathème du lot"
+        >
+          <option value="">Mégathème du lot</option>
+          <option>Animaux et Plantes</option>
+          <option>Culture Classique</option>
+          <option>Culture Générale</option>
+          <option>Culture Moderne</option>
+          <option>Géographie</option>
+          <option>Histoire</option>
+          <option>Sciences et Techniques</option>
+          <option>Sport</option>
+        </select>
+
+        <button
+          id="cgimport011Load"
+          type="button"
+        >Lire</button>
+
       </div>
 
       <div id="cgimport011Summary" class="cgimport011-summary">Aucun fichier chargé.</div>
@@ -815,15 +1016,89 @@
 
   function wireUi(root) {
     root.querySelector("#cgimport011Load")?.addEventListener("click", async () => {
-      const file = root.querySelector("#cgimport011File")?.files?.[0];
+
+      const file =
+        root.querySelector(
+          "#cgimport011File"
+        )?.files?.[0];
+
+      const megatheme =
+        root.querySelector(
+          "#cgimport011Mega"
+        )?.value?.trim() || "";
+
       try {
-        setGlobalMessage("Lecture du fichier…");
-        const r = await parseFile(file);
-        setGlobalMessage(`${r.count} thème(s) unique(s) chargé(s) · ${r.duplicates} doublon(s) ignoré(s) · ${r.invalid} ligne(s) invalide(s) ignorée(s).`, "ok");
+
+        setGlobalMessage(
+          "Lecture du fichier TXT…"
+        );
+
+        const r =
+          await parseFile(
+            file,
+            megatheme
+          );
+        setGlobalMessage(
+          `${r.count} thème(s) unique(s) chargé(s) · ` +
+          `Mégathème : ${r.megatheme} · ` +
+          `${r.duplicates} doublon(s) ignoré(s) · ` +
+          `${r.invalid} ligne(s) invalide(s) ignorée(s).`,
+          "ok"
+        );
       } catch (e) {
         setGlobalMessage(e?.message || String(e), "error");
       }
     });
+    root.querySelector("#cgimport011Mega")?.addEventListener("change", (event) => {
+
+      const select =
+        event.currentTarget;
+
+      const requested =
+        String(
+          select.value || ""
+        ).trim();
+
+      if (
+        state.items.length &&
+        state.megatheme
+      ) {
+        select.value =
+          state.megatheme;
+
+        return;
+      }
+
+      state.megatheme =
+        requested;
+
+      if (
+        state.items.length &&
+        requested
+      ) {
+        state.items.forEach(
+          item => {
+            item.megatheme =
+              requested;
+          }
+        );
+      }
+
+      saveState();
+      render();
+
+      if (
+        state.items.length &&
+        requested
+      ) {
+        setGlobalMessage(
+          `Mégathème « ${requested} » associé au lot et verrouillé.`,
+          "ok"
+        );
+      }
+    });
+
+
     root.querySelector("#cgimport011Start")?.addEventListener("click", startQueue);
     root.querySelector("#cgimport011Pause")?.addEventListener("click", pauseQueue);
     root.querySelector("#cgimport011Resume")?.addEventListener("click", resumeQueue);
