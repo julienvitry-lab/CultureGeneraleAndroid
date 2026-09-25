@@ -1,0 +1,231 @@
+/* ============================================================
+   CGWEB116 FIX2
+   CATALOG_REMOVE001 / CLASSIFICATION_AUTO001
+   QUIZYPEDIA_COMPACT_LAYOUT001
+   ============================================================ */
+
+
+/* ============================================================
+   1. PREMIERE LIGNE
+   Adresse | Mégathème demi-largeur | Thème | Analyser
+   ============================================================ */
+
+#cgimport002Panel .cgweb111-import-fields {
+  display:grid!important;
+
+  grid-template-columns:
+    minmax(0,1fr)
+    minmax(150px,.5fr)
+    minmax(0,1fr)
+    max-content!important;
+
+  gap:12px!important;
+  align-items:end!important;
+  width:100%!important;
+}
+
+
+#cgimport002Panel
+.cgweb111-import-fields > .cgimp2-field {
+  min-width:0!important;
+  width:100%!important;
+}
+
+
+#cgimport002Panel
+.cgweb111-import-fields input,
+
+#cgimport002Panel
+.cgweb111-import-fields select {
+  width:100%!important;
+  box-sizing:border-box!important;
+}
+
+
+/* bouton Analyser = quatrième élément de la ligne */
+#cgimport002Panel
+#cgimp2Analyze.cg116fix2-analyze {
+  align-self:end!important;
+
+  width:auto!important;
+  min-width:112px!important;
+  height:40px!important;
+
+  margin:0!important;
+  padding:0 16px!important;
+
+  white-space:nowrap!important;
+}
+
+
+/* L'ancien bouton ne doit jamais pouvoir réapparaître */
+#cgimp2Rebuild {
+  display:none!important;
+}
+
+
+/* ============================================================
+   2. ANCIEN TEXTE EXPLICATIF
+   Un état réellement utile pourra toujours apparaître ensuite.
+   ============================================================ */
+
+#cgimport002Panel
+#cgimp2Status:empty {
+  display:none!important;
+}
+
+
+/* ============================================================
+   3. COMPTEURS + ACTIONS SUR UNE SEULE LIGNE
+
+   moitié gauche :
+   4 statistiques
+
+   moitié droite :
+   sélectionner / désélectionner / importer
+   ============================================================ */
+
+#cgimport002Panel
+.cg116fix2-summary-actions {
+  display:grid!important;
+
+  grid-template-columns:
+    minmax(0,1fr)
+    minmax(0,1fr)!important;
+
+  gap:10px!important;
+  align-items:stretch!important;
+
+  width:100%!important;
+
+  margin:14px 0 10px!important;
+}
+
+
+/* 4 cartes dans la moitié gauche */
+#cgimport002Panel
+.cg116fix2-summary-actions
+.cgimp2-summary {
+  display:grid!important;
+
+  grid-template-columns:
+    repeat(4,minmax(0,1fr))!important;
+
+  gap:8px!important;
+
+  width:100%!important;
+
+  margin:0!important;
+}
+
+
+#cgimport002Panel
+.cg116fix2-summary-actions
+.cgimp2-stat {
+  min-width:0!important;
+  width:auto!important;
+
+  box-sizing:border-box!important;
+}
+
+
+/* 3 boutons dans la moitié droite */
+#cgimport002Panel
+.cg116fix2-selection-actions {
+  display:grid!important;
+
+  grid-template-columns:
+    minmax(0,1fr)
+    minmax(0,1fr)
+    minmax(100px,.7fr)!important;
+
+  gap:8px!important;
+  align-items:stretch!important;
+
+  width:100%!important;
+}
+
+
+#cgimport002Panel
+.cg116fix2-selection-actions > button {
+  width:100%!important;
+  min-width:0!important;
+  height:100%!important;
+  min-height:62px!important;
+
+  margin:0!important;
+
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+
+  white-space:normal!important;
+  text-align:center!important;
+}
+
+
+/* ============================================================
+   4. ANCIENNES COQUILLES VIDES
+   ============================================================ */
+
+#cgimport002Panel
+.cgimp2-actions:empty,
+
+#cgimport002Panel
+.cgimp2-toolbar:empty {
+  display:none!important;
+  margin:0!important;
+  padding:0!important;
+}
+
+
+/* ============================================================
+   5. RESPONSIVE
+   ============================================================ */
+
+@media(max-width:1100px) {
+
+  #cgimport002Panel
+  .cgweb111-import-fields {
+    grid-template-columns:
+      minmax(240px,1fr)
+      minmax(150px,.5fr)
+      minmax(220px,1fr)
+      max-content!important;
+
+    overflow-x:auto!important;
+  }
+
+
+  #cgimport002Panel
+  .cg116fix2-summary-actions {
+    grid-template-columns:1fr!important;
+  }
+
+
+  #cgimport002Panel
+  .cg116fix2-selection-actions > button {
+    min-height:42px!important;
+  }
+}
+
+
+@media(max-width:720px) {
+
+  #cgimport002Panel
+  .cgweb111-import-fields {
+    grid-template-columns:1fr!important;
+  }
+
+
+  #cgimport002Panel
+  #cgimp2Analyze.cg116fix2-analyze {
+    width:100%!important;
+  }
+
+
+  #cgimport002Panel
+  .cg116fix2-selection-actions {
+    grid-template-columns:1fr!important;
+  }
+}

@@ -1,3 +1,4 @@
+// CGWEB116 FIX2 · QUIZYPEDIA_COMPACT_LAYOUT001 / CLASSIFICATION_AUTO001
 // CGIMPORT009 FIX4 · diagnostic exact des fiches manquantes + hard cache bust
 // CGWEB110_IMPORT_REVIEW_RETIRE001_DIRECT_QUIZYPEDIA_IMPORT001_VALIDATION_UI_REMOVE001
 // CGWEB111_QUIZYPEDIA_CLEAN_LAYOUT001_DUPLICATE_AUTO_GUARD001_SETTINGS_NAV001_PRIMARY_NAV_4PLUSGEAR001
@@ -662,8 +663,7 @@ function relabelUi(){
   if(sub)sub.textContent=
     'Collez l’URL d’un thème Quizypedia : capture en lot, reprise multi-session et identification explicite de toute fiche source manquante. Aucun contenu QCM n’est inventé.';
 
-  if($('cgimp2Analyze'))$('cgimp2Analyze').textContent='Analyser l’URL';
-  if($('cgimp2Rebuild'))$('cgimp2Rebuild').textContent='Appliquer mégathème/thème';
+  if($('cgimp2Analyze'))$('cgimp2Analyze').textContent='Analyser';
   if($('cgimp2Url')){
     $('cgimp2Url').placeholder='https://www.quizypedia.fr/quiz/<thème>/';
   }
@@ -674,16 +674,240 @@ function relabelUi(){
   if(fSmall)fSmall.textContent='QCM stricts';
 
   ensureBatchUi();
-  status(
-    'URL de thème = découverte de tous les questionnaires. URL complète = capture d’un seul questionnaire.',
-    'warn'
-  );
+
 }
+
+
+/* ============================================================
+   CGWEB116 FIX2 · QUIZYPEDIA_COMPACT_LAYOUT001
+   ============================================================ */
+
+function installCgweb116Fix2Layout(){
+
+  const panel=$('cgimport002Panel');
+  if(!panel)return;
+
+
+  /* ----------------------------------------------------------
+     1. Suppression définitive du bouton de double validation
+     ---------------------------------------------------------- */
+
+  $('cgimp2Rebuild')?.remove();
+
+
+  /* ----------------------------------------------------------
+     2. Bouton Analyser dans la même grille que les champs
+     ---------------------------------------------------------- */
+
+  const grid=
+    panel.querySelector('.cgweb111-import-fields') ||
+    panel.querySelector('.cgimp2-grid');
+
+  const analyze=$('cgimp2Analyze');
+
+  if(grid&&analyze){
+
+    analyze.textContent='Analyser';
+
+    analyze.classList.add(
+      'cg116fix2-analyze'
+    );
+
+    if(analyze.parentElement!==grid){
+      grid.appendChild(analyze);
+    }
+  }
+
+
+  /* ----------------------------------------------------------
+     3. Suppression du bandeau explicatif initial
+     ---------------------------------------------------------- */
+
+  const state=$('cgimp2Status');
+
+  if(state){
+
+    const initial=
+      String(state.textContent||'')
+        .trim();
+
+    if(
+      initial.startsWith(
+        'URL de thème ='
+      ) ||
+      initial==='Aucune donnée à importer.'
+    ){
+      state.textContent='';
+    }
+  }
+
+
+  /* ----------------------------------------------------------
+     4. Ligne unique :
+        4 statistiques | 3 boutons
+     ---------------------------------------------------------- */
+
+  const summary=
+    panel.querySelector(
+      '.cgimp2-summary'
+    );
+
+  const all=$('cgimp2All');
+  const none=$('cgimp2None');
+  const importer=$('cgimp2Import');
+
+
+  if(importer){
+    importer.textContent='Importer';
+  }
+
+
+  if(
+    summary &&
+    all &&
+    none &&
+    importer
+  ){
+
+    let row=
+      panel.querySelector(
+        '.cg116fix2-summary-actions'
+      );
+
+
+    if(!row){
+
+      row=
+        document.createElement(
+          'div'
+        );
+
+      row.className=
+        'cg116fix2-summary-actions';
+
+      summary.insertAdjacentElement(
+        'beforebegin',
+        row
+      );
+    }
+
+
+    if(
+      summary.parentElement!==row
+    ){
+      row.appendChild(
+        summary
+      );
+    }
+
+
+    let actions=
+      row.querySelector(
+        '.cg116fix2-selection-actions'
+      );
+
+
+    if(!actions){
+
+      actions=
+        document.createElement(
+          'div'
+        );
+
+      actions.className=
+        'cg116fix2-selection-actions';
+
+      row.appendChild(
+        actions
+      );
+    }
+
+
+    [
+      all,
+      none,
+      importer
+    ].forEach(button=>{
+
+      if(
+        button.parentElement!==
+        actions
+      ){
+        actions.appendChild(
+          button
+        );
+      }
+    });
+  }
+
+
+  /* ----------------------------------------------------------
+     5. Nettoyage des anciennes rangées devenues vides
+     ---------------------------------------------------------- */
+
+  panel
+    .querySelectorAll(
+      '.cgimp2-actions, .cgimp2-toolbar'
+    )
+    .forEach(el=>{
+
+      if(
+        !el.children.length &&
+        !String(
+          el.textContent||''
+        ).trim()
+      ){
+        el.remove();
+      }
+    });
+}
+
 
 function install(){
   relabelUi();
+  installCgweb116Fix2Layout();
   $('cgimp2Analyze')?.addEventListener('click',analyze);
-  $('cgimp2Rebuild')?.addEventListener('click',applyClassification);
+
+  // CGWEB116 FIX2 · CLASSIFICATION_AUTO001
+  const cg116AutoClassification=()=>{
+
+    if(!drafts.length)return;
+
+    const mega=
+      $('cgimp2Mega')?.value
+        ?.trim()||'';
+
+    const theme=
+      $('cgimp2Theme')?.value
+        ?.trim()||
+      extracted?.theme||
+      '';
+
+    drafts.forEach(q=>{
+      q.megatheme=mega;
+      q.theme=theme;
+    });
+
+    render();
+  };
+
+  $('cgimp2Mega')
+    ?.addEventListener(
+      'change',
+      cg116AutoClassification
+    );
+
+  $('cgimp2Theme')
+    ?.addEventListener(
+      'change',
+      cg116AutoClassification
+    );
+
+  $('cgimp2Theme')
+    ?.addEventListener(
+      'blur',
+      cg116AutoClassification
+    );
 
   $('cgimp2All')?.addEventListener('click',()=>{
     drafts.forEach(q=>q.selected=true);
