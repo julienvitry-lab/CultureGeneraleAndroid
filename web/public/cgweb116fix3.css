@@ -1,0 +1,96 @@
+/* ============================================================
+   CGWEB116 FIX3
+   QUIZYPEDIA_STACK001 / AUTH_BUTTONS_SPORTWEB001
+   ============================================================ */
+
+
+/* ------------------------------------------------------------
+   1. Quizypedia : suppression visuelle des sous-onglets
+   ------------------------------------------------------------ */
+
+.cg116fix3-hidden {
+  display:none !important;
+}
+
+.cg116fix3-quiz-stack {
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  width:100%;
+  margin:0;
+  padding:0;
+}
+
+.cg116fix3-quiz-stack > .cg116fix3-panel {
+  width:100%;
+  margin:0 !important;
+}
+
+
+/* ------------------------------------------------------------
+   2. Boutons Connecté / Déconnexion style SPORT WEB
+   ------------------------------------------------------------ */
+
+.cg116fix3-auth-wrap {
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+.cg116fix3-auth-btn {
+  min-width:146px !important;
+  height:58px !important;
+  padding:0 24px !important;
+  border-radius:18px !important;
+
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+
+  font-family:Comfortaa, sans-serif !important;
+  font-size:17px !important;
+  font-weight:700 !important;
+  line-height:1 !important;
+  text-decoration:none !important;
+
+  border:1px solid rgba(255,255,255,.22) !important;
+  box-shadow:none !important;
+}
+
+.cg116fix3-auth-connected {
+  background:#0f8b57 !important;
+  color:#ffffff !important;
+  border-color:#2cd18a !important;
+}
+
+.cg116fix3-auth-disconnect {
+  background:#b62822 !important;
+  color:#ffffff !important;
+  border-color:#ef746c !important;
+}
+
+.cg116fix3-auth-connected:hover,
+.cg116fix3-auth-connected:focus,
+.cg116fix3-auth-disconnect:hover,
+.cg116fix3-auth-disconnect:focus {
+  filter:brightness(1.04);
+}
+
+
+/* ------------------------------------------------------------
+   3. Sécurisation responsive légère
+   ------------------------------------------------------------ */
+
+@media (max-width:900px) {
+  .cg116fix3-auth-btn {
+    min-width:128px !important;
+    height:52px !important;
+    font-size:16px !important;
+  }
+
+  .cg116fix3-auth-wrap {
+    gap:10px;
+    flex-wrap:wrap;
+    justify-content:flex-end;
+  }
+}
