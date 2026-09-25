@@ -1,3 +1,4 @@
+// CGWEB116_FIX3_FIX1_QUIZYPEDIA_STACK_SOURCE001
 (() => {
   "use strict";
 
@@ -102,16 +103,10 @@
       flow.innerHTML = `
         <section class="cgweb109-source-block">
           <article class="cgweb109-source-card cgweb109-source-unified">
-            <div class="cgweb109-card-head cgweb109-source-head">
-              <div class="cgweb109-source-switch" role="group" aria-label="Type de source Quizypedia">
-                <button type="button" id="cgweb109ModeUrl" aria-pressed="true">URL unique</button>
-                <button type="button" id="cgweb109ModeFile" aria-pressed="false">Plusieurs URL · CSV / ODS</button>
-              </div>
-            </div>
-            <div id="cgweb109SingleWrap" class="cgweb109-source-pane">
+            <div id="cgweb109SingleWrap" class="cgweb109-source-pane cg116fix3-single">
               <div id="cgweb109SingleMount"></div>
             </div>
-            <div id="cgweb109MultiWrap" class="cgweb109-source-pane" hidden>
+            <div id="cgweb109MultiWrap" class="cgweb109-source-pane cg116fix3-multi">
               <div id="cgweb109MultiMount"></div>
             </div>
           </article>
@@ -173,7 +168,20 @@
     if (control && multi?.parentElement === q("#cgweb109MultiMount")){
       q("#cgweb109MultiMount").appendChild(control);
     }
-    wireQuizMode();
+    // CGWEB116 FIX3 FIX1 :
+    // les deux modes sont maintenant visibles simultanément.
+    const singleWrap = q("#cgweb109SingleWrap");
+    const multiWrap = q("#cgweb109MultiWrap");
+
+    if (singleWrap){
+      singleWrap.hidden = false;
+      singleWrap.removeAttribute("hidden");
+    }
+
+    if (multiWrap){
+      multiWrap.hidden = false;
+      multiWrap.removeAttribute("hidden");
+    }
 
   }
 

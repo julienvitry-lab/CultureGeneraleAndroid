@@ -1,96 +1,180 @@
 /* ============================================================
-   CGWEB116 FIX3
-   QUIZYPEDIA_STACK001 / AUTH_BUTTONS_SPORTWEB001
+   CGWEB116 FIX3 FIX1
+   QUIZYPEDIA_STACK_SOURCE001 / SPORT_AUTH_EXACT001
    ============================================================ */
 
 
-/* ------------------------------------------------------------
-   1. Quizypedia : suppression visuelle des sous-onglets
-   ------------------------------------------------------------ */
+/* ============================================================
+   A. QUIZYPEDIA
+   Deux fonctionnalités toujours visibles.
+   Aucun sous-onglet.
+   ============================================================ */
 
-.cg116fix3-hidden {
-  display:none !important;
-}
+/*
+   Sécurité supplémentaire :
+   même si un ancien DOM survivait au cache,
+   la barre de commutation disparaît.
+*/
+#cgweb109QuizypediaFlow
+.cgweb109-source-head,
 
-.cg116fix3-quiz-stack {
-  display:flex;
-  flex-direction:column;
-  gap:14px;
-  width:100%;
-  margin:0;
-  padding:0;
-}
+#cgweb109QuizypediaFlow
+.cgweb109-source-switch,
 
-.cg116fix3-quiz-stack > .cg116fix3-panel {
-  width:100%;
-  margin:0 !important;
-}
+#cgweb109ModeUrl,
 
-
-/* ------------------------------------------------------------
-   2. Boutons Connecté / Déconnexion style SPORT WEB
-   ------------------------------------------------------------ */
-
-.cg116fix3-auth-wrap {
-  display:flex;
-  align-items:center;
-  gap:12px;
-}
-
-.cg116fix3-auth-btn {
-  min-width:146px !important;
-  height:58px !important;
-  padding:0 24px !important;
-  border-radius:18px !important;
-
-  display:inline-flex !important;
-  align-items:center !important;
-  justify-content:center !important;
-
-  font-family:Comfortaa, sans-serif !important;
-  font-size:17px !important;
-  font-weight:700 !important;
-  line-height:1 !important;
-  text-decoration:none !important;
-
-  border:1px solid rgba(255,255,255,.22) !important;
-  box-shadow:none !important;
-}
-
-.cg116fix3-auth-connected {
-  background:#0f8b57 !important;
-  color:#ffffff !important;
-  border-color:#2cd18a !important;
-}
-
-.cg116fix3-auth-disconnect {
-  background:#b62822 !important;
-  color:#ffffff !important;
-  border-color:#ef746c !important;
-}
-
-.cg116fix3-auth-connected:hover,
-.cg116fix3-auth-connected:focus,
-.cg116fix3-auth-disconnect:hover,
-.cg116fix3-auth-disconnect:focus {
-  filter:brightness(1.04);
+#cgweb109ModeFile {
+  display:none!important;
 }
 
 
-/* ------------------------------------------------------------
-   3. Sécurisation responsive légère
-   ------------------------------------------------------------ */
+/* Les deux panneaux sont toujours affichés. */
+#cgweb109SingleWrap,
+#cgweb109MultiWrap,
+#cgweb109MultiWrap[hidden] {
+  display:block!important;
+  visibility:visible!important;
+}
 
-@media (max-width:900px) {
-  .cg116fix3-auth-btn {
-    min-width:128px !important;
-    height:52px !important;
-    font-size:16px !important;
-  }
 
-  .cg116fix3-auth-wrap {
-    gap:10px;
-    flex-wrap:wrap;
-    justify-content:flex-end;
+/* URL unique en premier. */
+#cgweb109SingleWrap {
+  margin:0!important;
+}
+
+
+/* Import CSV / ODS juste en dessous. */
+#cgweb109MultiWrap {
+  margin:14px 0 0!important;
+  padding-top:14px!important;
+
+  border-top:
+    1px solid rgba(125,211,252,.18)!important;
+}
+
+
+/*
+   Le conteneur principal n'a plus besoin
+   d'espace réservé à la barre d'onglets.
+*/
+#cgweb109QuizypediaFlow
+.cgweb109-source-unified {
+  padding:12px!important;
+}
+
+
+/* ============================================================
+   B. AUTHENTIFICATION
+   Ciblage DIRECT des vrais éléments :
+   #cloudBadge = span
+   #logoutBtn = button
+
+   Gabarit SPORT WEB :
+   même hauteur, même typographie, forme pilule,
+   vert plein / rouge plein.
+   ============================================================ */
+
+.top-actions {
+  display:flex!important;
+  align-items:center!important;
+  gap:10px!important;
+}
+
+
+/* Base commune exacte */
+#cloudBadge,
+#logoutBtn {
+  width:auto!important;
+  min-width:0!important;
+
+  height:42px!important;
+  min-height:42px!important;
+  max-height:42px!important;
+
+  margin:0!important;
+  padding:0 18px!important;
+
+  box-sizing:border-box!important;
+
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+
+  border-radius:999px!important;
+
+  font-family:"Comfortaa",sans-serif!important;
+  font-size:16px!important;
+  font-weight:700!important;
+  line-height:1!important;
+
+  white-space:nowrap!important;
+
+  box-shadow:none!important;
+  text-shadow:none!important;
+
+  opacity:1!important;
+}
+
+
+/* CONNECTÉ : vert plein */
+#cloudBadge,
+#cloudBadge.badge,
+#cloudBadge.badge-ok,
+#cloudBadge.badge-warn {
+  background:#147a4b!important;
+  background-image:none!important;
+
+  color:#ffffff!important;
+
+  border:
+    1px solid #42d892!important;
+}
+
+
+/* DÉCONNEXION : rouge plein */
+#logoutBtn,
+#logoutBtn.btn,
+#logoutBtn.btn-ghost {
+  background:#a92b27!important;
+  background-image:none!important;
+
+  color:#ffffff!important;
+
+  border:
+    1px solid #ef615b!important;
+
+  cursor:pointer!important;
+}
+
+
+/* Le comportement fonctionnel hidden reste conservé. */
+#logoutBtn.hidden {
+  display:none!important;
+}
+
+
+/* Pas de changement de dimension au survol. */
+#cloudBadge:hover,
+#logoutBtn:hover,
+#logoutBtn:focus {
+  transform:none!important;
+  box-shadow:none!important;
+}
+
+
+/* ============================================================
+   C. MOBILE
+   ============================================================ */
+
+@media(max-width:700px){
+
+  #cloudBadge,
+  #logoutBtn {
+    height:40px!important;
+    min-height:40px!important;
+    max-height:40px!important;
+
+    padding:0 15px!important;
+    font-size:15px!important;
   }
 }
