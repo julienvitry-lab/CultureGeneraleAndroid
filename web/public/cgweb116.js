@@ -2274,3 +2274,1348 @@ console.info(
   VERSION,
   "QUIZYPEDIA_CATALOG001 prêt"
 );
+
+/* ============================================================
+   CGWEB116 FIX1
+   SQLITE_HISTORY_MERGE001 / LEGACY_CATALOG_PERSIST001
+   ============================================================ */
+/* CGWEB116_FIX1_SQLITE_HISTORY_MERGE001 */
+
+const CG116_SQLJS_BASE =
+  "https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/";
+
+let cg116SqlJsPromise = null;
+let cg116LegacyCache = null;
+
+
+/* ------------------------------------------------------------
+   A. Chargement SQL.js
+   ------------------------------------------------------------ */
+
+function cg116LoadSqlJs() {
+
+  if (cg116SqlJsPromise) {
+    return cg116SqlJsPromise;
+  }
+
+  cg116SqlJsPromise =
+    new Promise((resolve,reject) => {
+
+      const start = async () => {
+        try {
+          const SQL =
+            await window.initSqlJs({
+              locateFile:file =>
+                CG116_SQLJS_BASE + file
+            });
+
+          resolve(SQL);
+
+        } catch (error) {
+          reject(error);
+        }
+      };
+
+      if (
+        typeof window.initSqlJs ===
+        "function"
+      ) {
+        start();
+        return;
+      }
+
+      const script =
+        document.createElement("script");
+
+      script.src =
+        CG116_SQLJS_BASE +
+        "sql-wasm.js";
+
+      script.async = true;
+
+      script.onload = start;
+
+      script.onerror = () =>
+        reject(
+          new Error(
+            "Impossible de charger le lecteur SQLite."
+          )
+        );
+
+      document.head.appendChild(
+        script
+      );
+    });
+
+  return cg116SqlJsPromise;
+}
+
+
+/* ------------------------------------------------------------
+   B. Catalogue SQLite séparé
+   ------------------------------------------------------------ */
+
+function cg116LegacyLocalKey(uid) {
+  return `CGWEB116_SQLITE_LEGACY_${uid}`;
+}
+
+
+function cg116EmptyLegacy() {
+  return {
+    schema:1,
+    updated_ms:0,
+    source_questions:0,
+    groups:[]
+  };
+}
+
+
+function cg116LoadLegacyLocal() {
+
+  const user =
+    userOrThrow();
+
+  try {
+    const raw =
+      localStorage.getItem(
+        cg116LegacyLocalKey(
+          user.uid
+        )
+      );
+
+    if (!raw) {
+      return null;
+    }
+
+    return normalizeCatalog(
+      JSON.parse(raw)
+    );
+
+  } catch {
+    return null;
+  }
+}
+
+
+function cg116SaveLegacyLocal(
+  catalog
+) {
+  const user =
+    userOrThrow();
+
+  localStorage.setItem(
+    cg116LegacyLocalKey(
+      user.uid
+    ),
+    JSON.stringify(catalog)
+  );
+}
+
+
+/* ------------------------------------------------------------
+   C. Persistance distante
+   ------------------------------------------------------------ */
+
+async function cg116LoadLegacyRemote() {
+
+  const user =
+    userOrThrow();
+
+  try {
+    const ref =
+      collection(
+        db,
+        "users",
+        user.uid,
+        "quizypedia_legacy_catalog"
+      );
+
+    const snap =
+      await getDocs(ref);
+
+    if (snap.empty) {
+      return null;
+    }
+
+    let meta = {};
+    const groups = [];
+
+    snap.forEach(d => {
+
+      const data =
+        d.data() || {};
+
+      if (d.id === "_meta") {
+        meta = data;
+        return;
+      }
+
+      groups.push({
+        megatheme:
+          data.megatheme ||
+          "Sans mégathème",
+
+        themes:
+          Array.isArray(
+            data.themes
+          )
+            ? data.themes
+            : []
+      });
+    });
+
+    if (!groups.length) {
+      return null;
+    }
+
+    return normalizeCatalog({
+      schema:1,
+      updated_ms:
+        meta.updated_ms || 0,
+      source_questions:
+        meta.source_questions || 0,
+      groups
+    });
+
+  } catch (error) {
+
+    console.warn(
+      "CGWEB116 FIX1",
+      "lecture legacy distante impossible",
+      error
+    );
+
+    return null;
+  }
+}
+
+
+async function cg116SaveLegacyRemote(
+  catalog
+) {
+
+  const user =
+    userOrThrow();
+
+  try {
+
+    const root =
+      collection(
+        db,
+        "users",
+        user.uid,
+        "quizypedia_legacy_catalog"
+      );
+
+    const previous =
+      await getDocs(root);
+
+    let batch =
+      writeBatch(db);
+
+    let operations = 0;
+
+    for (
+      const oldDoc of
+      previous.docs
+    ) {
+      batch.delete(
+        oldDoc.ref
+      );
+
+      operations++;
+
+      if (
+        operations >= 400
+      ) {
+        await batch.commit();
+        batch = writeBatch(db);
+        operations = 0;
+      }
+    }
+
+
+    for (
+      const group of
+      catalog.groups
+    ) {
+
+      const id =
+        `mega_${hash32(
+          group.megatheme
+        )}`;
+
+      batch.set(
+        doc(
+          db,
+          "users",
+          user.uid,
+          "quizypedia_legacy_catalog",
+          id
+        ),
+        {
+          schema:1,
+          megatheme:
+            group.megatheme,
+          themes:
+            group.themes,
+          updated_ms:
+            catalog.updated_ms
+        }
+      );
+
+      operations++;
+
+      if (
+        operations >= 400
+      ) {
+        await batch.commit();
+        batch = writeBatch(db);
+        operations = 0;
+      }
+    }
+
+
+    batch.set(
+      doc(
+        db,
+        "users",
+        user.uid,
+        "quizypedia_legacy_catalog",
+        "_meta"
+      ),
+      {
+        schema:1,
+        updated_ms:
+          catalog.updated_ms,
+
+        source_questions:
+          catalog.source_questions,
+
+        themes_count:
+          catalog.groups.reduce(
+            (n,g) =>
+              n + g.themes.length,
+            0
+          )
+      }
+    );
+
+    operations++;
+
+    if (operations) {
+      await batch.commit();
+    }
+
+    return true;
+
+  } catch (error) {
+
+    console.warn(
+      "CGWEB116 FIX1",
+      "sauvegarde legacy distante impossible",
+      error
+    );
+
+    return false;
+  }
+}
+
+
+async function cg116LoadLegacy() {
+
+  if (cg116LegacyCache) {
+    return cg116LegacyCache;
+  }
+
+  const remote =
+    await cg116LoadLegacyRemote();
+
+  if (remote) {
+    cg116LegacyCache =
+      remote;
+
+    cg116SaveLegacyLocal(
+      remote
+    );
+
+    return remote;
+  }
+
+  cg116LegacyCache =
+    cg116LoadLegacyLocal() ||
+    cg116EmptyLegacy();
+
+  return cg116LegacyCache;
+}
+
+
+/* ------------------------------------------------------------
+   D. Fusion sans double comptage
+   ------------------------------------------------------------ */
+
+function cg116MergeLegacyInto(
+  target,
+  legacy
+) {
+
+  if (
+    !legacy ||
+    !Array.isArray(
+      legacy.groups
+    )
+  ) {
+    return target;
+  }
+
+
+  for (
+    const legacyGroup of
+    legacy.groups
+  ) {
+
+    let group =
+      target.groups.find(
+        g =>
+          normalize(
+            g.megatheme
+          ) ===
+          normalize(
+            legacyGroup.megatheme
+          )
+      );
+
+
+    if (!group) {
+
+      group = {
+        megatheme:
+          legacyGroup.megatheme,
+        themes:[]
+      };
+
+      target.groups.push(
+        group
+      );
+    }
+
+
+    for (
+      const oldTheme of
+      legacyGroup.themes || []
+    ) {
+
+      let theme =
+        group.themes.find(
+          t =>
+            String(
+              t.quizypedia_theme_url ||
+              ""
+            ).toLowerCase() ===
+            String(
+              oldTheme.quizypedia_theme_url ||
+              ""
+            ).toLowerCase()
+        );
+
+
+      if (!theme) {
+
+        theme = {
+          theme:
+            oldTheme.theme,
+
+          quizypedia_theme_url:
+            oldTheme.quizypedia_theme_url,
+
+          questions_count:0,
+
+          questionnaire_urls:[],
+
+          questionnaire_count:0,
+
+          first_import_ms:0,
+
+          last_import_ms:0,
+
+          legacy_sqlite:true
+        };
+
+        group.themes.push(
+          theme
+        );
+      }
+
+
+      theme.questions_count =
+        Math.max(
+          Number(
+            theme.questions_count || 0
+          ),
+          Number(
+            oldTheme.questions_count || 0
+          )
+        );
+
+
+      const urls =
+        new Set([
+          ...(
+            theme.questionnaire_urls ||
+            []
+          ),
+          ...(
+            oldTheme.questionnaire_urls ||
+            []
+          )
+        ]);
+
+
+      theme.questionnaire_urls =
+        [...urls];
+
+      theme.questionnaire_count =
+        Math.max(
+          Number(
+            theme.questionnaire_count || 0
+          ),
+          Number(
+            oldTheme.questionnaire_count || 0
+          ),
+          urls.size
+        );
+
+
+      theme.legacy_sqlite =
+        true;
+    }
+  }
+
+
+  target.source_questions =
+    target.groups.reduce(
+      (sum,g) =>
+        sum +
+        g.themes.reduce(
+          (n,t) =>
+            n +
+            Number(
+              t.questions_count ||
+              0
+            ),
+          0
+        ),
+      0
+    );
+
+
+  const normalized =
+    normalizeCatalog(
+      target
+    );
+
+  Object.assign(
+    target,
+    normalized
+  );
+
+  return target;
+}
+
+
+/* ------------------------------------------------------------
+   E. Lecture SQLite
+   ------------------------------------------------------------ */
+
+function cg116SqliteColumnSet(
+  sqliteDb
+) {
+
+  const result =
+    sqliteDb.exec(
+      'PRAGMA table_info("questions")'
+    );
+
+  if (
+    !result ||
+    !result.length
+  ) {
+    throw new Error(
+      'Table SQLite "questions" introuvable.'
+    );
+  }
+
+  const nameIndex =
+    result[0].columns
+      .indexOf("name");
+
+  return new Set(
+    result[0].values
+      .map(row =>
+        String(
+          row[nameIndex] || ""
+        )
+      )
+  );
+}
+
+
+function cg116BuildLegacyCatalog(
+  sqliteDb
+) {
+
+  const columns =
+    cg116SqliteColumnSet(
+      sqliteDb
+    );
+
+
+  if (
+    !columns.has("megatheme") ||
+    !columns.has("theme")
+  ) {
+    throw new Error(
+      "Le SQLite ne contient pas les colonnes megatheme/theme attendues."
+    );
+  }
+
+
+  if (
+    !columns.has(
+      "url_quizypedia"
+    ) &&
+    !columns.has(
+      "url_internet"
+    )
+  ) {
+    throw new Error(
+      "Aucune colonne URL exploitable dans ce SQLite."
+    );
+  }
+
+
+  const qUrl =
+    columns.has(
+      "url_quizypedia"
+    )
+      ? 'COALESCE("url_quizypedia",\'\')'
+      : "''";
+
+
+  const iUrl =
+    columns.has(
+      "url_internet"
+    )
+      ? 'COALESCE("url_internet",\'\')'
+      : "''";
+
+
+  const sql = `
+    SELECT
+      COALESCE("megatheme",'') AS megatheme,
+      COALESCE("theme",'') AS theme,
+      ${qUrl} AS url_quizypedia,
+      ${iUrl} AS url_internet
+    FROM "questions"
+    WHERE
+      LOWER(${qUrl}) LIKE '%quizypedia.fr%'
+      OR
+      LOWER(${iUrl}) LIKE '%quizypedia.fr%'
+  `;
+
+
+  const stmt =
+    sqliteDb.prepare(sql);
+
+  const groups =
+    new Map();
+
+  let questions = 0;
+  let parsedQuestions = 0;
+
+
+  try {
+
+    while (
+      stmt.step()
+    ) {
+
+      questions++;
+
+      const row =
+        stmt.getAsObject();
+
+
+      const candidates = [
+        row.url_quizypedia,
+        row.url_internet
+      ]
+        .map(v =>
+          String(v || "")
+            .trim()
+        )
+        .filter(Boolean);
+
+
+      let parsed = null;
+
+      for (
+        const source of
+        candidates
+      ) {
+
+        const candidate =
+          parseQuizypediaUrl(
+            source
+          );
+
+        if (candidate) {
+          parsed = candidate;
+          break;
+        }
+      }
+
+
+      if (!parsed) {
+        continue;
+      }
+
+
+      parsedQuestions++;
+
+
+      const megatheme =
+        String(
+          row.megatheme ||
+          "Sans mégathème"
+        ).trim() ||
+        "Sans mégathème";
+
+
+      const themeName =
+        String(
+          row.theme ||
+          parsed.themeSlug ||
+          "Thème sans nom"
+        ).trim();
+
+
+      const megaKey =
+        normalize(
+          megatheme
+        );
+
+
+      if (
+        !groups.has(
+          megaKey
+        )
+      ) {
+        groups.set(
+          megaKey,
+          {
+            megatheme,
+            themes:new Map()
+          }
+        );
+      }
+
+
+      const group =
+        groups.get(
+          megaKey
+        );
+
+
+      const themeKey =
+        parsed
+          .themeUrl
+          .toLowerCase();
+
+
+      if (
+        !group.themes.has(
+          themeKey
+        )
+      ) {
+
+        group.themes.set(
+          themeKey,
+          {
+            theme:
+              themeName,
+
+            quizypedia_theme_url:
+              parsed.themeUrl,
+
+            questions_count:0,
+
+            questionnaire_urls:
+              new Set(),
+
+            questionnaire_count:0,
+
+            first_import_ms:0,
+
+            last_import_ms:0,
+
+            legacy_sqlite:true
+          }
+        );
+      }
+
+
+      const item =
+        group.themes.get(
+          themeKey
+        );
+
+
+      item.questions_count++;
+
+
+      if (
+        parsed.isQuestionnaire
+      ) {
+        item
+          .questionnaire_urls
+          .add(
+            parsed.questionnaireUrl
+          );
+      }
+    }
+
+  } finally {
+    stmt.free();
+  }
+
+
+  const catalog =
+    cg116EmptyLegacy();
+
+
+  catalog.updated_ms =
+    Date.now();
+
+
+  catalog.source_questions =
+    parsedQuestions;
+
+
+  catalog.groups =
+    [...groups.values()]
+      .map(g => ({
+
+        megatheme:
+          g.megatheme,
+
+        themes:
+          [...g.themes.values()]
+            .map(t => ({
+
+              theme:
+                t.theme,
+
+              quizypedia_theme_url:
+                t.quizypedia_theme_url,
+
+              questions_count:
+                t.questions_count,
+
+              questionnaire_urls:
+                [
+                  ...t
+                    .questionnaire_urls
+                ].sort(),
+
+              questionnaire_count:
+                t
+                  .questionnaire_urls
+                  .size,
+
+              first_import_ms:0,
+
+              last_import_ms:0,
+
+              legacy_sqlite:true
+            }))
+      }));
+
+
+  return {
+    catalog:
+      normalizeCatalog(
+        catalog
+      ),
+
+    scanned:
+      questions,
+
+    parsed:
+      parsedQuestions,
+
+    themes:
+      catalog.groups.reduce(
+        (n,g) =>
+          n + g.themes.length,
+        0
+      )
+  };
+}
+
+
+/* ------------------------------------------------------------
+   F. Import du fichier
+   ------------------------------------------------------------ */
+
+async function cg116ImportSqlite(
+  file
+) {
+
+  if (!file) return;
+
+
+  const button =
+    document.getElementById(
+      "cgweb116ImportSqlite"
+    );
+
+
+  if (button) {
+    button.disabled = true;
+    button.textContent =
+      "Analyse SQLite…";
+  }
+
+
+  setCatalogState(
+    `Lecture de ${file.name}…`
+  );
+
+
+  let sqliteDb = null;
+
+
+  try {
+
+    const SQL =
+      await cg116LoadSqlJs();
+
+
+    const buffer =
+      await file.arrayBuffer();
+
+
+    sqliteDb =
+      new SQL.Database(
+        new Uint8Array(
+          buffer
+        )
+      );
+
+
+    const {
+      catalog:incoming,
+      parsed,
+      themes
+    } =
+      cg116BuildLegacyCatalog(
+        sqliteDb
+      );
+
+
+    if (!themes) {
+      throw new Error(
+        "Aucun thème Quizypedia n'a été trouvé dans ce SQLite."
+      );
+    }
+
+
+    const legacy =
+      await cg116LoadLegacy();
+
+
+    cg116MergeLegacyInto(
+      legacy,
+      incoming
+    );
+
+
+    legacy.updated_ms =
+      Date.now();
+
+
+    legacy.source_questions =
+      legacy.groups.reduce(
+        (sum,g) =>
+          sum +
+          g.themes.reduce(
+            (n,t) =>
+              n +
+              Number(
+                t.questions_count ||
+                0
+              ),
+            0
+          ),
+        0
+      );
+
+
+    cg116LegacyCache =
+      legacy;
+
+
+    cg116SaveLegacyLocal(
+      legacy
+    );
+
+
+    const remoteLegacy =
+      await cg116SaveLegacyRemote(
+        legacy
+      );
+
+
+    catalogCache = null;
+
+
+    const full =
+      await loadCatalog({
+        force:true
+      });
+
+
+    cg116MergeLegacyInto(
+      full,
+      legacy
+    );
+
+
+    catalogCache =
+      full;
+
+
+    saveLocal(full);
+
+
+    const mainSaved =
+      await saveRemote(
+        full
+      );
+
+
+    renderCatalog(
+      full
+    );
+
+
+    setCatalogState(
+      `${themes} thème(s) trouvé(s) dans SQLite · ` +
+      `${parsed.toLocaleString("fr-FR")} question(s) Quizypedia analysée(s). ` +
+      (
+        remoteLegacy && mainSaved
+          ? "Catalogue fusionné et synchronisé."
+          : "Catalogue fusionné ; sauvegarde locale active."
+      ),
+      "ok"
+    );
+
+
+  } catch (error) {
+
+    console.error(
+      "CGWEB116 FIX1",
+      error
+    );
+
+
+    setCatalogState(
+      error?.message ||
+      "Échec de lecture du fichier SQLite.",
+      "error"
+    );
+
+
+  } finally {
+
+    try {
+      sqliteDb?.close();
+    } catch {}
+
+
+    if (button) {
+      button.disabled = false;
+      button.textContent =
+        "Intégrer SQLite";
+    }
+  }
+}
+
+
+/* ------------------------------------------------------------
+   G. Fusion automatique du patrimoine SQLite
+   ------------------------------------------------------------ */
+
+const cg116BaseLoadCatalog =
+  loadCatalog;
+
+
+loadCatalog =
+  async function(options={}) {
+
+    const catalog =
+      await cg116BaseLoadCatalog(
+        options
+      );
+
+
+    const legacy =
+      await cg116LoadLegacy();
+
+
+    cg116MergeLegacyInto(
+      catalog,
+      legacy
+    );
+
+
+    catalogCache =
+      catalog;
+
+
+    return catalog;
+  };
+
+
+window.CGWEB116_API.loadCatalog =
+  loadCatalog;
+
+
+const cg116BaseSaveLocal =
+  saveLocal;
+
+
+saveLocal =
+  function(catalog) {
+
+    if (cg116LegacyCache) {
+      cg116MergeLegacyInto(
+        catalog,
+        cg116LegacyCache
+      );
+    }
+
+    return cg116BaseSaveLocal(
+      catalog
+    );
+  };
+
+
+const cg116BaseSaveRemote =
+  saveRemote;
+
+
+saveRemote =
+  async function(catalog) {
+
+    if (cg116LegacyCache) {
+      cg116MergeLegacyInto(
+        catalog,
+        cg116LegacyCache
+      );
+    }
+
+    return cg116BaseSaveRemote(
+      catalog
+    );
+  };
+
+
+/* ------------------------------------------------------------
+   H. Interface
+   ------------------------------------------------------------ */
+
+function cg116EnsureSqliteButton() {
+
+  const toolbar =
+    document.querySelector(
+      "#cgweb116Catalog .cg116-toolbar"
+    );
+
+
+  if (!toolbar) {
+    return false;
+  }
+
+
+  if (
+    document.getElementById(
+      "cgweb116ImportSqlite"
+    )
+  ) {
+    return true;
+  }
+
+
+  const button =
+    document.createElement(
+      "button"
+    );
+
+
+  button.type =
+    "button";
+
+
+  button.id =
+    "cgweb116ImportSqlite";
+
+
+  button.textContent =
+    "Intégrer SQLite";
+
+
+  const input =
+    document.createElement(
+      "input"
+    );
+
+
+  input.type =
+    "file";
+
+
+  input.id =
+    "cgweb116SqliteFile";
+
+
+  input.accept =
+    ".db,.sqlite,.sqlite3,application/x-sqlite3";
+
+
+  input.hidden =
+    true;
+
+
+  toolbar.appendChild(
+    button
+  );
+
+
+  toolbar.appendChild(
+    input
+  );
+
+
+  const note =
+    document.createElement(
+      "div"
+    );
+
+
+  note.className =
+    "cg116-sqlite-note";
+
+
+  note.textContent =
+    "Intégration de l'ancien SQLite Android ; le fichier est analysé localement dans le navigateur.";
+
+
+  toolbar.insertAdjacentElement(
+    "afterend",
+    note
+  );
+
+
+  button.addEventListener(
+    "click",
+    () => input.click()
+  );
+
+
+  input.addEventListener(
+    "change",
+    async () => {
+
+      const file =
+        input.files?.[0];
+
+
+      input.value = "";
+
+
+      if (file) {
+        await cg116ImportSqlite(
+          file
+        );
+      }
+    }
+  );
+
+
+  return true;
+}
+
+
+window.CGWEB116_API.importSqlite =
+  cg116ImportSqlite;
+
+
+/* ------------------------------------------------------------
+   I. Installation dynamique
+   ------------------------------------------------------------ */
+
+let cg116Fix1Scheduled =
+  false;
+
+
+function cg116Fix1Install() {
+  cg116EnsureSqliteButton();
+}
+
+
+function cg116Fix1Schedule() {
+
+  if (
+    cg116Fix1Scheduled
+  ) {
+    return;
+  }
+
+
+  cg116Fix1Scheduled =
+    true;
+
+
+  requestAnimationFrame(
+    () => {
+
+      cg116Fix1Scheduled =
+        false;
+
+      cg116Fix1Install();
+
+    }
+  );
+}
+
+
+cg116Fix1Install();
+
+
+new MutationObserver(
+  cg116Fix1Schedule
+).observe(
+  document.documentElement,
+  {
+    childList:true,
+    subtree:true
+  }
+);
+
+
+console.info(
+  "CGWEB116 FIX1",
+  "SQLITE_HISTORY_MERGE001 prêt"
+);

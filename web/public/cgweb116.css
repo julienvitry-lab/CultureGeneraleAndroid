@@ -388,3 +388,43 @@
     grid-template-columns:1fr;
   }
 }
+
+/* ============================================================
+   CGWEB116 FIX1
+   SQLITE_HISTORY_MERGE001 / LEGACY_CATALOG_PERSIST001
+   ============================================================ */
+/* CGWEB116_FIX1_SQLITE_HISTORY_MERGE001 */
+
+.cg116-toolbar {
+  grid-template-columns:minmax(280px,1fr) auto auto auto!important;
+}
+
+#cgweb116ImportSqlite {
+  background:#0e638e;
+  color:#fff;
+}
+
+.cg116-sqlite-note {
+  margin:-2px 0 10px;
+  color:rgba(238,247,255,.68);
+}
+
+@media(max-width:1050px) {
+  .cg116-toolbar {
+    grid-template-columns:1fr 1fr!important;
+  }
+
+  .cg116-search {
+    grid-column:1 / -1;
+  }
+}
+
+@media(max-width:700px) {
+  .cg116-toolbar {
+    grid-template-columns:1fr!important;
+  }
+
+  .cg116-search {
+    grid-column:auto;
+  }
+}

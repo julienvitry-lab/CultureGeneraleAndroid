@@ -61,3 +61,34 @@ AUCUNE MODIFICATION
 - du moteur de capture Quizypedia ;
 - des classifications existantes ;
 - du Répertoire de questions existant.
+
+
+CGWEB116 FIX1
+=============
+
+SQLITE_HISTORY_MERGE001
+-----------------------
+Ajout du bouton "Intégrer SQLite".
+
+Le fichier SQLite historique Android est lu localement
+dans le navigateur.
+
+Table :
+questions
+
+Colonnes :
+- megatheme
+- theme
+- url_quizypedia
+- url_internet en fallback
+
+Fusion sans double comptage :
+questions_count = MAX(Firestore, SQLite)
+
+Le patrimoine SQLite est persisté :
+- cache navigateur
+- Firestore :
+  users/<uid>/quizypedia_legacy_catalog
+
+Le garde anti-doublon tient désormais compte
+des anciens imports SQLite.
