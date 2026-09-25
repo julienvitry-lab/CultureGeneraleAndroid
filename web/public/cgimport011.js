@@ -1,3 +1,4 @@
+// CGWEB116_FIX3_FIX4_FIX2_PIPELINE_UNIFICATION001
 // CGWEB116_FIX3_FIX3_TXT_ONLY001_BATCH_MEGATHEME001_BATCH_CLASSIFICATION_LOCK001
 // CGWEB116_FIX3_FIX2_MULTI_URL_PIPELINE_REPAIR001
 (() => {
@@ -476,11 +477,8 @@
     const input =
       findUrlInput(scope);
 
-    let analyze =
-      findAnalyzeButton(scope);
-
     let importer =
-      findImportButton(scope);
+      findAnalyzeButton(scope);
 
 
     if (!input) {
@@ -489,45 +487,36 @@
       );
     }
 
-    if (!analyze) {
-      throw new Error(
-        "Bouton « Analyser » introuvable."
-      );
-    }
-
     if (!importer) {
       throw new Error(
-        "Bouton « Importer » introuvable."
+        "Bouton principal « Importer » introuvable."
       );
     }
 
 
-    /* --------------------------------------------
-       Attendre que l'analyseur soit libre.
-       -------------------------------------------- */
-
+    /*
+      Attendre uniquement la disponibilité
+      du pipeline principal.
+    */
     for (
       let i = 0;
-      i < 60 && analyze.disabled;
+      i < 60 && importer.disabled;
       i++
     ) {
-      await sleep(500);
+      await sleep(250);
     }
 
-    if (analyze.disabled) {
+    if (importer.disabled) {
       throw new Error(
-        "L'importeur actuel est encore occupé."
+        "L’importeur Quizypedia est encore occupé."
       );
     }
 
 
-    /* --------------------------------------------
-       Préparation du lot.
-
-       Le mégathème du fichier TXT est réappliqué
-       avant CHAQUE URL.
-       -------------------------------------------- */
-
+    /*
+      Le mégathème du TXT est réappliqué
+      AVANT chaque URL.
+    */
     const batchMega =
       String(
         item.megatheme ||
@@ -540,10 +529,10 @@
       batchMega
     );
 
-    /* --------------------------------------------
-       Le thème reste détecté depuis l'URL.
-       -------------------------------------------- */
 
+    /*
+      Le thème sera détecté par Quizypedia.
+    */
     const themeInput =
       findThemeInput(scope);
 
@@ -565,136 +554,82 @@
       new Date().toISOString();
 
     item.message =
-      "Analyse / capture en cours…";
-
-    saveState();
-    render();
-
-
-    /* ============================================
-       ETAPE 1 : ANALYSER / CAPTURER
-       ============================================ */
-
-    const beforeAnalysis =
-      snapshotText(scope);
-
-    analyze.click();
-
-
-    const analysisResult =
-      await waitImporterCycle(
-        scope,
-        analyze,
-        beforeAnalysis,
-        findAnalyzeButton
-      );
-
-
-    if (!analysisResult.ok) {
-      throw new Error(
-        "Échec pendant l’analyse/capture Quizypedia."
-      );
-    }
-
-
-    /*
-      Le DOM peut avoir évolué pendant la capture.
-      On récupère de nouveau le vrai bouton Importer.
-    */
-    importer =
-      findImportButton(scope) ||
-      findImportButton(document);
-
-
-    if (!importer) {
-      throw new Error(
-        "Bouton « Importer » introuvable après analyse."
-      );
-    }
-
-
-    /* --------------------------------------------
-       Attendre qu'Importer devienne disponible.
-       -------------------------------------------- */
-
-    for (
-      let i = 0;
-      i < 240 && importer.disabled;
-      i++
-    ) {
-      await sleep(500);
-
-      if (!importer.isConnected) {
-        importer =
-          findImportButton(scope) ||
-          findImportButton(document);
-
-        if (!importer) continue;
-      }
-    }
-
-
-    if (
-      !importer ||
-      importer.disabled
-    ) {
-      throw new Error(
-        "L'analyse est terminée mais aucune question n'est prête à être importée."
-      );
-    }
-
-
-    /* ============================================
-       ETAPE 2 : IMPORTER REELLEMENT
-       ============================================ */
-
-    item.message =
       "Import en cours…";
 
     saveState();
     render();
 
 
-    const beforeImport =
+    /*
+      POINT CLE :
+
+      ce clic appelle maintenant EXACTEMENT
+      oneClickImport(), comme un clic manuel.
+
+      Donc :
+      découverte
+      -> capture
+      -> import Firestore
+      -> fin
+    */
+    const before =
       snapshotText(scope);
 
     importer.click();
 
 
-    const importResult =
+    const result =
       await waitImporterCycle(
         scope,
         importer,
-        beforeImport,
-        findImportButton
+        before,
+        findAnalyzeButton
       );
 
 
+    const statusNode =
+      document.getElementById(
+        "cgimp2Status"
+      );
+
+    const statusText =
+      norm(
+        statusNode?.textContent || ""
+      );
+
+    const statusError =
+      statusNode
+        ?.classList
+        ?.contains("err") ||
+      /^❌/.test(statusText) ||
+      /(?:échec|erreur|impossible|incomplète)/i
+        .test(statusText);
+
+
     const finalText =
-      importResult.text ||
+      result.text ||
       snapshotText(scope);
-
-
-    const stats =
-      extractStats(finalText);
 
 
     Object.assign(
       item,
-      stats
+      extractStats(finalText)
     );
 
 
     item.status =
-      importResult.ok
+      result.ok && !statusError
         ? "done"
         : "error";
 
 
     item.message =
-      importResult.ok
-        ? "Terminé"
-        : "Échec signalé pendant l’import";
+      item.status === "done"
+        ? "Import terminé"
+        : (
+            statusText ||
+            "Échec pendant l’import"
+          );
 
 
     item.endedAt =
@@ -716,7 +651,6 @@
     saveState();
     render();
   }
-
 
   async function startQueue() {
     if (state.running || !state.items.length) return;

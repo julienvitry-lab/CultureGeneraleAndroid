@@ -1,3 +1,4 @@
+// CGWEB116_FIX3_FIX4_FIX2_MULTI_ONE_CLICK_PARITY001
 // CGWEB116_FIX3_FIX4_ONE_CLICK_IMPORT001
 // CGWEB116 FIX2 · QUIZYPEDIA_COMPACT_LAYOUT001 / CLASSIFICATION_AUTO001
 // CGIMPORT009 FIX4 · diagnostic exact des fiches manquantes + hard cache bust
@@ -953,10 +954,13 @@ function installCgweb116Fix2Layout(){
 function install(){
   relabelUi();
   installCgweb116Fix2Layout();
-  $('cgimp2Analyze')?.addEventListener('click',e=>{
-    if(e.isTrusted) oneClickImport();
-    else analyze();
-  });
+  // CGWEB116 FIX3 FIX4 FIX2
+  // Clic humain OU clic du moteur TXT :
+  // exactement le même pipeline complet.
+  $('cgimp2Analyze')?.addEventListener(
+    'click',
+    ()=>oneClickImport()
+  );
 
   // CGWEB116 FIX2 · CLASSIFICATION_AUTO001
   const cg116AutoClassification=()=>{
