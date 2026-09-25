@@ -261,3 +261,15 @@ body.cg16-installed
     max-width:none!important;
   }
 }
+
+/* CGWEB116 FIX3 FIX4 · ONE_CLICK_IMPORT001 */
+
+/* L'ancien bouton final reste disponible pour le moteur,
+   mais n'est plus utile à l'utilisateur. */
+#cgimp2Import {
+  display:none!important;
+}
+
+#cgimport002Panel .cg116fix2-selection-actions {
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+}

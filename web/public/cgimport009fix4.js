@@ -1,3 +1,4 @@
+// CGWEB116_FIX3_FIX4_ONE_CLICK_IMPORT001
 // CGWEB116 FIX2 · QUIZYPEDIA_COMPACT_LAYOUT001 / CLASSIFICATION_AUTO001
 // CGIMPORT009 FIX4 · diagnostic exact des fiches manquantes + hard cache bust
 // CGWEB110_IMPORT_REVIEW_RETIRE001_DIRECT_QUIZYPEDIA_IMPORT001_VALIDATION_UI_REMOVE001
@@ -15,6 +16,7 @@ let strictComplete=false;
 let batchMode=false;
 let questionnaires=[];
 let batchBusy=false;
+let oneClickBusy=false;
 
 function apiCreate(){return window.CGWEB010_API||null;}
 function apiSearch(){return window.CGWEB006_API||null;}
@@ -491,8 +493,8 @@ async function captureDirect(url){
     render();updateImportAvailability();
     status(`❌ Capture stricte impossible : ${e.message}`,'err');
   }finally{
-    btn.disabled=false;
-    btn.textContent='Analyser l’URL';
+    btn.disabled=oneClickBusy;
+    btn.textContent=oneClickBusy?'Import…':'Importer';
   }
 }
 
@@ -543,8 +545,8 @@ async function discoverTheme(url){
     render();updateImportAvailability();
     status(`❌ Découverte du thème impossible : ${e.message}`,'err');
   }finally{
-    btn.disabled=false;
-    btn.textContent='Analyser l’URL';
+    btn.disabled=oneClickBusy;
+    btn.textContent=oneClickBusy?'Import…':'Importer';
   }
 }
 
@@ -568,7 +570,92 @@ async function analyze(){
   else await captureDirect(url);
 }
 
-async function importSelected(){
+async function oneClickImport(){
+
+  if(oneClickBusy)return;
+
+  const url=$('cgimp2Url').value.trim();
+  const parsed=parseQuizypediaUrl(url);
+
+  if(!url||!parsed){
+    await analyze();
+    return;
+  }
+
+  const btn=$('cgimp2Analyze');
+
+  oneClickBusy=true;
+  btn.disabled=true;
+  btn.textContent='Analyse…';
+
+  try{
+
+    await analyze();
+
+    btn.disabled=true;
+
+    if(parsed.kind==='theme'){
+
+      if(!questionnaires.length){
+        throw new Error(
+          'Aucun questionnaire détecté pour ce thème.'
+        );
+      }
+
+      questionnaires.forEach(q=>q.selected=true);
+      renderBatch();
+
+      btn.textContent='Capture…';
+
+      await captureBatch(false);
+    }
+
+    updateImportAvailability();
+
+    if(
+      !strictComplete ||
+      !drafts.some(q=>q.selected)
+    ){
+      throw new Error(
+        'Capture incomplète : import automatique annulé.'
+      );
+    }
+
+    btn.textContent='Import…';
+
+    await importSelected({
+      skipConfirm:true
+    });
+
+  }catch(e){
+
+    console.error(
+      'CGWEB116 FIX3 FIX4',
+      e
+    );
+
+    status(
+      `❌ ${e.message}`,
+      'err'
+    );
+
+  }finally{
+
+    oneClickBusy=false;
+    btn.disabled=false;
+    btn.textContent='Importer';
+  }
+}
+
+
+async function importSelected(arg={}){
+
+  const skipConfirm=
+    Boolean(
+      arg?.skipConfirm ||
+      arg?.isTrusted===false
+    );
+
   if(!strictComplete){
     status(
       batchMode
@@ -592,7 +679,7 @@ async function importSelected(){
 // Validation intermédiaire retirée : l'import sélectionné continue directement
 // vers le moteur Firestore historique ci-dessous.
 
-  if(!confirm(
+  if(!skipConfirm&&!confirm(
     `Importer ${selected.length} QCM Quizypedia 1:1 ?\n\n`+
     `Seuls les ID Culture Générale seront nouveaux.`
   ))return;
@@ -663,7 +750,7 @@ function relabelUi(){
   if(sub)sub.textContent=
     'Collez l’URL d’un thème Quizypedia : capture en lot, reprise multi-session et identification explicite de toute fiche source manquante. Aucun contenu QCM n’est inventé.';
 
-  if($('cgimp2Analyze'))$('cgimp2Analyze').textContent='Analyser';
+  if($('cgimp2Analyze'))$('cgimp2Analyze').textContent='Importer';
   if($('cgimp2Url')){
     $('cgimp2Url').placeholder='https://www.quizypedia.fr/quiz/<thème>/';
   }
@@ -707,7 +794,7 @@ function installCgweb116Fix2Layout(){
 
   if(grid&&analyze){
 
-    analyze.textContent='Analyser';
+    analyze.textContent='Importer';
 
     analyze.classList.add(
       'cg116fix2-analyze'
@@ -866,7 +953,10 @@ function installCgweb116Fix2Layout(){
 function install(){
   relabelUi();
   installCgweb116Fix2Layout();
-  $('cgimp2Analyze')?.addEventListener('click',analyze);
+  $('cgimp2Analyze')?.addEventListener('click',e=>{
+    if(e.isTrusted) oneClickImport();
+    else analyze();
+  });
 
   // CGWEB116 FIX2 · CLASSIFICATION_AUTO001
   const cg116AutoClassification=()=>{
