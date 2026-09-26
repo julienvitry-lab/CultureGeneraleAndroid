@@ -15,6 +15,13 @@
           "functionId": "cgimport002Quizypedia",
           "region": "europe-west1"
         }
+      },
+      {
+        "source": "/api/cgweb032",
+        "function": {
+          "functionId": "cgweb032Search",
+          "region": "europe-west1"
+        }
       }
     ]
   },
