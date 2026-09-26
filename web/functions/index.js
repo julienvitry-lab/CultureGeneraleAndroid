@@ -1,3 +1,4 @@
+// CGWEB116_FIX3_FIX4_FIX8_DIRECT_PAYLOAD_AUTHORITY001_SOURCE_FICHE_OPTIONAL001_DIRECT_COUNT_PRIORITY001
 // CGWEB116_FIX3_FIX4_FIX7_UNRESOLVED_QUESTION_SKIP001
 // CGWEB116_FIX3_FIX4_FIX5_FICHE_IMAGE_LINK_CAPTURE001_IMAGE_SOURCE_NORMALIZE001_PHOTO_QUESTION_RESOLVE001
 // CGWEB116_FIX3_FIX4_FIX4_PORTRAIT_AMBIGUITY_TIEBREAK001
@@ -2498,8 +2499,27 @@ function cgimport010ParsePayload(payload,fiches=[]){
     });
   }
 
+  /*
+   * CGWEB116 FIX3 FIX4 FIX8
+   * DIRECT_COUNT_PRIORITY001
+   *
+   * La complétude du moteur primaire est déterminée
+   * par le payload Quizypedia lui-même :
+   *
+   * N quiz_items reçus
+   * N questions entièrement valides
+   * => N/N = capture directe complète.
+   *
+   * Le nombre de fiches reconstruites depuis le HTML
+   * n'intervient pas dans cette décision.
+   */
+  const payloadComplete=
+    items.length>0 &&
+    questions.length===items.length;
+
   return {
     ok:questions.length>0,
+    payloadComplete,
     questions,
     diagnostics,
     rawCount:items.length
@@ -2817,30 +2837,133 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
             );
           }
 
-          if(direct.ok&&directTargetComplete){
+          /*
+           * CGWEB116 FIX3 FIX4 FIX8
+           *
+           * DIRECT_PAYLOAD_AUTHORITY001
+           * ---------------------------
+           * get_quiz_game est le moteur primaire.
+           *
+           * Si chaque quiz_item reçu fournit :
+           * - une question,
+           * - 4 propositions,
+           * - un response_index valide,
+           *
+           * alors le payload est suffisant à lui seul.
+           *
+           * SOURCE_FICHE_OPTIONAL001
+           * ------------------------
+           * Une association avec une fiche HTML reste
+           * bienvenue pour la traçabilité, mais elle n'est
+           * plus obligatoire pour valider la question.
+           *
+           * Le parseur conserve alors :
+           *   source_fiche = correct_text
+           *   source_number = 0
+           *
+           * sans altérer la question ni sa bonne réponse.
+           */
+          if(
+            direct.ok &&
+            direct.payloadComplete
+          ){
+
+            const directExpected=
+              Number(
+                direct.rawCount ||
+                direct.questions.length ||
+                0
+              );
+
+            const directUnmatchedSources=
+              direct.questions.filter(
+                question=>
+                  !Number(
+                    question.source_number
+                  )
+              ).length;
+
+
             cgimport010Tap.cancel();
+
 
             sessionStats.push({
               session,
-              captured:direct.questions.length,
-              expected,
-              mode:'browser_get_quiz_game'
+              captured:
+                direct.questions.length,
+              expected:
+                directExpected,
+              mode:
+                'browser_get_quiz_game_authoritative'
             });
 
+
             diagnostics.push(
-              `CGIMPORT010 DIRECT_QUIZ_CAPTURE001 réussi : ${direct.questions.length}/${expected} en une session.`
+              `DIRECT_PAYLOAD_AUTHORITY001 : ${direct.questions.length}/${directExpected} quiz_item(s) entièrement valides ; payload Quizypedia accepté sans dépendre du nombre de fiches HTML.`
             );
 
-            await page.close().catch(()=>{});
+
+            if(
+              directUnmatchedSources>0
+            ){
+              diagnostics.push(
+                `SOURCE_FICHE_OPTIONAL001 : ${directUnmatchedSources}/${direct.questions.length} question(s) sans correspondance de fiche HTML ; réponse et source conservées directement depuis get_quiz_game.`
+              );
+            }
+
+
+            diagnostics.push(
+              `CGIMPORT010 DIRECT_QUIZ_CAPTURE001 réussi : ${direct.questions.length}/${directExpected} en une session.`
+            );
+
+
+            await page.close()
+              .catch(()=>{});
+
 
             return {
-              questions:direct.questions,
+              questions:
+                direct.questions,
+
               complete:true,
+
+              /*
+               * DIRECT_COUNT_PRIORITY001
+               *
+               * Le compteur affiché doit être celui
+               * du payload : 10/10 et non 10/8.
+               */
+              expectedCapture:
+                directExpected,
+
+              fullExpected:
+                directExpected,
+
+              capturedTargetCount:
+                direct.questions.length,
+
+              photoMode:
+                photoQuestionnaire,
+
+              excludedNoImageFiches:[],
+
+              skippedUnresolved:0,
+
+              payloadAuthoritative:true,
+
+              sourceFicheOptionalCount:
+                directUnmatchedSources,
+
               diagnostics,
+
               missingFiches:[],
+
               sessionsUsed:1,
+
               sessionStats,
-              captureMode:'browser_get_quiz_game'
+
+              captureMode:
+                'browser_get_quiz_game_authoritative'
             };
           }
         }
@@ -3302,6 +3425,16 @@ exports.cgimport002Quizypedia=onRequest({
       skippedUnresolved:
         Number(
           capture.skippedUnresolved||0
+        ),
+
+      payloadAuthoritative:
+        Boolean(
+          capture.payloadAuthoritative
+        ),
+
+      sourceFicheOptionalCount:
+        Number(
+          capture.sourceFicheOptionalCount||0
         ),
 
       requestedUrl:raw,
