@@ -3077,3 +3077,249 @@ exports.cgweb030Lists = require('./cgweb030').cgweb030Lists;
 exports.cgweb031Home = require('./cgweb031').cgweb031Home;
 // CGWEB032_EXPORT
 exports.cgweb032Search = require('./cgweb032').cgweb032Search;
+
+
+// CGWEB116_FIX3_FIX4_FIX6_FICHE_IMAGE_LINK_CAPTURE001_IMAGE_SOURCE_NORMALIZE001_PHOTO_QUESTION_RESOLVE001
+(function installCGWEB116Fix6() {
+  if (globalThis.__CGWEB116_FIX6_INSTALLED__) return;
+  globalThis.__CGWEB116_FIX6_INSTALLED__ = true;
+
+  const FIX6_MARK =
+    "CGWEB116_FIX3_FIX4_FIX6_FICHE_IMAGE_LINK_CAPTURE001_IMAGE_SOURCE_NORMALIZE001_PHOTO_QUESTION_RESOLVE001";
+
+  function cg116Fix6SafeString(v) {
+    return typeof v === "string" ? v.trim() : "";
+  }
+
+  function cg116Fix6Push(set, value) {
+    const v = cg116Fix6SafeString(value);
+    if (v) set.add(v);
+  }
+
+  function cg116Fix6DecodeLoose(v) {
+    let out = cg116Fix6SafeString(v);
+    if (!out) return "";
+    try { out = decodeURIComponent(out); } catch (_) {}
+    out = out.replace(/\+/g, " ");
+    return out;
+  }
+
+  function cg116Fix6NormalizeImageUrl(raw) {
+    let u = cg116Fix6DecodeLoose(raw);
+    if (!u) return "";
+    u = u.replace(/&amp;/g, "&");
+    u = u.split("#")[0].split("?")[0];
+    u = u.replace(/^https?:\/\/commons\.wikimedia\.org\/wiki\/Special:Redirect\/file\//i, "https://commons.wikimedia.org/wiki/File:");
+    u = u.replace(/^https?:\/\/(?:upload\.wikimedia\.org|upload\.wikimedia\.org\/wikipedia\/commons)\/thumb\//i, "https://upload.wikimedia.org/wikipedia/commons/thumb/");
+    u = u.replace(/^https?:\/\/(?:www\.)?quizypedia\.fr\/+/i, "https://www.quizypedia.fr/");
+    u = u.replace(/\/{2,}/g, "/").replace(/^https:\//, "https://").replace(/^http:\//, "http://");
+    return u;
+  }
+
+  function cg116Fix6FileNameFromUrl(raw) {
+    const u = cg116Fix6NormalizeImageUrl(raw);
+    if (!u) return "";
+    const mFile = u.match(/\/wiki\/File:([^/?#]+)/i);
+    if (mFile) return cg116Fix6DecodeLoose(mFile[1]).toLowerCase();
+
+    const parts = u.split("/");
+    if (!parts.length) return "";
+    const last = cg116Fix6DecodeLoose(parts[parts.length - 1]).toLowerCase();
+    if (!last) return "";
+
+    // Wikimedia thumb -> original file token often appears before /123px-...
+    const px = last.match(/^\d+px-(.+)$/i);
+    if (px) return px[1].toLowerCase();
+
+    return last;
+  }
+
+  function cg116Fix6BaseName(raw) {
+    const f = cg116Fix6FileNameFromUrl(raw);
+    if (!f) return "";
+    return f
+      .replace(/\.(jpg|jpeg|png|webp|gif|svg)$/i, "")
+      .replace(/[_\s]+/g, " ")
+      .trim()
+      .toLowerCase();
+  }
+
+  function cg116Fix6WikimediaVariants(raw) {
+    const out = new Set();
+    const u = cg116Fix6NormalizeImageUrl(raw);
+    if (!u) return [];
+
+    cg116Fix6Push(out, u);
+
+    const fileName = cg116Fix6FileNameFromUrl(u);
+    const baseName = cg116Fix6BaseName(u);
+
+    if (fileName) {
+      cg116Fix6Push(out, fileName);
+      cg116Fix6Push(out, fileName.replace(/\.(jpg|jpeg|png|webp|gif|svg)$/i, ""));
+      cg116Fix6Push(out, `file:${fileName}`);
+      cg116Fix6Push(out, `https://commons.wikimedia.org/wiki/File:${fileName}`);
+    }
+
+    if (baseName) cg116Fix6Push(out, baseName);
+
+    const wikiFile = u.match(/\/wiki\/File:([^/?#]+)/i);
+    if (wikiFile) {
+      const n = cg116Fix6DecodeLoose(wikiFile[1]);
+      cg116Fix6Push(out, n);
+      cg116Fix6Push(out, n.replace(/\.(jpg|jpeg|png|webp|gif|svg)$/i, ""));
+    }
+
+    return [...out].filter(Boolean);
+  }
+
+  function cg116Fix6LooksLikeImageUrl(v) {
+    const s = cg116Fix6SafeString(v).toLowerCase();
+    if (!s) return false;
+    if (/\.(jpg|jpeg|png|webp|gif|svg)(?:$|[?#])/.test(s)) return true;
+    if (s.includes("/wiki/file:")) return true;
+    if (s.includes("/thumb/")) return true;
+    if (s.includes("special:redirect/file")) return true;
+    if (s.includes("quizypedia.fr") && s.includes("/img/")) return true;
+    return false;
+  }
+
+  function cg116Fix6CollectImageUrls(value, out, depth, seen) {
+    if (depth > 4) return;
+    if (value == null) return;
+
+    if (typeof value === "string") {
+      if (cg116Fix6LooksLikeImageUrl(value)) out.add(cg116Fix6NormalizeImageUrl(value));
+      return;
+    }
+
+    if (typeof value !== "object") return;
+    if (seen.has(value)) return;
+    seen.add(value);
+
+    if (Array.isArray(value)) {
+      value.forEach((item) => cg116Fix6CollectImageUrls(item, out, depth + 1, seen));
+      return;
+    }
+
+    for (const [k, v] of Object.entries(value)) {
+      const key = String(k || "").toLowerCase();
+      if (
+        key.includes("image") ||
+        key.includes("img") ||
+        key.includes("thumb") ||
+        key.includes("thumbnail") ||
+        key.includes("source")
+      ) {
+        cg116Fix6CollectImageUrls(v, out, depth + 1, seen);
+      }
+    }
+  }
+
+  function cg116Fix6BuildCatalog(fiche) {
+    const urlSet = new Set();
+    cg116Fix6CollectImageUrls(fiche, urlSet, 0, new WeakSet());
+
+    const linkArrayNames = [
+      "__cg116ImageLinks",
+      "__cg116FicheImageLinks",
+      "imageLinks",
+      "thumbnailLinks",
+      "sourceImageLinks",
+      "__imageLinks",
+    ];
+
+    for (const name of linkArrayNames) {
+      const arr = fiche && fiche[name];
+      if (Array.isArray(arr)) {
+        for (const item of arr) {
+          if (typeof item === "string") {
+            urlSet.add(cg116Fix6NormalizeImageUrl(item));
+          } else if (item && typeof item === "object") {
+            for (const candidate of Object.values(item)) {
+              if (typeof candidate === "string" && cg116Fix6LooksLikeImageUrl(candidate)) {
+                urlSet.add(cg116Fix6NormalizeImageUrl(candidate));
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const expanded = new Set();
+    for (const u of urlSet) {
+      cg116Fix6Push(expanded, u);
+      for (const v of cg116Fix6WikimediaVariants(u)) cg116Fix6Push(expanded, v);
+    }
+
+    fiche.__cg116ImageLinks = [...new Set([...(Array.isArray(fiche.__cg116ImageLinks) ? fiche.__cg116ImageLinks : []), ...[...urlSet].filter(Boolean)])];
+    fiche.__cg116Fix6Catalog = [...expanded].filter(Boolean);
+    fiche.__cg116Fix6HasImage = fiche.__cg116Fix6Catalog.length > 0;
+
+    return fiche;
+  }
+
+  function cg116Fix6EnrichArray(arr) {
+    if (!Array.isArray(arr)) return;
+    for (const fiche of arr) {
+      if (fiche && typeof fiche === "object") cg116Fix6BuildCatalog(fiche);
+    }
+  }
+
+  function cg116Fix6FindFicheArrays(scope, out, seen, depth) {
+    if (!scope || depth > 4) return;
+    if (typeof scope !== "object") return;
+    if (seen.has(scope)) return;
+    seen.add(scope);
+
+    if (Array.isArray(scope)) {
+      if (
+        scope.length &&
+        scope.every((x) => x && typeof x === "object") &&
+        scope.some((x) =>
+          Object.keys(x || {}).some((k) =>
+            /(fiche|image|thumb|thumbnail|nom|title|question)/i.test(String(k))
+          )
+        )
+      ) {
+        out.push(scope);
+      }
+      for (const item of scope) cg116Fix6FindFicheArrays(item, out, seen, depth + 1);
+      return;
+    }
+
+    for (const value of Object.values(scope)) {
+      cg116Fix6FindFicheArrays(value, out, seen, depth + 1);
+    }
+  }
+
+  function cg116Fix6EnrichScope(scope) {
+    const arrays = [];
+    cg116Fix6FindFicheArrays(scope, arrays, new WeakSet(), 0);
+    for (const arr of arrays) cg116Fix6EnrichArray(arr);
+  }
+
+  if (typeof cg116AttachFicheImageLinks === "function") {
+    const baseAttach = cg116AttachFicheImageLinks;
+    cg116AttachFicheImageLinks = function (...args) {
+      const result = baseAttach.apply(this, args);
+      try {
+        for (const arg of args) cg116Fix6EnrichScope(arg);
+      } catch (_) {}
+      return result;
+    };
+  }
+
+  if (typeof cg116ResolvePhotoQuestion === "function") {
+    const baseResolve = cg116ResolvePhotoQuestion;
+    cg116ResolvePhotoQuestion = function (...args) {
+      try {
+        if (args.length) cg116Fix6EnrichScope(args[0]);
+      } catch (_) {}
+      return baseResolve.apply(this, args);
+    };
+  }
+
+  console.log(FIX6_MARK + " : fallback vignette Quizypedia + normalisation image activés");
+})();
+
