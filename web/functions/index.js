@@ -1,3 +1,4 @@
+// CGWEB116_FIX3_FIX4_FIX4_PORTRAIT_AMBIGUITY_TIEBREAK001
 // CGIMPORT010 · LEGACY_PLAYWRIGHT_PORT001 / DIRECT_QUIZ_CAPTURE001
 // Moteur primaire : capture directe du payload réseau Quizypedia get_quiz_game.
 // Champs historiques utilisés tels quels : quiz_items, question,
@@ -1203,7 +1204,166 @@ function identifySourceFiche(
   if(candidates.length>1 &&
      candidates[0].score===candidates[1].score &&
      candidates[0].longest===candidates[1].longest){
-    return {ok:false,error:'Correspondance ambiguë entre plusieurs fiches source dans le contexte complet.'};
+
+    /*
+     * CGWEB116 FIX3 FIX4 FIX4
+     * PORTRAIT_AMBIGUITY_TIEBREAK001
+     *
+     * Plusieurs fiches peuvent partager exactement le même
+     * contexte textuel : portrait, photo, drapeau, monument...
+     *
+     * Avant de déclarer l'ambiguïté, utiliser l'identité
+     * éventuellement portée par l'image visible ou sa ressource.
+     */
+
+    const topScore=candidates[0].score;
+    const topLongest=candidates[0].longest;
+
+    const tiedNumbers=new Set(
+      candidates
+        .filter(c=>
+          c.score===topScore &&
+          c.longest===topLongest
+        )
+        .map(c=>Number(c.fiche.number))
+    );
+
+
+    const resolveImageTie=(rawContext,matchMode)=>{
+
+      const visible=norm(rawContext);
+      const compact=visible.replace(/\\s+/g,'');
+
+      if(!visible)return null;
+
+      const hits=[];
+
+
+      for(const fiche of fiches){
+
+        if(!tiedNumbers.has(Number(fiche.number))){
+          continue;
+        }
+
+        const values=[
+          {label:'Nom',value:fiche.name},
+          ...(fiche.fields||[])
+        ];
+
+        const answerFields=
+          values.filter(f=>
+            norm(f.label)===answerLabelKey &&
+            optionNorms.has(norm(f.value))
+          );
+
+        if(answerFields.length!==1)continue;
+
+        const answer=one(answerFields[0].value);
+        const key=norm(answer);
+        const compactKey=key.replace(/\\s+/g,'');
+
+        if(key.length<4)continue;
+
+        const phrase=
+          visible.includes(key);
+
+        const compactHit=
+          compactKey.length>=6 &&
+          compact.includes(compactKey);
+
+        if(!phrase&&!compactHit)continue;
+
+        hits.push({
+          fiche,
+          answer
+        });
+      }
+
+
+      const unique=new Map();
+
+      for(const hit of hits){
+        unique.set(
+          Number(hit.fiche.number),
+          hit
+        );
+      }
+
+      const rows=[...unique.values()];
+
+      /*
+       * Sécurité absolue :
+       * l'image doit identifier UNE SEULE fiche.
+       */
+      if(rows.length!==1){
+        return null;
+      }
+
+
+      const hit=rows[0];
+
+      const correctIndex=
+        options.findIndex(
+          v=>norm(v)===norm(hit.answer)
+        )+1;
+
+      if(correctIndex<1){
+        return null;
+      }
+
+
+      return {
+        ok:true,
+        sourceFiche:hit.fiche.name,
+        sourceNumber:hit.fiche.number,
+        answerLabel:answerLabel.label,
+        detail:'',
+        correctIndex,
+        correctText:hit.answer,
+        matchScore:topScore+2000,
+        matchMode
+      };
+    };
+
+
+    /*
+     * Priorité à l'image réellement associée
+     * à la question courante.
+     */
+    const contexts=[
+      [
+        imageContextText,
+        'image-context-tiebreak'
+      ],
+      [
+        resourceRecentText,
+        'image-resource-recent-tiebreak'
+      ],
+      [
+        resourceAllText,
+        'image-resource-all-tiebreak'
+      ]
+    ];
+
+
+    for(const [context,mode] of contexts){
+
+      const resolved=
+        resolveImageTie(
+          context,
+          mode
+        );
+
+      if(resolved){
+        return resolved;
+      }
+    }
+
+
+    return {
+      ok:false,
+      error:'Correspondance ambiguë entre plusieurs fiches source dans le contexte complet.'
+    };
   }
 
   const hit=candidates[0];
