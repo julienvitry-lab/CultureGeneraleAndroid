@@ -1,3 +1,4 @@
+// CGWEB116_FIX3_FIX4_FIX7_UNRESOLVED_QUESTION_SKIP001
 // CGWEB116_FIX3_FIX4_FIX5_FICHE_IMAGE_LINK_CAPTURE001_IMAGE_SOURCE_NORMALIZE001_PHOTO_QUESTION_RESOLVE001
 // CGWEB116_FIX3_FIX4_FIX4_PORTRAIT_AMBIGUITY_TIEBREAK001
 // CGIMPORT010 · LEGACY_PLAYWRIGHT_PORT001 / DIRECT_QUIZ_CAPTURE001
@@ -2599,18 +2600,130 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
   );
   try{
     const sourceValues=[...allSourceValues(fiches).values()];
-    const expected=fiches.length;
+
+    /*
+     * CGWEB116 FIX3 FIX4 FIX7
+     * PHOTO_EXPECTED_IMAGE_COUNT001
+     *
+     * Pour un questionnaire explicitement basé sur
+     * image / photo / portrait / vignette :
+     *
+     * une fiche qui ne possède réellement aucune image
+     * n'est pas une question photo capturable.
+     */
+    const fullExpected=fiches.length;
+
+    const questionnaireIdentity=
+      norm(
+        `${questionnaire||''} ${questionnairePath||''}`
+      );
+
+    const photoQuestionnaire=[
+      'image',
+      'photo',
+      'portrait',
+      'visuel',
+      'vignette'
+    ].some(
+      token=>questionnaireIdentity.includes(token)
+    );
+
+    const imageTargetNumbers=
+      new Set(
+        fiches
+          .filter(
+            fiche=>
+              Array.isArray(fiche.imageLinks) &&
+              fiche.imageLinks.length>0
+          )
+          .map(
+            fiche=>Number(fiche.number)
+          )
+      );
+
+    /*
+     * Sécurité :
+     * si aucun lien image n'a pu être recensé,
+     * on conserve le fonctionnement strict historique.
+     */
+    const targetNumbers=
+      (
+        photoQuestionnaire &&
+        imageTargetNumbers.size>0
+      )
+        ? imageTargetNumbers
+        : new Set(
+            fiches.map(
+              fiche=>Number(fiche.number)
+            )
+          );
+
+    const expected=
+      targetNumbers.size;
+
     const questions=[];
     const seen=new Set();
+
+    const targetSeenCount=()=>
+      [...targetNumbers]
+        .filter(
+          number=>seen.has(number)
+        )
+        .length;
+
+    const targetComplete=()=>
+      [...targetNumbers]
+        .every(
+          number=>seen.has(number)
+        );
+
+    const excludedNoImageFiches=
+      photoQuestionnaire
+        ? fiches
+            .filter(
+              fiche=>
+                !targetNumbers.has(
+                  Number(fiche.number)
+                )
+            )
+            .map(
+              fiche=>({
+                number:Number(fiche.number),
+                total:Number(fiche.total||fullExpected),
+                name:one(fiche.name),
+                position:
+                  fiche.position||
+                  `(${fiche.number} / ${fiche.total||fullExpected})`
+              })
+            )
+        : [];
+
+    let skippedUnresolved=0;
+
+    if(photoQuestionnaire){
+      diagnostics.push(
+        `PHOTO_EXPECTED_IMAGE_COUNT001 : ${expected}/${fullExpected} fiche(s) avec image constituent la cible photo.`
+      );
+
+      if(excludedNoImageFiches.length){
+        diagnostics.push(
+          `Fiche(s) sans image volontairement hors cible : ${
+            excludedNoImageFiches
+              .map(f=>f.name)
+              .join(' ; ')
+          }.`
+        );
+      }
+    }
 
     // FIX3 : plusieurs parties indépendantes, chacune dans une page neuve avec stockage nettoyé.
     const maxSessions=Math.min(10,Math.max(5,Math.ceil(expected/2)));
     let consecutiveNoProgress=0;
     let sessionsUsed=0;
 
-    for(let session=1;session<=maxSessions&&seen.size<expected;session++){
+    for(let session=1;session<=maxSessions&&targetSeenCount()<expected;session++){
       sessionsUsed=session;
-      const seenBefore=seen.size;
+      const seenBefore=targetSeenCount();
       let page=null;
       let cdp=null;
       let sessionEnd='';
@@ -2659,6 +2772,40 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
           const directPayload=await cgimport010Tap.wait(5000);
           const direct=cgimport010ParsePayload(directPayload,fiches);
 
+          /*
+           * Sur un questionnaire photo avec une fiche sans image,
+           * Quizypedia peut légitimement renvoyer 8 questions pour
+           * 9 fiches.
+           *
+           * On vérifie donc la couverture des 8 fiches AVEC image,
+           * pas seulement questions.length === fiches.length.
+           */
+          const directRelevantQuestions=
+            photoQuestionnaire
+              ? direct.questions.filter(
+                  q=>
+                    targetNumbers.has(
+                      Number(q.source_number)
+                    )
+                )
+              : direct.questions;
+
+          const directTargetSeen=
+            new Set(
+              directRelevantQuestions
+                .map(
+                  q=>Number(q.source_number)
+                )
+                .filter(Boolean)
+            );
+
+          const directTargetComplete=
+            [...targetNumbers]
+              .every(
+                number=>
+                  directTargetSeen.has(number)
+              );
+
           if(directPayload){
             diagnostics.push(
               `CGIMPORT010 get_quiz_game: ${direct.questions.length}/${direct.rawCount||0} question(s) valides.`
@@ -2670,7 +2817,7 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
             );
           }
 
-          if(direct.ok&&direct.questions.length===expected){
+          if(direct.ok&&directTargetComplete){
             cgimport010Tap.cancel();
 
             sessionStats.push({
@@ -2721,7 +2868,7 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
 
         const maxTurns=Math.max(expected*3,24);
 
-        for(let turn=1;turn<=maxTurns&&seen.size<expected;turn++){
+        for(let turn=1;turn<=maxTurns&&targetSeenCount()<expected;turn++){
           if(!state?.ok){
             sessionEnd='état de question absent';
             diagnostics.push(`Session ${session}, tour ${turn}: état de question absent.`);
@@ -2737,33 +2884,113 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
             state.resourceAllText
           );
           if(!match.ok){
-            sessionEnd='question non identifiable';
-            diagnostics.push(`Session ${session}, tour ${turn}: ${match.error}`);
-            diagnostics.push(`Propositions: ${state.options.join(' | ')}`);
+
+            /*
+             * UNRESOLVED_QUESTION_SKIP001
+             *
+             * Une question sans image / sans identité exploitable
+             * ne doit plus empêcher d'atteindre les suivantes.
+             *
+             * Elle n'est PAS ajoutée à questions[].
+             * Une réponse visible est uniquement cliquée afin
+             * de demander à Quizypedia la question suivante.
+             */
+            skippedUnresolved++;
+
+            sessionEnd=
+              'question non identifiable ignorée';
+
+            diagnostics.push(
+              `Session ${session}, tour ${turn}: ${match.error}`
+            );
+
+            diagnostics.push(
+              `Propositions: ${state.options.join(' | ')}`
+            );
+
             if(state.contextHits?.length){
               diagnostics.push(
                 `Valeurs source dans le contexte: ${state.contextHits.slice(0,8).join(' | ')}`
               );
             }
+
             if(state.imageContextSources?.length){
               diagnostics.push(
                 `Contexte image: ${state.imageContextSources.slice(0,3).join(' | ')}`
               );
             }
+
             if(state.resourceContextSources?.length){
               diagnostics.push(
                 `Ressources image détectées: ${state.resourceContextSources.slice(0,10).join(' | ')}`
               );
             }
+
             if(state.panelLines?.length){
               diagnostics.push(
                 `Panneau visible: ${state.panelLines.slice(0,12).join(' | ')}`
               );
             }
-            break;
+
+            const skipChoice=
+              state.options.find(Boolean)||'';
+
+            const skipClicked=
+              skipChoice
+                ? await clickOption(
+                    page,
+                    skipChoice
+                  )
+                : false;
+
+            if(!skipClicked){
+              sessionEnd=
+                'question non identifiable et aucune proposition cliquable';
+
+              diagnostics.push(
+                `Session ${session}, tour ${turn}: question ignorée mais aucune proposition visible n'a pu être cliquée.`
+              );
+
+              break;
+            }
+
+            const skippedAdvance=
+              await advanceSafely(
+                page,
+                sourceValues,
+                state,
+                questionnairePath
+              );
+
+            if(!skippedAdvance.ok){
+              sessionEnd=
+                'fin de partie après question ignorée';
+
+              diagnostics.push(
+                `Session ${session}, tour ${turn}: question non importée puis fin de partie probable (${skippedAdvance.error||'aucune question suivante'}).`
+              );
+
+              break;
+            }
+
+            diagnostics.push(
+              `Session ${session}, tour ${turn}: question non identifiable ignorée sans import ; poursuite vers la question suivante.`
+            );
+
+            state=
+              skippedAdvance.state;
+
+            continue;
           }
 
-          if(!seen.has(match.sourceNumber)){
+          if(
+            targetNumbers.has(
+              Number(match.sourceNumber)
+            ) &&
+            !seen.has(
+              Number(match.sourceNumber)
+            )
+          ){
             if(!state.questionText){
               sessionEnd='intitulé visible introuvable';
               diagnostics.push(
@@ -2787,10 +3014,10 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
               match_mode:match.matchMode||'text-context',
               verbatim_panel:true
             });
-            seen.add(match.sourceNumber);
+            seen.add(Number(match.sourceNumber));
           }
 
-          if(seen.size>=expected){
+          if(targetComplete()){
             sessionEnd='capture complète';
             break;
           }
@@ -2828,11 +3055,11 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
         sessionEnd=`exception: ${e.message}`;
         diagnostics.push(`Session ${session}: ${e.message}`);
       }finally{
-        const newCount=seen.size-seenBefore;
+        const newCount=targetSeenCount()-seenBefore;
         sessionStats.push({
           session,
           newQuestions:newCount,
-          totalSeen:seen.size,
+          totalSeen:targetSeenCount(),
           end:sessionEnd||'session terminée'
         });
 
@@ -2843,7 +3070,7 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
         else consecutiveNoProgress=0;
       }
 
-      if(seen.size>=expected)break;
+      if(targetComplete())break;
 
       // Évite de tourner inutilement si 3 sessions neuves consécutives n'apportent rien.
       if(consecutiveNoProgress>=3){
@@ -2859,8 +3086,18 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
 
     questions.sort((a,b)=>a.source_number-b.source_number);
 
+    if(skippedUnresolved>0){
+      diagnostics.unshift(
+        `UNRESOLVED_QUESTION_SKIP001 : ${skippedUnresolved} question(s) non identifiable(s) franchie(s) sans import afin de poursuivre la partie.`
+      );
+    }
+
     const missingFiches=fiches
-      .filter(f=>!seen.has(Number(f.number)))
+      .filter(
+        f=>
+          targetNumbers.has(Number(f.number)) &&
+          !seen.has(Number(f.number))
+      )
       .map(f=>({
         number:Number(f.number),
         total:Number(f.total||expected),
@@ -2869,7 +3106,7 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
       }))
       .sort((a,b)=>a.number-b.number);
 
-    if(questions.length!==expected){
+    if(!targetComplete()){
       const missingText=missingFiches.length
         ? missingFiches.map(f=>`${f.name} — n°${f.number}/${f.total}`).join(' ; ')
         : 'indéterminée';
@@ -2888,7 +3125,25 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
 
     return {
       questions,
-      complete:questions.length===expected,
+
+      /*
+       * SAFE_PARTIAL_IMPORT001
+       *
+       * "complete" ne signifie PAS qu'une capture partielle
+       * quelconque est acceptée.
+       *
+       * En mode photo, cela signifie que toutes les fiches
+       * disposant réellement d'une image ont été capturées.
+       */
+      complete:targetComplete(),
+
+      expectedCapture:expected,
+      fullExpected,
+      photoMode:photoQuestionnaire,
+      capturedTargetCount:targetSeenCount(),
+      excludedNoImageFiches,
+      skippedUnresolved,
+
       diagnostics,
       missingFiches,
       sessionsUsed:sessionStats.length,
@@ -3017,6 +3272,38 @@ exports.cgimport002Quizypedia=onRequest({
       kind:'questionnaire',
       strict:true,
       strictComplete:capture.complete,
+
+      expectedCapture:
+        Number(
+          capture.expectedCapture ||
+          fiches.length
+        ),
+
+      fullExpected:
+        Number(
+          capture.fullExpected ||
+          fiches.length
+        ),
+
+      capturedTargetCount:
+        Number(
+          capture.capturedTargetCount ??
+          capture.questions.length
+        ),
+
+      photoMode:
+        Boolean(
+          capture.photoMode
+        ),
+
+      excludedNoImageFiches:
+        capture.excludedNoImageFiches||[],
+
+      skippedUnresolved:
+        Number(
+          capture.skippedUnresolved||0
+        ),
+
       requestedUrl:raw,
       effectiveUrl:response.url,
       theme:parsed.theme,

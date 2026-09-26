@@ -1,3 +1,4 @@
+// CGWEB116_FIX3_FIX4_FIX7_TARGET_COMPLETE_UI001
 // CGWEB116_FIX3_FIX4_FIX3_DIRECT_ENGINE_API001
 // CGWEB116_FIX3_FIX4_FIX2_MULTI_ONE_CLICK_PARITY001
 // CGWEB116_FIX3_FIX4_ONE_CLICK_IMPORT001
@@ -384,8 +385,19 @@ async function captureQuestionnaireItem(item,index,total){
 
   try{
     const data=await apiCall({mode:'capture',url:item.url});
-    item.expected=Number(data.fiches?.length||0);
-    item.captured=Number(data.questions?.length||0);
+    item.expected=
+      Number(
+        data.expectedCapture ||
+        data.fiches?.length ||
+        0
+      );
+
+    item.captured=
+      Number(
+        data.capturedTargetCount ??
+        data.questions?.length ??
+        0
+      );
     item.sessionsUsed=Number(data.sessionsUsed||1);
     item.missingFiches=Array.isArray(data.missingFiches)?data.missingFiches:[];
     item.missingLabel=item.missingFiches.length
