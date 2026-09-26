@@ -1,3 +1,4 @@
+// CGWEB116_FIX3_FIX4_FIX5_FICHE_IMAGE_LINK_CAPTURE001_IMAGE_SOURCE_NORMALIZE001_PHOTO_QUESTION_RESOLVE001
 // CGWEB116_FIX3_FIX4_FIX4_PORTRAIT_AMBIGUITY_TIEBREAK001
 // CGIMPORT010 · LEGACY_PLAYWRIGHT_PORT001 / DIRECT_QUIZ_CAPTURE001
 // Moteur primaire : capture directe du payload réseau Quizypedia get_quiz_game.
@@ -60,6 +61,656 @@ function linesFromHtml(html){
   $('script,style,noscript,svg').remove();
   return clean($.root().text()).split(/\n+/).map(one).filter(Boolean);
 }
+
+/* ============================================================
+   CGWEB116 FIX3 FIX4 FIX5
+   FICHE_IMAGE_LINK_CAPTURE001
+   IMAGE_SOURCE_NORMALIZE001
+   ============================================================ */
+
+function cg116DecodeLoose(value){
+  let text=String(value??'').trim();
+
+  for(let i=0;i<3;i++){
+    try{
+      const decoded=decodeURIComponent(text);
+      if(decoded===text)break;
+      text=decoded;
+    }catch{
+      break;
+    }
+  }
+
+  return text;
+}
+
+
+function cg116ImageKey(raw){
+
+  let text=
+    cg116DecodeLoose(raw);
+
+  if(!text)return '';
+
+
+  /*
+   * Cas typiques :
+   *
+   * fr.wikipedia.org/.../Fichier:Maurice_Thorez_(1900-1964).jpg
+   * upload.wikimedia.org/.../300px-Maurice_Thorez_(1900-1964).jpg
+   *
+   * On veut dans les deux cas :
+   * maurice thorez 1900 1964
+   */
+
+  const fileMatch=
+    text.match(
+      /(?:fichier|file)\s*:\s*([^?#&]+)/i
+    );
+
+  if(fileMatch){
+    text=fileMatch[1];
+  }else{
+    text=
+      text
+        .split(/[?#]/)[0]
+        .split('/')
+        .filter(Boolean)
+        .pop() || text;
+  }
+
+
+  text=
+    cg116DecodeLoose(text)
+      .replace(/^thumb[-_]/i,'')
+      .replace(/^\d{2,5}px[-_]/i,'')
+      .replace(
+        /\.(?:avif|bmp|gif|ico|jpe?g|jfif|png|svg|webp)$/i,
+        ''
+      )
+      .replace(/[_+]+/g,' ');
+
+
+  return norm(text);
+}
+
+
+function cg116LooksLikeImageLink(raw,label=''){
+
+  const text=
+    cg116DecodeLoose(raw);
+
+  const lab=
+    norm(label);
+
+
+  return (
+    /\.(?:avif|bmp|gif|ico|jpe?g|jfif|png|svg|webp)(?:[?#]|$)/i.test(text) ||
+    /upload\.wikimedia\.org/i.test(text) ||
+    /(?:fichier|file)\s*:/i.test(text) ||
+    /\/media\//i.test(text) ||
+    /(?:image|photo|portrait|vignette)/i.test(lab)
+  );
+}
+
+
+function cg116AttachFicheImageLinks(
+  html,
+  fiches,
+  effectiveUrl
+){
+
+  const $=
+    cheerio.load(html);
+
+
+  for(const fiche of fiches){
+    fiche.imageLinks=[];
+  }
+
+
+  const seen=
+    new Set();
+
+
+  const absolute=raw=>{
+
+    raw=one(raw);
+
+    if(!raw)return '';
+
+    try{
+      return new URL(
+        raw,
+        effectiveUrl
+      ).toString();
+    }catch{
+      return raw;
+    }
+  };
+
+
+  const identifyFicheFromNode=node=>{
+
+    let current=node;
+
+
+    /*
+     * On remonte dans le DOM jusqu'au bloc de la fiche.
+     * Une seule fiche doit être identifiable dans ce bloc.
+     */
+    for(
+      let depth=0;
+      current && depth<12;
+      depth++
+    ){
+
+      const text=
+        norm(
+          $(current).text()
+        );
+
+
+      if(text){
+
+        const hits=
+          fiches.filter(fiche=>{
+
+            const name=
+              norm(fiche.name);
+
+            return (
+              name.length>=4 &&
+              text.includes(name)
+            );
+          });
+
+
+        if(hits.length===1){
+          return hits[0];
+        }
+      }
+
+
+      current=
+        $(current)
+          .parent()
+          .get(0);
+    }
+
+
+    return null;
+  };
+
+
+  const selector=[
+    'a[href]',
+    'img[src]',
+    'img[data-src]',
+    'img[data-original]',
+    'img[data-lazy-src]',
+    'img[srcset]',
+    'source[src]',
+    'source[srcset]'
+  ].join(',');
+
+
+  $(selector).each((_,node)=>{
+
+    const el=
+      $(node);
+
+
+    const urls=[];
+
+
+    const add=value=>{
+      value=one(value);
+
+      if(value){
+        urls.push(
+          absolute(value)
+        );
+      }
+    };
+
+
+    add(el.attr('href'));
+    add(el.attr('src'));
+    add(el.attr('data-src'));
+    add(el.attr('data-original'));
+    add(el.attr('data-lazy-src'));
+
+
+    const srcset=
+      one(
+        el.attr('srcset') ||
+        el.attr('data-srcset')
+      );
+
+
+    if(srcset){
+
+      for(const part of srcset.split(',')){
+
+        const src=
+          part
+            .trim()
+            .split(/\s+/)[0];
+
+        if(src){
+          add(src);
+        }
+      }
+    }
+
+
+    const figure=
+      el.closest('figure');
+
+
+    const metadata=[
+      el.attr('alt'),
+      el.attr('title'),
+      el.attr('aria-label'),
+      el.text(),
+      figure.length
+        ? figure
+            .find('figcaption')
+            .first()
+            .text()
+        : ''
+    ]
+      .map(one)
+      .filter(Boolean);
+
+
+    const uniqueUrls=
+      [...new Set(urls)];
+
+
+    const relevant=
+      uniqueUrls.some(
+        url=>
+          cg116LooksLikeImageLink(
+            url,
+            metadata.join(' ')
+          )
+      ) ||
+      metadata.some(
+        text=>
+          cg116LooksLikeImageLink(
+            '',
+            text
+          )
+      );
+
+
+    if(!relevant){
+      return;
+    }
+
+
+    let fiche=
+      identifyFicheFromNode(node);
+
+
+    /*
+     * Sécurité complémentaire :
+     * le nom du fichier peut lui-même contenir
+     * explicitement le nom d'une fiche.
+     */
+    if(!fiche){
+
+      const combined=
+        norm(
+          [
+            ...uniqueUrls,
+            ...metadata
+          ].join(' | ')
+        );
+
+
+      const matching=
+        fiches.filter(f=>{
+
+          const name=
+            norm(f.name);
+
+          return (
+            name.length>=4 &&
+            combined.includes(name)
+          );
+        });
+
+
+      if(matching.length===1){
+        fiche=matching[0];
+      }
+    }
+
+
+    if(!fiche){
+      return;
+    }
+
+
+    const keys=[
+      ...new Set(
+        [
+          ...uniqueUrls,
+          ...metadata
+        ]
+          .map(cg116ImageKey)
+          .filter(
+            key=>
+              key.length>=5
+          )
+      )
+    ];
+
+
+    if(!keys.length){
+      return;
+    }
+
+
+    const signature=
+      [
+        fiche.number,
+        ...keys
+      ].join('|');
+
+
+    if(seen.has(signature)){
+      return;
+    }
+
+    seen.add(signature);
+
+
+    fiche.imageLinks.push({
+      urls:uniqueUrls,
+      metadata,
+      keys
+    });
+  });
+
+
+  return {
+    fiches:
+      fiches.filter(
+        f=>
+          f.imageLinks.length
+      ).length,
+
+    links:
+      fiches.reduce(
+        (sum,f)=>
+          sum+f.imageLinks.length,
+        0
+      )
+  };
+}
+
+
+/*
+ * Résolution d'une question photo.
+ *
+ * On compare uniquement :
+ * - l'URL / nom de fichier conservé dans la fiche ;
+ * - l'URL / nom de fichier chargé pendant la question.
+ */
+function cg116ResolvePhotoQuestion({
+  fiches,
+  options,
+  answerLabelKey,
+  imageContextText='',
+  resourceRecentText='',
+  resourceAllText='',
+  allowedNumbers=null
+}){
+
+  const optionNorms=
+    new Set(
+      options.map(norm)
+    );
+
+
+  const contexts=[
+    {
+      raw:imageContextText,
+      mode:'fiche-image-dom',
+      weight:30000
+    },
+    {
+      raw:resourceRecentText,
+      mode:'fiche-image-resource-recent',
+      weight:20000
+    },
+    {
+      raw:resourceAllText,
+      mode:'fiche-image-resource-all',
+      weight:10000
+    }
+  ]
+    .filter(
+      x=>one(x.raw)
+    );
+
+
+  for(const context of contexts){
+
+    const contextNorm=
+      norm(
+        cg116DecodeLoose(
+          context.raw
+        )
+      );
+
+
+    const contextCompact=
+      contextNorm.replace(
+        /\s+/g,
+        ''
+      );
+
+
+    const rows=[];
+
+
+    for(const fiche of fiches){
+
+      if(
+        allowedNumbers &&
+        !allowedNumbers.has(
+          Number(fiche.number)
+        )
+      ){
+        continue;
+      }
+
+
+      if(
+        !Array.isArray(
+          fiche.imageLinks
+        ) ||
+        !fiche.imageLinks.length
+      ){
+        continue;
+      }
+
+
+      const values=[
+        {
+          label:'Nom',
+          value:fiche.name
+        },
+        ...(fiche.fields||[])
+      ];
+
+
+      const answerFields=
+        values.filter(
+          field=>
+            norm(field.label)===
+              answerLabelKey &&
+            optionNorms.has(
+              norm(field.value)
+            )
+        );
+
+
+      if(answerFields.length!==1){
+        continue;
+      }
+
+
+      let bestScore=0;
+      let bestKey='';
+
+
+      for(const link of fiche.imageLinks){
+
+        for(const key0 of link.keys||[]){
+
+          const key=
+            norm(key0);
+
+
+          if(key.length<5){
+            continue;
+          }
+
+
+          const compact=
+            key.replace(
+              /\s+/g,
+              ''
+            );
+
+
+          const normalHit=
+            contextNorm.includes(
+              key
+            );
+
+
+          const compactHit=
+            compact.length>=6 &&
+            contextCompact.includes(
+              compact
+            );
+
+
+          if(
+            !normalHit &&
+            !compactHit
+          ){
+            continue;
+          }
+
+
+          const score=
+            context.weight +
+            Math.min(
+              key.length,
+              1000
+            );
+
+
+          if(score>bestScore){
+            bestScore=score;
+            bestKey=key;
+          }
+        }
+      }
+
+
+      if(bestScore){
+
+        rows.push({
+          fiche,
+          answer:
+            one(
+              answerFields[0].value
+            ),
+          score:bestScore,
+          key:bestKey,
+          mode:context.mode
+        });
+      }
+    }
+
+
+    rows.sort(
+      (a,b)=>
+        b.score-a.score ||
+        a.fiche.number-
+        b.fiche.number
+    );
+
+
+    if(!rows.length){
+      continue;
+    }
+
+
+    /*
+     * Règle absolue :
+     * une seule fiche doit gagner.
+     */
+    if(
+      rows.length>1 &&
+      rows[0].score===
+      rows[1].score
+    ){
+      continue;
+    }
+
+
+    const hit=
+      rows[0];
+
+
+    const correctIndex=
+      options.findIndex(
+        value=>
+          norm(value)===
+          norm(hit.answer)
+      )+1;
+
+
+    if(correctIndex<1){
+      continue;
+    }
+
+
+    return {
+      ok:true,
+      sourceFiche:
+        hit.fiche.name,
+      sourceNumber:
+        hit.fiche.number,
+      answerLabel:'',
+      detail:'',
+      correctIndex,
+      correctText:
+        hit.answer,
+      matchScore:
+        hit.score,
+      matchMode:
+        hit.mode,
+      imageKey:
+        hit.key
+    };
+  }
+
+
+  return null;
+}
+
+
 function dynamicLabels(html){
   const $=cheerio.load(html);
   const set=new Set(DEFAULT_LABELS);
@@ -1027,6 +1678,18 @@ function identifySourceFiche(
   }
 
   const answerLabelKey=norm(answerLabel.label);
+
+  const photoResolve=(allowedNumbers=null)=>
+    cg116ResolvePhotoQuestion({
+      fiches,
+      options,
+      answerLabelKey,
+      imageContextText,
+      resourceRecentText,
+      resourceAllText,
+      allowedNumbers
+    });
+
   const visible=norm(contextText);
   const candidates=[];
   const semanticBonus=/description|particular|resume|résumé|detail|détail|indice|definition|définition|info/i;
@@ -1070,6 +1733,17 @@ function identifySourceFiche(
   );
 
   if(!candidates.length){
+
+    const photoMatch=
+      photoResolve();
+
+    if(photoMatch){
+      photoMatch.answerLabel=
+        answerLabel.label;
+
+      return photoMatch;
+    }
+
     /*
      * FIX6 · identité stricte hors contexte texte.
      *
@@ -1227,6 +1901,20 @@ function identifySourceFiche(
         )
         .map(c=>Number(c.fiche.number))
     );
+
+
+    const photoMatch=
+      photoResolve(
+        tiedNumbers
+      );
+
+    if(photoMatch){
+
+      photoMatch.answerLabel=
+        answerLabel.label;
+
+      return photoMatch;
+    }
 
 
     const resolveImageTie=(rawContext,matchMode)=>{
@@ -1886,6 +2574,29 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
 
   const diagnostics=[];
   const sessionStats=[];
+
+  const imageLinkCount=
+    fiches.reduce(
+      (sum,fiche)=>
+        sum+
+        (
+          Array.isArray(fiche.imageLinks)
+            ? fiche.imageLinks.length
+            : 0
+        ),
+      0
+    );
+
+  const imageFicheCount=
+    fiches.filter(
+      fiche=>
+        Array.isArray(fiche.imageLinks) &&
+        fiche.imageLinks.length
+    ).length;
+
+  diagnostics.push(
+    `FICHE_IMAGE_LINK_CAPTURE001 : ${imageLinkCount} lien(s) image pour ${imageFicheCount}/${fiches.length} fiche(s).`
+  );
   try{
     const sourceValues=[...allSourceValues(fiches).values()];
     const expected=fiches.length;
@@ -2266,6 +2977,18 @@ exports.cgimport002Quizypedia=onRequest({
     const inferred=inferLabels(fiches);
     const allLabels=[...new Set([...labels,...inferred])];
     for(const f of fiches)f.fields=parseFields(f.lines,allLabels);
+
+    const imageLinkStats=
+      cg116AttachFicheImageLinks(
+        html,
+        fiches,
+        response.url
+      );
+
+    console.log(
+      'CGWEB116 FICHE_IMAGE_LINK_CAPTURE001',
+      imageLinkStats
+    );
 
     if(fiches.length<4){
       throw new Error(
