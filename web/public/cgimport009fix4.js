@@ -1,3 +1,4 @@
+// CGWEB116_FIX3_FIX4_FIX3_DIRECT_ENGINE_API001
 // CGWEB116_FIX3_FIX4_FIX2_MULTI_ONE_CLICK_PARITY001
 // CGWEB116_FIX3_FIX4_ONE_CLICK_IMPORT001
 // CGWEB116 FIX2 · QUIZYPEDIA_COMPACT_LAYOUT001 / CLASSIFICATION_AUTO001
@@ -740,6 +741,121 @@ async function importSelected(arg={}){
     btn.textContent='Importer les questions sélectionnées';
   }
 }
+
+
+/* ============================================================
+   CGWEB116 FIX3 FIX4 FIX3
+   DIRECT_ENGINE_API001
+
+   Permet à l'import TXT d'utiliser DIRECTEMENT
+   le moteur URL unique, sans clic DOM ni temporisation.
+   ============================================================ */
+
+async function cg116ImportUrlDirect({
+  url,
+  megatheme
+}={}){
+
+  if(oneClickBusy){
+    return {
+      ok:false,
+      message:'Importeur Quizypedia occupé.'
+    };
+  }
+
+  const urlInput=$('cgimp2Url');
+  const megaSelect=$('cgimp2Mega');
+  const themeInput=$('cgimp2Theme');
+
+  if(!urlInput||!megaSelect){
+    return {
+      ok:false,
+      message:'Importeur URL unique indisponible.'
+    };
+  }
+
+
+  const target=
+    [...megaSelect.options]
+      .find(option=>
+        norm(option.value)===norm(megatheme) ||
+        norm(option.textContent)===norm(megatheme)
+      );
+
+  if(!target){
+    return {
+      ok:false,
+      message:`Mégathème inconnu : ${megatheme}`
+    };
+  }
+
+
+  /*
+    Préparation exactement comme lors d'un import manuel.
+  */
+  megaSelect.value=target.value;
+  megaSelect.dispatchEvent(
+    new Event('change',{bubbles:true})
+  );
+
+  if(themeInput){
+    themeInput.value='';
+    themeInput.dispatchEvent(
+      new Event('input',{bubbles:true})
+    );
+    themeInput.dispatchEvent(
+      new Event('change',{bubbles:true})
+    );
+  }
+
+  urlInput.value=String(url||'').trim();
+  urlInput.dispatchEvent(
+    new Event('input',{bubbles:true})
+  );
+  urlInput.dispatchEvent(
+    new Event('change',{bubbles:true})
+  );
+
+
+  /*
+    Appel DIRECT du moteur qui fonctionne en URL unique.
+  */
+  await oneClickImport();
+
+
+  const statusEl=$('cgimp2Status');
+  const message=
+    String(statusEl?.textContent||'').trim();
+
+  const normalized=
+    norm(message);
+
+  const ok=
+    statusEl?.classList.contains('ok') &&
+    normalized.includes('import termine');
+
+
+  return {
+    ok:Boolean(ok),
+    message:
+      message ||
+      (
+        ok
+          ? 'Import terminé'
+          : 'Import Quizypedia non confirmé'
+      )
+  };
+}
+
+
+window.CGIMPORT009_API=
+  Object.assign(
+    window.CGIMPORT009_API||{},
+    {
+      importUrl:cg116ImportUrlDirect
+    }
+  );
+
 
 function relabelUi(){
   const panel=$('cgimport002Panel');

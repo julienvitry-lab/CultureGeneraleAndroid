@@ -1,3 +1,4 @@
+// CGWEB116_FIX3_FIX4_FIX3_MULTI_DIRECT_CALL001
 // CGWEB116_FIX3_FIX4_FIX2_PIPELINE_UNIFICATION001
 // CGWEB116_FIX3_FIX3_TXT_ONLY001_BATCH_MEGATHEME001_BATCH_CLASSIFICATION_LOCK001
 // CGWEB116_FIX3_FIX2_MULTI_URL_PIPELINE_REPAIR001
@@ -464,96 +465,36 @@
 
   async function runOne(item) {
 
-    const scope =
-      findImportScope();
+    const engine=
+      window.CGIMPORT009_API
+        ?.importUrl;
 
-    if (!scope) {
+    if(typeof engine!=="function"){
       throw new Error(
-        "Importeur Quizypedia introuvable."
+        "Moteur Quizypedia direct indisponible."
       );
     }
 
 
-    const input =
-      findUrlInput(scope);
-
-    let importer =
-      findAnalyzeButton(scope);
-
-
-    if (!input) {
-      throw new Error(
-        "Champ « Adresse Quizypedia » introuvable."
-      );
-    }
-
-    if (!importer) {
-      throw new Error(
-        "Bouton principal « Importer » introuvable."
-      );
-    }
-
-
-    /*
-      Attendre uniquement la disponibilité
-      du pipeline principal.
-    */
-    for (
-      let i = 0;
-      i < 60 && importer.disabled;
-      i++
-    ) {
-      await sleep(250);
-    }
-
-    if (importer.disabled) {
-      throw new Error(
-        "L’importeur Quizypedia est encore occupé."
-      );
-    }
-
-
-    /*
-      Le mégathème du TXT est réappliqué
-      AVANT chaque URL.
-    */
-    const batchMega =
+    const batchMega=
       String(
         item.megatheme ||
         state.megatheme ||
         ""
       ).trim();
 
-    applyBatchMegatheme(
-      scope,
-      batchMega
-    );
+    if(!batchMega){
+      throw new Error(
+        "Mégathème du lot absent."
+      );
+    }
 
 
-    /*
-      Le thème sera détecté par Quizypedia.
-    */
-    const themeInput =
-      findThemeInput(scope);
-
-    nativeSetValue(
-      themeInput,
-      ""
-    );
-
-    nativeSetValue(
-      input,
-      item.url
-    );
-
-
-    item.status =
-      "running";
-
-    item.startedAt =
+    item.status="running";
+    item.startedAt=
       new Date().toISOString();
 
-    item.message =
+    item.message=
       "Import en cours…";
 
     saveState();
@@ -561,82 +502,47 @@
 
 
     /*
-      POINT CLE :
+      AUCUN CLIC SIMULÉ.
+      AUCUNE SURVEILLANCE DOM.
+      AUCUN TIMEOUT DE 130 s.
 
-      ce clic appelle maintenant EXACTEMENT
-      oneClickImport(), comme un clic manuel.
-
-      Donc :
-      découverte
-      -> capture
-      -> import Firestore
-      -> fin
+      Appel direct du moteur URL unique.
     */
-    const before =
-      snapshotText(scope);
+    const result=
+      await engine({
+        url:item.url,
+        megatheme:batchMega
+      });
 
-    importer.click();
 
-
-    const result =
-      await waitImporterCycle(
-        scope,
-        importer,
-        before,
-        findAnalyzeButton
+    if(!result?.ok){
+      throw new Error(
+        result?.message ||
+        "Échec de l’import Quizypedia."
       );
-
-
-    const statusNode =
-      document.getElementById(
-        "cgimp2Status"
-      );
-
-    const statusText =
-      norm(
-        statusNode?.textContent || ""
-      );
-
-    const statusError =
-      statusNode
-        ?.classList
-        ?.contains("err") ||
-      /^❌/.test(statusText) ||
-      /(?:échec|erreur|impossible|incomplète)/i
-        .test(statusText);
-
-
-    const finalText =
-      result.text ||
-      snapshotText(scope);
+    }
 
 
     Object.assign(
       item,
-      extractStats(finalText)
+      extractStats(
+        result.message||""
+      )
     );
 
 
-    item.status =
-      result.ok && !statusError
-        ? "done"
-        : "error";
+    item.status="done";
+
+    item.message=
+      result.message ||
+      "Import terminé";
 
 
-    item.message =
-      item.status === "done"
-        ? "Import terminé"
-        : (
-            statusText ||
-            "Échec pendant l’import"
-          );
-
-
-    item.endedAt =
+    item.endedAt=
       new Date().toISOString();
 
 
-    item.durationSec =
+    item.durationSec=
       Math.max(
         1,
         Math.round(
@@ -697,7 +603,7 @@
           saveState(); render();
         }
 
-        await sleep(1200);
+        await sleep(250);
       }
     } finally {
       state.running = false;
