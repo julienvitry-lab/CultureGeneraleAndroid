@@ -1,3 +1,4 @@
+// CGWEB122 FIX2 · IMAGE_CREDIT_CAPTURE001 / SOURCE_METADATA_SEPARATION001 / RAW_FIDELITY_COMPLETE001
 // CGWEB122 FIX1 · DOM_FIELD_PAIR_CAPTURE001 / COMPOUND_LABEL_PRESERVE001 / RAW_FIELD_FIDELITY001 / IMAGE_URL_EXPOSE001
 // CGWEB122 · QUIZYPEDIA_FULL_FICHE_CAPTURE001 / RAW_SOURCE_ARCHIVE001 / STRUCTURED_KNOWLEDGE_EXTRACTION001
 // CGWEB116_FIX3_FIX4_FIX8_DIRECT_PAYLOAD_AUTHORITY001_SOURCE_FICHE_OPTIONAL001_DIRECT_COUNT_PRIORITY001
@@ -1395,6 +1396,360 @@ function cgweb122CaptureDomFieldPairs(
 }
 
 
+
+/* ==================================================================
+   CGWEB122 FIX2
+   IMAGE_CREDIT_CAPTURE001
+   SOURCE_METADATA_SEPARATION001
+   RAW_FIDELITY_COMPLETE001
+   ================================================================== */
+
+function cgweb122SourceMetadataKind(label){
+
+  const k=
+    cgweb122LabelKey(label);
+
+
+  if(
+    /^(credit|credits) (image|photo|illustration)/.test(k)
+  ){
+    return 'image_credit';
+  }
+
+
+  if(
+    /^(auteur|photographe) (image|photo|illustration)/.test(k)
+  ){
+    return 'image_author';
+  }
+
+
+  if(
+    /^source (image|photo|illustration)/.test(k)
+  ){
+    return 'image_source';
+  }
+
+
+  if(
+    /^(licence|license) (image|photo|illustration)/.test(k)
+  ){
+    return 'image_license';
+  }
+
+
+  if(
+    /^(copyright|droits) (image|photo|illustration)/.test(k)
+  ){
+    return 'image_rights';
+  }
+
+
+  /*
+   * Certains thèmes emploient simplement :
+   *
+   * "Crédits photo"
+   * "Copyright"
+   * "Licence"
+   *
+   * On accepte ces cas uniquement lorsque le libellé
+   * est clairement de nature documentaire/visuelle.
+   */
+  if(
+    /^(credit|credits) photo$/.test(k)
+  ){
+    return 'image_credit';
+  }
+
+
+  return '';
+}
+
+
+function cgweb122CaptureSourceMetadata(
+  fiche,
+  sourceFields=[]
+){
+
+  const entries=[];
+  const seen=new Set();
+
+
+  const add=({
+    kind,
+    label,
+    value,
+    source,
+    raw=''
+  })=>{
+
+    kind=
+      one(kind);
+
+    label=
+      one(label);
+
+    value=
+      one(value);
+
+    raw=
+      one(raw);
+
+
+    if(
+      !kind ||
+      !label ||
+      !value
+    ){
+      return;
+    }
+
+
+    const key=
+      [
+        kind,
+        norm(label),
+        norm(value)
+      ].join('|');
+
+
+    if(
+      seen.has(key)
+    ){
+      return;
+    }
+
+
+    seen.add(key);
+
+
+    entries.push({
+      kind,
+      label,
+      value,
+      source:
+        one(source),
+      raw
+    });
+  };
+
+
+  /*
+   * 1. Champs DOM / fallback déjà capturés.
+   */
+  for(
+    const field
+    of sourceFields || []
+  ){
+
+    const kind=
+      cgweb122SourceMetadataKind(
+        field.label
+      );
+
+
+    if(!kind){
+      continue;
+    }
+
+
+    add({
+      kind,
+      label:field.label,
+      value:field.value,
+      source:
+        field.source ||
+        fiche.fieldSource ||
+        'field'
+    });
+  }
+
+
+  /*
+   * 2. Lignes brutes du type :
+   *
+   * Crédits image : Jürg Ahel - CC BY 4.0
+   */
+  const rawLines=
+    (fiche.lines || [])
+      .map(one)
+      .filter(Boolean);
+
+
+  for(
+    let i=0;
+    i<rawLines.length;
+    i++
+  ){
+
+    const raw=
+      rawLines[i];
+
+
+    const colon=
+      raw.match(
+        /^([^:]{1,100})\s*:\s*(.+)$/
+      );
+
+
+    if(colon){
+
+      const label=
+        one(colon[1]);
+
+      const value=
+        one(colon[2]);
+
+      const kind=
+        cgweb122SourceMetadataKind(
+          label
+        );
+
+
+      if(kind){
+
+        add({
+          kind,
+          label,
+          value,
+          source:'raw-colon',
+          raw
+        });
+
+        continue;
+      }
+    }
+
+
+    /*
+     * Variante en deux lignes :
+     *
+     * Crédits image
+     * Jürg Ahel - CC BY 4.0
+     */
+    const kind=
+      cgweb122SourceMetadataKind(
+        raw
+      );
+
+
+    if(
+      kind &&
+      i+1<rawLines.length
+    ){
+
+      const value=
+        one(
+          rawLines[i+1]
+        );
+
+
+      if(value){
+
+        add({
+          kind,
+          label:raw,
+          value,
+          source:'raw-next-line',
+          raw:
+            `${raw} ${value}`
+        });
+      }
+    }
+  }
+
+
+  const imageEntries=
+    entries.filter(
+      entry=>
+        entry.kind.startsWith(
+          'image_'
+        )
+    );
+
+
+  return {
+
+    image:{
+      entries:imageEntries,
+
+      credits:
+        imageEntries
+          .filter(
+            entry=>
+              entry.kind===
+              'image_credit'
+          )
+          .map(
+            entry=>entry.value
+          ),
+
+      urls:[],
+
+      primaryUrl:''
+    }
+  };
+}
+
+
+function cgweb122MetadataCoverageTokens(
+  fiche
+){
+
+  const tokens=[];
+
+
+  const entries=
+    fiche
+      ?.sourceMetadata
+      ?.image
+      ?.entries || [];
+
+
+  for(
+    const entry
+    of entries
+  ){
+
+    const label=
+      norm(entry.label);
+
+    const value=
+      norm(entry.value);
+
+    const pair=
+      norm(
+        `${entry.label} ${entry.value}`
+      );
+
+    const raw=
+      norm(entry.raw);
+
+
+    if(label){
+      tokens.push(label);
+    }
+
+    if(value){
+      tokens.push(value);
+    }
+
+    if(pair){
+      tokens.push(pair);
+    }
+
+    if(raw){
+      tokens.push(raw);
+    }
+  }
+
+
+  return [
+    ...new Set(tokens)
+  ];
+}
+
+
 function cgweb122RawFieldFidelity(
   fiche
 ){
@@ -1429,6 +1784,19 @@ function cgweb122RawFieldFidelity(
       .filter(Boolean);
 
 
+  /*
+   * RAW_FIDELITY_COMPLETE001
+   *
+   * Les métadonnées source comptent comme information
+   * correctement archivée, même si elles ne font PAS
+   * partie des connaissances pédagogiques.
+   */
+  const metadataTokens=
+    cgweb122MetadataCoverageTokens(
+      fiche
+    );
+
+
   const rawLines=
     (fiche.lines || [])
       .map(one)
@@ -1438,7 +1806,10 @@ function cgweb122RawFieldFidelity(
   const uncoveredRawLines=[];
 
 
-  for(const raw of rawLines){
+  for(
+    const raw
+    of rawLines
+  ){
 
     const key=
       norm(raw);
@@ -1449,7 +1820,7 @@ function cgweb122RawFieldFidelity(
     }
 
 
-    const covered=
+    const coveredByFields=
       labels.includes(key) ||
       values.includes(key) ||
       pairs.includes(key) ||
@@ -1471,7 +1842,22 @@ function cgweb122RawFieldFidelity(
       );
 
 
-    if(!covered){
+    const coveredByMetadata=
+      metadataTokens.includes(key) ||
+
+      metadataTokens.some(token=>
+        token.length>=4 &&
+        (
+          token.includes(key) ||
+          key.includes(token)
+        )
+      );
+
+
+    if(
+      !coveredByFields &&
+      !coveredByMetadata
+    ){
       uncoveredRawLines.push(raw);
     }
   }
@@ -1493,6 +1879,9 @@ function cgweb122RawFieldFidelity(
       uncoveredRawLines.length,
 
     uncoveredRawLines,
+
+    metadataCovered:
+      metadataTokens.length>0,
 
     complete:
       uncoveredRawLines.length===0
@@ -1738,6 +2127,34 @@ function cgweb122ExtractPage(
     }
 
 
+    /*
+     * SOURCE_METADATA_SEPARATION001
+     *
+     * On capture d'abord les métadonnées documentaires,
+     * puis on les retire de fiche.fields afin qu'elles
+     * ne deviennent jamais des facts pédagogiques.
+     */
+    const sourceFieldsBeforeSeparation=
+      [...(fiche.fields || [])];
+
+
+    fiche.sourceMetadata=
+      cgweb122CaptureSourceMetadata(
+        fiche,
+        sourceFieldsBeforeSeparation
+      );
+
+
+    fiche.fields=
+      (fiche.fields || [])
+        .filter(
+          field=>
+            !cgweb122SourceMetadataKind(
+              field.label
+            )
+        );
+
+
     fiche.fieldFidelity=
       cgweb122RawFieldFidelity(
         fiche
@@ -1751,6 +2168,50 @@ function cgweb122ExtractPage(
       fiches,
       effectiveUrl
     );
+
+
+  /*
+   * IMAGE_CREDIT_CAPTURE001
+   *
+   * Les URL et les crédits appartiennent au même
+   * espace sourceMetadata.image, mais restent aussi
+   * disponibles via les propriétés historiques.
+   */
+  for(const fiche of fiches){
+
+    const urls=
+      cgweb122ImageUrls(
+        fiche
+      );
+
+
+    fiche.sourceMetadata=
+      fiche.sourceMetadata || {
+        image:{
+          entries:[],
+          credits:[],
+          urls:[],
+          primaryUrl:''
+        }
+      };
+
+
+    fiche.sourceMetadata.image=
+      fiche.sourceMetadata.image || {
+        entries:[],
+        credits:[],
+        urls:[],
+        primaryUrl:''
+      };
+
+
+    fiche.sourceMetadata.image.urls=
+      urls;
+
+
+    fiche.sourceMetadata.image.primaryUrl=
+      urls[0] || '';
+  }
 
 
   const enriched=
@@ -1808,6 +2269,21 @@ function cgweb122ExtractPage(
          */
         fieldFidelity:
           fiche.fieldFidelity || null,
+
+        /*
+         * SOURCE_METADATA_SEPARATION001
+         *
+         * Métadonnées volontairement exclues de knowledge.facts.
+         */
+        sourceMetadata:
+          fiche.sourceMetadata || {
+            image:{
+              entries:[],
+              credits:[],
+              urls:[],
+              primaryUrl:''
+            }
+          },
 
         imageLinks:
           fiche.imageLinks || [],
@@ -2117,7 +2593,7 @@ async function cgweb122CaptureFullFiches(
   return {
 
     version:
-      'CGWEB122_QUIZYPEDIA_FULL_FICHE_CAPTURE001_RAW_SOURCE_ARCHIVE001_STRUCTURED_KNOWLEDGE_EXTRACTION001',
+      'CGWEB122_FIX2_IMAGE_CREDIT_CAPTURE001_SOURCE_METADATA_SEPARATION001_RAW_FIDELITY_COMPLETE001',
 
     requestedUrl,
 

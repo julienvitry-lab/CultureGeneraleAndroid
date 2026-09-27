@@ -1,3 +1,6 @@
+// CGWEB122 FIX2 · IMAGE_CREDIT_CAPTURE001
+// SOURCE_METADATA_SEPARATION001
+// RAW_FIDELITY_COMPLETE001
 // CGWEB122 FIX1 · DOM_FIELD_PAIR_CAPTURE001
 // COMPOUND_LABEL_PRESERVE001
 // RAW_FIELD_FIDELITY001
@@ -10,7 +13,7 @@
   "use strict";
 
   const VERSION =
-    "CGWEB122_FIX1_DOM_FIELD_PAIR_CAPTURE001_COMPOUND_LABEL_PRESERVE001_RAW_FIELD_FIDELITY001_IMAGE_URL_EXPOSE001";
+    "CGWEB122_FIX2_IMAGE_CREDIT_CAPTURE001_SOURCE_METADATA_SEPARATION001_RAW_FIDELITY_COMPLETE001";
 
   const ENDPOINT =
     "https://europe-west1-culturegeneralesync.cloudfunctions.net/cgimport002Quizypedia";
@@ -196,6 +199,48 @@
   }
 
 
+  function renderSourceMetadata(
+    fiche
+  ){
+
+    const entries=
+      fiche
+        ?.sourceMetadata
+        ?.image
+        ?.entries || [];
+
+
+    if(!entries.length){
+      return "";
+    }
+
+
+    return `
+      <div class="cg122-source-meta">
+
+        <div class="cg122-source-meta-title">
+          Métadonnées source
+        </div>
+
+        ${entries.map(entry=>`
+          <div class="cg122-source-meta-row">
+
+            <strong>
+              ${esc(entry.label)}
+            </strong>
+
+            <span>
+              ${esc(entry.value)}
+            </span>
+
+          </div>
+        `).join("")}
+
+      </div>
+    `;
+  }
+
+
   function renderFiche(
     fiche
   ){
@@ -257,6 +302,8 @@
 
 
         ${renderImageUrls(fiche)}
+
+        ${renderSourceMetadata(fiche)}
 
 
         <div class="cg122-fidelity">
