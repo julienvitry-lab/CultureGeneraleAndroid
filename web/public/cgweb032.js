@@ -1,4 +1,4 @@
-const CGWEB032_VERSION='CGWEB121_FIX1_FIREBASE_AUTH_HEADER_ISOLATION001_JSON_RESPONSE_GUARD001',CG32_END='/api/cgweb032';const cg32$=id=>document.getElementById(id),cg32Esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+const CGWEB032_VERSION='CGWEB121_FIX2_STREAMING_DIRECTORY_SCAN001_PROJECTED_FIELDS001_DIRECT_FUNCTION_ENDPOINT002_BOUNDED_RESULT_CACHE001',CG32_END='https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb032Search';const cg32$=id=>document.getElementById(id),cg32Esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
 async function cg32Api(body){
   const u=window.CGWEB001?.getUser?.();
 
