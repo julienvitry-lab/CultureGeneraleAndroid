@@ -1,5 +1,8 @@
 /* ============================================================
-   CGWEB123 FIX1 · AI_QUESTION_FACTORY001
+   CGWEB123 FIX2
+   FULL_FICHE_COVERAGE001
+   PER_FICHE_AI_GENERATION001
+   COVERAGE_REPORT001
    ============================================================ */
 
 .cg123-panel{
@@ -111,9 +114,13 @@
 
 .cg123-counters{
   display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
   gap:8px;
   margin-top:11px;
+}
+
+.cg123-counters-fix2{
+  grid-template-columns:
+    repeat(7,minmax(0,1fr));
 }
 
 .cg123-counters > div{
@@ -131,6 +138,60 @@
 .cg123-counters span{
   font-size:10px;
   opacity:.72;
+}
+
+.cg123-coverage{
+  margin-top:12px;
+  padding:10px;
+  border-radius:10px;
+  background:rgba(0,0,0,.10);
+}
+
+.cg123-coverage > summary{
+  cursor:pointer;
+  font-weight:800;
+  font-size:11px;
+}
+
+.cg123-coverage-table{
+  display:grid;
+  gap:3px;
+  margin-top:9px;
+  font-size:10px;
+}
+
+.cg123-coverage-head,
+.cg123-coverage-row{
+  display:grid;
+  grid-template-columns:
+    minmax(180px,2fr)
+    70px
+    85px
+    70px
+    minmax(180px,2fr);
+  gap:8px;
+  align-items:center;
+}
+
+.cg123-coverage-head{
+  font-weight:800;
+  opacity:.7;
+  padding:0 7px 4px;
+}
+
+.cg123-coverage-row{
+  padding:7px;
+  border-radius:7px;
+  background:rgba(255,255,255,.035);
+}
+
+.cg123-coverage-row[data-status="error"]{
+  border:1px solid rgba(255,100,100,.35);
+}
+
+.cg123-primary-source{
+  margin:3px 0 5px;
+  font-size:11px;
 }
 
 .cg123-list{
@@ -243,14 +304,41 @@
   margin:5px 0 0;
 }
 
+@media(max-width:1050px){
+
+  .cg123-counters-fix2{
+    grid-template-columns:
+      repeat(4,minmax(0,1fr));
+  }
+
+  .cg123-coverage-head,
+  .cg123-coverage-row{
+    grid-template-columns:
+      minmax(150px,2fr)
+      55px
+      70px
+      55px
+      minmax(130px,1.5fr);
+  }
+}
+
 @media(max-width:700px){
 
-  .cg123-counters{
+  .cg123-counters-fix2{
     grid-template-columns:
       repeat(2,minmax(0,1fr));
   }
 
   .cg123-config{
     width:100%;
+  }
+
+  .cg123-coverage-head{
+    display:none;
+  }
+
+  .cg123-coverage-row{
+    grid-template-columns:1fr;
+    gap:2px;
   }
 }

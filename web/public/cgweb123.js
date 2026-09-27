@@ -1,21 +1,19 @@
-// CGWEB123 FIX1 · AI_QUESTION_FACTORY001
-// FULL_FICHE_AI_CONTEXT001
-// AI_EDITORIAL_GENERATION001
-// AI_REVIEW_PASS001
-// SOURCE_GROUNDING001
-// ANNEX_AS_SOURCE001
-// MECHANICAL_GENERATOR_REMOVE001
-// TAUTOLOGY_GUARD001
-// GENERIC_QUESTION_BAN001
-// QR_GAME_SEPARATION002
-// NO_FIRESTORE_WRITE002
+// CGWEB123 FIX2
+// FULL_FICHE_COVERAGE001
+// PER_FICHE_AI_GENERATION001
+// PER_FICHE_QUOTA001
+// GLOBAL_AI_REVIEW001
+// COVERAGE_REPORT001
+// SOURCE_GROUNDING002
+// QR_GAME_SEPARATION003
+// NO_FIRESTORE_WRITE003
 
 (() => {
   "use strict";
 
 
   const VERSION =
-    "CGWEB123_FIX1_AI_QUESTION_FACTORY001";
+    "CGWEB123_FIX2_FULL_FICHE_COVERAGE001_PER_FICHE_AI_GENERATION001_PER_FICHE_QUOTA001_GLOBAL_AI_REVIEW001_COVERAGE_REPORT001";
 
 
   const ENDPOINT =
@@ -56,20 +54,12 @@
       ).trim();
 
 
-    if(
-      raw.length<=max
-    ){
-      return raw;
-    }
-
-
-    return (
-      raw.slice(
-        0,
-        max
-      ) +
-      " […]"
-    );
+    return raw.length<=max
+      ? raw
+      : raw.slice(
+          0,
+          max
+        ) + " […]";
   };
 
 
@@ -200,10 +190,8 @@
 
           questionnaire:
             text(
-              questionnaire
-                ?.label ||
-              questionnaire
-                ?.title
+              questionnaire?.label ||
+              questionnaire?.title
             ),
 
           question:
@@ -285,7 +273,7 @@
 
   async function callFactory(
     corpus,
-    targetCount
+    maxPerFiche
   ){
 
     const user=
@@ -329,7 +317,7 @@
           body:
             JSON.stringify({
               corpus,
-              targetCount
+              maxPerFiche
             })
         }
       );
@@ -345,7 +333,9 @@
     try{
 
       data=
-        JSON.parse(raw);
+        JSON.parse(
+          raw
+        );
 
     }catch{
 
@@ -373,10 +363,6 @@
 
   function renderCounters(){
 
-    const total=
-      drafts.length;
-
-
     const pending=
       drafts.filter(
         row=>
@@ -398,10 +384,47 @@
       ).length;
 
 
-    const set=(
-      id,
-      value
-    )=>{
+    const values={
+
+      cg123CountCoverage:
+        lastMeta
+          ? `${Number(lastMeta.analyzedFicheCount || 0)}/${Number(lastMeta.totalFicheCount || 0)}`
+          : "0/0",
+
+      cg123CountFichesQuestions:
+        Number(
+          lastMeta?.ficheWithQuestionCount ||
+          0
+        ),
+
+      cg123CountGenerated:
+        Number(
+          lastMeta?.candidateCount ||
+          0
+        ),
+
+      cg123CountTotal:
+        drafts.length,
+
+      cg123CountPending:
+        pending,
+
+      cg123CountKeep:
+        keep,
+
+      cg123CountReject:
+        reject
+    };
+
+
+    for(
+      const [
+        id,
+        value
+      ] of Object.entries(
+        values
+      )
+    ){
 
       const el=$(id);
 
@@ -409,28 +432,7 @@
         el.textContent=
           String(value);
       }
-    };
-
-
-    set(
-      "cg123CountTotal",
-      total
-    );
-
-    set(
-      "cg123CountPending",
-      pending
-    );
-
-    set(
-      "cg123CountKeep",
-      keep
-    );
-
-    set(
-      "cg123CountReject",
-      reject
-    );
+    }
 
 
     const exportButton=
@@ -438,9 +440,110 @@
 
 
     if(exportButton){
+
       exportButton.disabled=
         keep===0;
     }
+  }
+
+
+  function renderCoverage(){
+
+    const host=
+      $("cg123Coverage");
+
+
+    if(!host){
+      return;
+    }
+
+
+    const coverage=
+      Array.isArray(
+        lastMeta?.coverage
+      )
+        ? lastMeta.coverage
+        : [];
+
+
+    if(
+      !coverage.length
+    ){
+
+      host.innerHTML="";
+      return;
+    }
+
+
+    host.innerHTML=`
+
+      <details
+        class="cg123-coverage"
+        open
+      >
+
+        <summary>
+          Couverture des fiches :
+          ${Number(lastMeta.analyzedFicheCount || 0)}
+          /
+          ${Number(lastMeta.totalFicheCount || 0)}
+          analysée(s)
+        </summary>
+
+
+        <div class="cg123-coverage-table">
+
+          <div class="cg123-coverage-head">
+            <span>Fiche</span>
+            <span>IA</span>
+            <span>Après filtres</span>
+            <span>Finales</span>
+            <span>État</span>
+          </div>
+
+
+          ${coverage.map(
+            row=>`
+
+              <div
+                class="cg123-coverage-row"
+                data-status="${esc(row.status || "")}"
+              >
+
+                <span>
+                  ${esc(row.fiche_name || row.fiche_id || "")}
+                </span>
+
+                <span>
+                  ${Number(row.generatedCount || 0)}
+                </span>
+
+                <span>
+                  ${Number(row.candidateCount || 0)}
+                </span>
+
+                <span>
+                  ${Number(row.reviewedCount || 0)}
+                </span>
+
+                <span>
+                  ${
+                    row.status==="error"
+                      ? `⚠ ${esc(row.reason || "Erreur")}`
+                      : Number(row.reviewedCount || 0)>0
+                        ? "✓ exploitée"
+                        : `— ${esc(row.reason || "aucune question retenue")}`
+                  }
+                </span>
+
+              </div>
+            `
+          ).join("")}
+
+        </div>
+
+      </details>
+    `;
   }
 
 
@@ -480,9 +583,17 @@
               ${esc(draft.id)}
             </div>
 
+            <div class="cg123-primary-source">
+              Fiche principale :
+              <strong>
+                ${esc(draft.primary_fiche_name || "")}
+              </strong>
+            </div>
+
             <div class="cg123-ai-badge">
               IA · ${esc(draft.model || "")}
-              · double passe
+              · génération par fiche
+              · relecture globale
             </div>
 
           </div>
@@ -713,6 +824,10 @@
 
   function render(){
 
+    renderCounters();
+    renderCoverage();
+
+
     const list=
       $("cg123List");
 
@@ -720,9 +835,6 @@
     if(!list){
       return;
     }
-
-
-    renderCounters();
 
 
     if(
@@ -741,7 +853,9 @@
 
     list.innerHTML=
       drafts
-        .map(renderCard)
+        .map(
+          renderCard
+        )
         .join("");
 
 
@@ -766,22 +880,43 @@
     }
 
 
-    const button=
-      $("cg123Prepare");
+    const ficheCount=
+      Array.isArray(
+        source?.fiches
+      )
+        ? source.fiches.length
+        : 0;
 
 
-    const targetCount=
+    if(
+      !ficheCount
+    ){
+
+      setStatus(
+        "L’extraction ne contient aucune fiche.",
+        "error"
+      );
+
+      return;
+    }
+
+
+    const maxPerFiche=
       Math.max(
-        3,
+        1,
         Math.min(
-          25,
+          5,
           Number(
-            $("cg123Target")
+            $("cg123PerFiche")
               ?.value ||
-            10
+            3
           )
         )
       );
+
+
+    const button=
+      $("cg123Prepare");
 
 
     const corpus=
@@ -795,18 +930,21 @@
       button.disabled=true;
 
       button.textContent=
-        "Rédaction IA en cours…";
+        "Analyse de toutes les fiches…";
     }
 
 
+    drafts=[];
+    lastMeta=null;
+    render();
+
+
     setStatus(
-      "Passe 1 : rédaction des questions. Passe 2 : relecture éditoriale. L’opération peut prendre plusieurs dizaines de secondes.",
+      `${ficheCount} fiche(s) vont être analysées. ` +
+      `Maximum ${maxPerFiche} question(s) par fiche, puis relecture globale. ` +
+      `L’opération peut prendre plusieurs minutes.`,
       "busy"
     );
-
-
-    drafts=[];
-    render();
 
 
     try{
@@ -814,7 +952,7 @@
       const data=
         await callFactory(
           corpus,
-          targetCount
+          maxPerFiche
         );
 
 
@@ -832,7 +970,6 @@
           .map(
             row=>({
               ...row,
-
               decision:
                 "pending"
             })
@@ -842,25 +979,46 @@
       render();
 
 
+      const total=
+        Number(
+          data.totalFicheCount ||
+          0
+        );
+
+      const analyzed=
+        Number(
+          data.analyzedFicheCount ||
+          0
+        );
+
+      const errors=
+        Number(
+          data.errorFicheCount ||
+          0
+        );
+
+
       if(
-        drafts.length
+        errors>0
       ){
 
         setStatus(
-          `IA terminée : ${Number(data.generatedCount || 0)} candidat(s) rédigé(s), ` +
-          `${Number(data.preReviewCount || 0)} passé(s) au filtre initial, ` +
-          `${Number(data.reviewedCount || 0)} retenu(s) après relecture. ` +
+          `Analyse terminée avec anomalie : ${analyzed}/${total} fiche(s) analysée(s), ` +
+          `${errors} en erreur, ${Number(data.candidateCount || 0)} candidat(s), ` +
+          `${Number(data.reviewedCount || 0)} question(s) finale(s). ` +
           `Aucune écriture Firestore.`,
-          "ok"
+          "warn"
         );
 
       }else{
 
         setStatus(
-          `L’IA n’a conservé aucune question suffisamment solide sur ce corpus. ` +
-          `${Number(data.generatedCount || 0)} candidat(s) avaient été envisagé(s). ` +
+          `Analyse complète : ${analyzed}/${total} fiche(s) traitée(s), ` +
+          `${Number(data.ficheWithQuestionCount || 0)} fiche(s) représentée(s) dans le lot final, ` +
+          `${Number(data.candidateCount || 0)} candidat(s), ` +
+          `${Number(data.reviewedCount || 0)} question(s) après relecture globale. ` +
           `Aucune écriture Firestore.`,
-          "warn"
+          "ok"
         );
       }
 
@@ -868,6 +1026,7 @@
     }catch(error){
 
       drafts=[];
+      lastMeta=null;
       render();
 
 
@@ -884,7 +1043,7 @@
         button.disabled=false;
 
         button.textContent=
-          "Préparer les questions Q/R avec l’IA";
+          "Analyser toutes les fiches avec l’IA";
       }
     }
   }
@@ -915,7 +1074,7 @@
     const payload={
 
       schema:
-        "cgweb123.qr.ai.export.v1",
+        "cgweb123.qr.ai.export.v2",
 
       game:
         "QR",
@@ -925,6 +1084,12 @@
 
       model:
         lastMeta?.model || "",
+
+      maxPerFiche:
+        lastMeta?.maxPerFiche || null,
+
+      coverage:
+        lastMeta?.coverage || [],
 
       exportedAt:
         new Date()
@@ -950,11 +1115,13 @@
 
       await navigator
         .clipboard
-        .writeText(json);
+        .writeText(
+          json
+        );
 
 
       setStatus(
-        `${kept.length} question(s) Q/R retenue(s) copiée(s) en JSON. Aucune écriture Firestore.`,
+        `${kept.length} question(s) retenue(s) copiée(s) en JSON.`,
         "ok"
       );
 
@@ -978,24 +1145,25 @@
 
 
       const a=
-        document
-          .createElement(
-            "a"
-          );
+        document.createElement(
+          "a"
+        );
 
 
-      a.href=href;
+      a.href=
+        href;
 
       a.download=
-        "cgweb123_ai_qr_questions.json";
+        "cgweb123_fix2_qr_questions.json";
 
 
       document.body
-        .appendChild(a);
+        .appendChild(
+          a
+        );
 
 
       a.click();
-
       a.remove();
 
 
@@ -1009,7 +1177,7 @@
 
 
       setStatus(
-        `${kept.length} question(s) Q/R exportée(s). Aucune écriture Firestore.`,
+        `${kept.length} question(s) retenue(s) exportée(s).`,
         "ok"
       );
     }
@@ -1020,7 +1188,6 @@
 
     const sourcePanel=
       $("cgweb122Panel");
-
 
     const meta=
       $("cg122Meta");
@@ -1050,7 +1217,6 @@
     panel.id=
       "cgweb123Panel";
 
-
     panel.className=
       "cg123-panel";
 
@@ -1062,7 +1228,7 @@
         <div>
 
           <div class="cg123-kicker">
-            CGWEB123 FIX1
+            CGWEB123 FIX2
           </div>
 
           <h3>
@@ -1070,19 +1236,19 @@
           </h3>
 
           <p>
-            L’IA étudie l’ensemble du corpus documentaire,
-            rédige de véritables questions de culture générale
-            puis effectue une seconde passe de relecture.
+            Chaque fiche est désormais analysée individuellement.
+            Une fiche riche peut fournir plusieurs questions ;
+            une fiche pauvre peut n’en fournir aucune.
           </p>
 
           <p class="cg123-separation">
 
             <strong>
-              Jeu Q/R distinct du QCM actuel.
+              Toutes les fiches sont examinées avant la relecture globale.
             </strong>
 
-            Les questionnaires annexes sont uniquement des sources.
-            Aucune question n’est enregistrée dans Firestore.
+            Le jeu Q/R reste totalement distinct du QCM actuel
+            et aucune écriture Firestore n’est effectuée.
 
           </p>
 
@@ -1093,16 +1259,14 @@
 
           <label>
 
-            Nombre cible
+            Questions max. par fiche
 
-            <select id="cg123Target">
+            <select id="cg123PerFiche">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3" selected>3</option>
+              <option value="4">4</option>
               <option value="5">5</option>
-              <option value="8">8</option>
-              <option value="10" selected>10</option>
-              <option value="12">12</option>
-              <option value="15">15</option>
-              <option value="20">20</option>
-              <option value="25">25</option>
             </select>
 
           </label>
@@ -1113,7 +1277,7 @@
             type="button"
             class="cg123-primary"
           >
-            Préparer les questions Q/R avec l’IA
+            Analyser toutes les fiches avec l’IA
           </button>
 
 
@@ -1133,15 +1297,19 @@
       <div class="cg123-ai-info">
 
         <span>
-          Source stricte : CGWEB122
+          Couverture : toutes les fiches
         </span>
 
         <span>
-          Rédaction : GPT-5.6 Sol
+          Génération : par fiche
         </span>
 
         <span>
-          Relecture : GPT-5.6 Sol
+          Relecture : globale
+        </span>
+
+        <span>
+          Modèle : GPT-5.6 Sol
         </span>
 
         <span>
@@ -1159,14 +1327,41 @@
       </div>
 
 
-      <div class="cg123-counters">
+      <div class="cg123-counters cg123-counters-fix2">
+
+        <div>
+          <strong id="cg123CountCoverage">
+            0/0
+          </strong>
+          <span>
+            fiches analysées
+          </span>
+        </div>
+
+        <div>
+          <strong id="cg123CountFichesQuestions">
+            0
+          </strong>
+          <span>
+            fiches avec question
+          </span>
+        </div>
+
+        <div>
+          <strong id="cg123CountGenerated">
+            0
+          </strong>
+          <span>
+            candidats
+          </span>
+        </div>
 
         <div>
           <strong id="cg123CountTotal">
             0
           </strong>
           <span>
-            questions IA
+            questions finales
           </span>
         </div>
 
@@ -1200,6 +1395,9 @@
       </div>
 
 
+      <div id="cg123Coverage"></div>
+
+
       <div
         id="cg123List"
         class="cg123-list"
@@ -1207,17 +1405,13 @@
 
         <div class="cg123-empty">
           Extrais d’abord un thème avec CGWEB122,
-          puis lance la rédaction IA.
+          puis lance l’analyse de toutes les fiches.
         </div>
 
       </div>
     `;
 
 
-    /*
-     * Placement volontairement AVANT le détail énorme
-     * des questionnaires annexes et des fiches.
-     */
     meta.insertAdjacentElement(
       "afterend",
       panel
@@ -1247,6 +1441,15 @@
 
       getDrafts:
         ()=>drafts.map(
+          row=>({
+            ...row
+          })
+        ),
+
+      getCoverage:
+        ()=>(
+          lastMeta?.coverage || []
+        ).map(
           row=>({
             ...row
           })
@@ -1282,8 +1485,7 @@
             install()
           ){
 
-            observer
-              .disconnect();
+            observer.disconnect();
           }
         }
       );
