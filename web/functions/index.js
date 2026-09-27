@@ -6128,6 +6128,11 @@ exports.cgweb031Home = require('./cgweb031').cgweb031Home;
 exports.cgweb032Search = require('./cgweb032').cgweb032Search;
 
 
+// CGWEB123 FIX1 · AI_QUESTION_FACTORY001
+exports.cgweb123AiQuestionFactory =
+  require('./cgweb123').cgweb123AiQuestionFactory;
+
+
 // CGWEB116_FIX3_FIX4_FIX6_FICHE_IMAGE_LINK_CAPTURE001_IMAGE_SOURCE_NORMALIZE001_PHOTO_QUESTION_RESOLVE001
 (function installCGWEB116Fix6() {
   if (globalThis.__CGWEB116_FIX6_INSTALLED__) return;

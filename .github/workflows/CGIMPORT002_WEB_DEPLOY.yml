@@ -100,6 +100,9 @@ jobs:
           test -f web/functions/cgweb030.js
           test -f web/functions/cgweb031.js
           test -f web/functions/cgweb032.js
+          test -f web/functions/cgweb123.js
+          test -f web/public/cgweb123.js
+          test -f web/public/cgweb123.css
           test -f web/functions/cgweb029.js
           test -f web/functions/cgweb025.js
           grep -Fq 'cgimport009fix4.js' web/public/index.html
@@ -174,6 +177,8 @@ jobs:
           node --check web/functions/cgweb030.js
           node --check web/functions/cgweb031.js
           node --check web/functions/cgweb032.js
+          node --check web/functions/cgweb123.js
+          node --check web/public/cgweb123.js
           node --check web/functions/cgweb029.js
           node --check web/public/cgweb016fix2.js
           node --check web/public/app.js
@@ -196,7 +201,7 @@ jobs:
         run: |
           set -euo pipefail
           npx --yes firebase-tools@15.28.2 deploy \
-            --only hosting,functions:cgimport002Quizypedia,functions:cgimage005MigrateBatch,functions:cgimage007RecoverFailed,functions:cgimage008SuggestCandidates,functions:cgimage008ApplyCandidate,functions:cgweb018ThemeContains,functions:cgweb020QualityScan,functions:cgweb021Bulk,functions:cgweb022History,functions:cgweb025Duplicates,functions:cgweb026ImageCenter,functions:cgweb028Analytics,functions:cgweb029Restore,functions:cgweb030Lists,functions:cgweb031Home,functions:cgweb032Search,storage \
+            --only hosting,functions:cgimport002Quizypedia,functions:cgimage005MigrateBatch,functions:cgimage007RecoverFailed,functions:cgimage008SuggestCandidates,functions:cgimage008ApplyCandidate,functions:cgweb018ThemeContains,functions:cgweb020QualityScan,functions:cgweb021Bulk,functions:cgweb022History,functions:cgweb025Duplicates,functions:cgweb026ImageCenter,functions:cgweb028Analytics,functions:cgweb029Restore,functions:cgweb030Lists,functions:cgweb031Home,functions:cgweb032Search,functions:cgweb123AiQuestionFactory,storage \
             --project culturegeneralesync \
             --non-interactive \
             --force

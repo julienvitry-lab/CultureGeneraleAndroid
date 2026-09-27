@@ -1,22 +1,34 @@
-// CGWEB123 · QUESTION_FACTORY001
-// QR_GAME_SEPARATION001
-// FACT_TO_QR_DRAFT001
-// BATCH_DEDUP001
-// HUMAN_REVIEW_WORKSHOP001
-// SOURCE_TRACEABILITY001
-// NO_FIRESTORE_WRITE001
+// CGWEB123 FIX1 · AI_QUESTION_FACTORY001
+// FULL_FICHE_AI_CONTEXT001
+// AI_EDITORIAL_GENERATION001
+// AI_REVIEW_PASS001
+// SOURCE_GROUNDING001
+// ANNEX_AS_SOURCE001
+// MECHANICAL_GENERATOR_REMOVE001
+// TAUTOLOGY_GUARD001
+// GENERIC_QUESTION_BAN001
+// QR_GAME_SEPARATION002
+// NO_FIRESTORE_WRITE002
 
 (() => {
   "use strict";
 
-  const VERSION =
-    "CGWEB123_QUESTION_FACTORY001_QR_GAME_SEPARATION001_FACT_TO_QR_DRAFT001_BATCH_DEDUP001_HUMAN_REVIEW_WORKSHOP001_SOURCE_TRACEABILITY001_NO_FIRESTORE_WRITE001";
 
-  let drafts = [];
-  let sourceFingerprint = "";
+  const VERSION =
+    "CGWEB123_FIX1_AI_QUESTION_FACTORY001";
+
+
+  const ENDPOINT =
+    "https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb123AiQuestionFactory";
+
+
+  let drafts=[];
+  let lastMeta=null;
+
 
   const $ = id =>
     document.getElementById(id);
+
 
   const esc = value =>
     String(value ?? "")
@@ -26,451 +38,379 @@
       .replaceAll('"',"&quot;")
       .replaceAll("'","&#39;");
 
+
   const text = value =>
     String(value ?? "")
       .replace(/\s+/g," ")
       .trim();
 
-  const norm = value =>
-    text(value)
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g,"")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g," ")
-      .trim();
 
-  function hash(value){
-    const s=String(value ?? "");
-    let h=2166136261;
+  const cut = (
+    value,
+    max
+  ) => {
 
-    for(let i=0;i<s.length;i++){
-      h ^= s.charCodeAt(i);
-      h = Math.imul(h,16777619);
+    const raw=
+      String(
+        value ?? ""
+      ).trim();
+
+
+    if(
+      raw.length<=max
+    ){
+      return raw;
     }
 
-    return (h >>> 0)
-      .toString(16)
-      .padStart(8,"0");
+
+    return (
+      raw.slice(
+        0,
+        max
+      ) +
+      " […]"
+    );
+  };
+
+
+  function setStatus(
+    message,
+    type=""
+  ){
+
+    const el=
+      $("cg123Status");
+
+
+    if(!el){
+      return;
+    }
+
+
+    el.textContent=
+      message;
+
+    el.dataset.type=
+      type;
   }
 
-  const NOISY = new Set([
-    "position",
-    "numero",
-    "numéro",
-    "total",
-    "image",
-    "images",
-    "photo",
-    "photos",
-    "url",
-    "lien",
-    "liens",
-    "source",
-    "sources",
-    "credit",
-    "crédit",
-    "credits",
-    "crédits",
-    "copyright",
-    "licence",
-    "license"
-  ].map(norm));
-
-  const IDENTITY_LABELS = new Set([
-    "nom",
-    "titre",
-    "personnage",
-    "heroine",
-    "héroïne",
-    "heros",
-    "héros",
-    "espece",
-    "espèce"
-  ].map(norm));
-
-  function setStatus(message,type=""){
-    const el=$("cg123Status");
-    if(!el)return;
-    el.textContent=message;
-    el.dataset.type=type;
-  }
 
   function sourceData(){
-    return window.CGWEB122_API
+
+    return window
+      .CGWEB122_API
       ?.getLast
       ?.() || null;
   }
 
-  function getTarget(fiche){
-    return text(
-      fiche?.knowledge?.target?.value ||
-      fiche?.name ||
-      ""
-    );
-  }
 
-  function fieldQuestion(
-    target,
-    label
+  function buildCorpus(
+    data
   ){
-    const key=norm(label);
-    const subject=`« ${target} »`;
 
-    if(key==="auteur" || key==="auteurs" || key==="autrice")
-      return `Qui est l’auteur associé à ${subject} ?`;
+    const ctx=
+      data?.themeContext || {};
 
-    if(key==="realisateur" || key==="réalisateur")
-      return `Qui a réalisé ${subject} ?`;
 
-    if(key==="compositeur")
-      return `Qui est le compositeur associé à ${subject} ?`;
+    const fiches=
+      (
+        Array.isArray(
+          data?.fiches
+        )
+          ? data.fiches
+          : []
+      )
+        .map(
+          fiche=>({
 
-    if(key==="interprete" || key==="interprète")
-      return `Quel interprète est associé à ${subject} ?`;
+            name:
+              text(
+                fiche?.name
+              ),
 
-    if(key==="acteur")
-      return `Quel acteur est associé à ${subject} ?`;
+            target:
+              text(
+                fiche
+                  ?.knowledge
+                  ?.target
+                  ?.value ||
+                fiche?.name
+              ),
 
-    if(key==="actrice")
-      return `Quelle actrice est associée à ${subject} ?`;
+            position:
+              text(
+                fiche?.position
+              ),
 
-    if(key==="capitale")
-      return `Quelle est la capitale associée à ${subject} ?`;
+            fields:
+              (
+                Array.isArray(
+                  fiche?.fields
+                )
+                  ? fiche.fields
+                  : []
+              )
+                .map(
+                  field=>({
 
-    if(key==="pays")
-      return `Quel pays est associé à ${subject} ?`;
+                    label:
+                      text(
+                        field?.label
+                      ),
 
-    if(key==="ville")
-      return `Quelle ville est associée à ${subject} ?`;
+                    value:
+                      cut(
+                        field?.value,
+                        5000
+                      )
+                  })
+                )
+                .filter(
+                  field=>
+                    field.label &&
+                    field.value
+                ),
 
-    if(
-      key==="lieu" ||
-      key==="localisation"
-    )
-      return `Quel lieu est associé à ${subject} ?`;
+            rawText:
+              cut(
+                fiche?.rawText,
+                9000
+              )
+          })
+        );
 
-    if(key==="nationalite" || key==="nationalité")
-      return `Quelle est la nationalité associée à ${subject} ?`;
 
-    if(key==="profession")
-      return `Quelle profession est associée à ${subject} ?`;
+    const annexQuestions=[];
 
-    if(
-      key==="naissance" ||
-      key==="date de naissance"
-    )
-      return `Quelle est la date de naissance associée à ${subject} ?`;
-
-    if(
-      key==="deces" ||
-      key==="décès" ||
-      key==="date de deces" ||
-      key==="date de décès"
-    )
-      return `Quelle est la date de décès associée à ${subject} ?`;
-
-    if(key==="annee" || key==="année")
-      return `Quelle année est associée à ${subject} ?`;
-
-    if(key==="date")
-      return `Quelle date est associée à ${subject} ?`;
-
-    if(key==="genre")
-      return `Quel genre est associé à ${subject} ?`;
-
-    if(key==="langue")
-      return `Quelle langue est associée à ${subject} ?`;
-
-    if(key==="monnaie")
-      return `Quelle monnaie est associée à ${subject} ?`;
-
-    if(key==="altitude")
-      return `Quelle est l’altitude de ${subject} ?`;
-
-    if(key==="population")
-      return `Quelle population est indiquée pour ${subject} ?`;
-
-    if(key==="superficie")
-      return `Quelle superficie est indiquée pour ${subject} ?`;
-
-    if(key==="club")
-      return `Quel club est associé à ${subject} ?`;
-
-    if(key==="equipe" || key==="équipe")
-      return `Quelle équipe est associée à ${subject} ?`;
-
-    if(key==="sport")
-      return `Quel sport est associé à ${subject} ?`;
-
-    if(
-      key==="nom scientifique" ||
-      key==="nom latin"
-    )
-      return `Quel est le nom scientifique de ${subject} ?`;
-
-    if(
-      key==="description" ||
-      key==="definition" ||
-      key==="définition"
-    )
-      return `Comment peut-on définir ${subject} ?`;
-
-    if(
-      key==="oeuvre" ||
-      key==="œuvre"
-    )
-      return `Quelle œuvre est associée à ${subject} ?`;
-
-    return `Concernant ${subject}, quelle information est indiquée pour « ${label} » ?`;
-  }
-
-  function qualityScore(
-    question,
-    answer,
-    label
-  ){
-    let score=100;
-
-    const q=text(question);
-    const a=text(answer);
-    const l=norm(label);
-
-    if(a.length<2)score-=80;
-    if(a.length>300)score-=25;
-    if(q.length>220)score-=15;
-
-    if(/^info [0-9]+$/.test(l))
-      score-=25;
-
-    if(
-      /^https?:\/\//i.test(a)
-    ){
-      score-=80;
-    }
-
-    if(
-      /^[\W_]+$/.test(a)
-    ){
-      score-=80;
-    }
-
-    return Math.max(
-      0,
-      Math.min(100,score)
-    );
-  }
-
-  function buildDrafts(data){
-
-    const result=[];
-    const seen=new Set();
-
-    const sourceUrl=
-      text(
-        data?.themeContext?.canonicalUrl ||
-        data?.themeContext?.effectiveUrl ||
-        data?.effectiveUrl ||
-        data?.requestedUrl
-      );
 
     for(
-      const fiche of
-      Array.isArray(data?.fiches)
-        ? data.fiches
-        : []
+      const questionnaire of
+      data
+        ?.auxiliarySource
+        ?.questionnaires || []
     ){
 
-      const target=getTarget(fiche);
-
-      if(!target){
-        continue;
-      }
-
-      const fields=
-        Array.isArray(fiche.fields)
-          ? fiche.fields
-          : [];
-
       for(
-        let fieldIndex=0;
-        fieldIndex<fields.length;
-        fieldIndex++
+        const q of
+        questionnaire
+          ?.questions || []
       ){
 
-        const field=fields[fieldIndex];
+        annexQuestions.push({
 
-        const label=
-          text(field?.label);
-
-        const answer=
-          text(field?.value);
-
-        const key=
-          norm(label);
-
-        if(
-          !label ||
-          !answer ||
-          NOISY.has(key)
-        ){
-          continue;
-        }
-
-        /*
-         * Les champs d'identité servant déjà à nommer la fiche
-         * sont généralement tautologiques en Q/R.
-         */
-        if(
-          IDENTITY_LABELS.has(key) &&
-          norm(answer)===norm(target)
-        ){
-          continue;
-        }
-
-        const question=
-          fieldQuestion(
-            target,
-            label
-          );
-
-        const dedupKey=
-          norm(question) +
-          "|" +
-          norm(answer);
-
-        if(
-          !dedupKey ||
-          seen.has(dedupKey)
-        ){
-          continue;
-        }
-
-        seen.add(dedupKey);
-
-        const score=
-          qualityScore(
-            question,
-            answer,
-            label
-          );
-
-        /*
-         * On conserve les candidats moyens pour examen humain,
-         * mais on élimine les déchets évidents.
-         */
-        if(score<25){
-          continue;
-        }
-
-        const fingerprint=
-          hash(
-            [
-              sourceUrl,
-              fiche.name,
-              target,
-              label,
-              answer
-            ].join("|")
-          );
-
-        result.push({
-
-          id:
-            `QR-${fingerprint}`,
-
-          game:
-            "QR",
-
-          schema:
-            "cgweb123.qr.draft.v1",
-
-          decision:
-            "pending",
-
-          question,
-
-          answer,
-
-          qualityScore:
-            score,
-
-          theme:
+          questionnaire:
             text(
-              data?.themeContext?.theme ||
-              data?.detectedTheme ||
-              data?.themeContext?.heading
+              questionnaire
+                ?.label ||
+              questionnaire
+                ?.title
             ),
 
-          source:{
-            provider:
-              "Quizypedia",
+          question:
+            text(
+              q?.question
+            ),
 
-            url:
-              sourceUrl,
+          answer:
+            text(
+              q?.correct_text
+            ),
 
-            fiche:
-              text(fiche.name),
+          detail:
+            cut(
+              q?.detail,
+              4000
+            ),
 
-            target,
-
-            fieldLabel:
-              label,
-
-            fieldValue:
-              answer,
-
-            fieldIndex,
-
-            fichePosition:
-              text(fiche.position),
-
-            extractionVersion:
-              text(data?.version),
-
-            factFingerprint:
-              fingerprint
-          }
+          sourceFiche:
+            text(
+              q?.source_fiche
+            )
         });
       }
     }
 
-    return result;
+
+    return {
+
+      theme:{
+
+        title:
+          text(
+            ctx.heading ||
+            ctx.theme ||
+            ctx.pageTitle
+          ),
+
+        description:
+          cut(
+            ctx.metaDescription,
+            3000
+          ),
+
+        paragraphs:
+          (
+            Array.isArray(
+              ctx.paragraphs
+            )
+              ? ctx.paragraphs
+              : []
+          )
+            .slice(
+              0,
+              20
+            )
+            .map(
+              value=>
+                cut(
+                  value,
+                  2500
+                )
+            ),
+
+        url:
+          text(
+            ctx.canonicalUrl ||
+            ctx.effectiveUrl ||
+            data?.requestedUrl
+          )
+      },
+
+      fiches,
+
+      annexQuestions
+    };
   }
 
-  function decisionLabel(value){
 
-    if(value==="keep")
-      return "Retenue";
+  async function callFactory(
+    corpus,
+    targetCount
+  ){
 
-    if(value==="reject")
-      return "Écartée";
+    const user=
+      window.CGWEB001
+        ?.getUser
+        ?.();
 
-    return "À examiner";
+
+    if(
+      !user?.getIdToken
+    ){
+
+      throw new Error(
+        "Utilisateur Firebase non connecté."
+      );
+    }
+
+
+    const token=
+      await user
+        .getIdToken();
+
+
+    const response=
+      await fetch(
+        ENDPOINT,
+        {
+
+          method:
+            "POST",
+
+          headers:{
+
+            "content-type":
+              "application/json",
+
+            "authorization":
+              `Bearer ${token}`
+          },
+
+          body:
+            JSON.stringify({
+              corpus,
+              targetCount
+            })
+        }
+      );
+
+
+    const raw=
+      await response.text();
+
+
+    let data;
+
+
+    try{
+
+      data=
+        JSON.parse(raw);
+
+    }catch{
+
+      throw new Error(
+        `HTTP ${response.status} : réponse JSON invalide.`
+      );
+    }
+
+
+    if(
+      !response.ok ||
+      !data?.ok
+    ){
+
+      throw new Error(
+        data?.error ||
+        `HTTP ${response.status}`
+      );
+    }
+
+
+    return data;
   }
+
 
   function renderCounters(){
 
-    const total=drafts.length;
+    const total=
+      drafts.length;
+
 
     const pending=
       drafts.filter(
-        q=>q.decision==="pending"
+        row=>
+          row.decision==="pending"
       ).length;
+
 
     const keep=
       drafts.filter(
-        q=>q.decision==="keep"
+        row=>
+          row.decision==="keep"
       ).length;
+
 
     const reject=
       drafts.filter(
-        q=>q.decision==="reject"
+        row=>
+          row.decision==="reject"
       ).length;
 
-    const set=(id,value)=>{
+
+    const set=(
+      id,
+      value
+    )=>{
+
       const el=$(id);
-      if(el)el.textContent=String(value);
+
+      if(el){
+        el.textContent=
+          String(value);
+      }
     };
+
 
     set(
       "cg123CountTotal",
@@ -492,8 +432,10 @@
       reject
     );
 
+
     const exportButton=
       $("cg123Export");
+
 
     if(exportButton){
       exportButton.disabled=
@@ -501,10 +443,27 @@
     }
   }
 
-  function renderDraft(
+
+  function renderCard(
     draft,
     index
   ){
+
+    const sources=
+      Array.isArray(
+        draft.source_fiches
+      )
+        ? draft.source_fiches
+        : [];
+
+
+    const evidence=
+      Array.isArray(
+        draft.evidence
+      )
+        ? draft.evidence
+        : [];
+
 
     return `
       <article
@@ -521,21 +480,11 @@
               ${esc(draft.id)}
             </div>
 
-            <div class="cg123-card-source">
-              ${esc(draft.source.fiche)}
-              ·
-              ${esc(draft.source.fieldLabel)}
+            <div class="cg123-ai-badge">
+              IA · ${esc(draft.model || "")}
+              · double passe
             </div>
 
-          </div>
-
-
-          <div class="cg123-quality">
-            Qualité heuristique :
-            <strong>
-              ${Number(draft.qualityScore)}
-              /100
-            </strong>
           </div>
 
         </header>
@@ -548,7 +497,7 @@
           </label>
 
           <textarea
-            rows="3"
+            rows="4"
             data-field="question"
           >${esc(draft.question)}</textarea>
 
@@ -610,61 +559,80 @@
         </div>
 
 
-        <div class="cg123-decision-state">
-          Statut :
-          <strong>
-            ${esc(
-              decisionLabel(
-                draft.decision
-              )
-            )}
-          </strong>
-        </div>
-
-
         <details class="cg123-trace">
 
           <summary>
-            Traçabilité de la source
+            Sources et contrôle éditorial
           </summary>
 
-          <div class="cg123-trace-grid">
 
-            <strong>Fiche</strong>
-            <span>
-              ${esc(draft.source.fiche)}
-            </span>
+          ${
+            sources.length
+              ? `
+                <div class="cg123-source-block">
 
-            <strong>Cible</strong>
-            <span>
-              ${esc(draft.source.target)}
-            </span>
+                  <strong>
+                    Fiche(s) source
+                  </strong>
 
-            <strong>Champ</strong>
-            <span>
-              ${esc(draft.source.fieldLabel)}
-            </span>
+                  <ul>
+                    ${sources.map(
+                      value=>`
+                        <li>
+                          ${esc(value)}
+                        </li>
+                      `
+                    ).join("")}
+                  </ul>
 
-            <strong>Valeur source</strong>
-            <span>
-              ${esc(draft.source.fieldValue)}
-            </span>
+                </div>
+              `
+              : ""
+          }
 
-            <strong>Empreinte</strong>
-            <span>
-              ${esc(draft.source.factFingerprint)}
-            </span>
 
-            <strong>URL</strong>
-            <a
-              href="${esc(draft.source.url)}"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              ${esc(draft.source.url)}
-            </a>
+          ${
+            evidence.length
+              ? `
+                <div class="cg123-source-block">
 
-          </div>
+                  <strong>
+                    Éléments documentaires utilisés
+                  </strong>
+
+                  <ul>
+                    ${evidence.map(
+                      value=>`
+                        <li>
+                          ${esc(value)}
+                        </li>
+                      `
+                    ).join("")}
+                  </ul>
+
+                </div>
+              `
+              : ""
+          }
+
+
+          ${
+            draft.review_note
+              ? `
+                <div class="cg123-review-note">
+
+                  <strong>
+                    Relecture IA
+                  </strong>
+
+                  <p>
+                    ${esc(draft.review_note)}
+                  </p>
+
+                </div>
+              `
+              : ""
+          }
 
         </details>
 
@@ -672,182 +640,282 @@
     `;
   }
 
+
   function bindCards(){
 
     document
       .querySelectorAll(
         ".cg123-card"
       )
-      .forEach(card=>{
+      .forEach(
+        card=>{
 
-        const index=
-          Number(
-            card.dataset.index
-          );
+          const index=
+            Number(
+              card.dataset.index
+            );
 
-        const draft=
-          drafts[index];
 
-        if(!draft){
-          return;
+          const draft=
+            drafts[index];
+
+
+          if(!draft){
+            return;
+          }
+
+
+          card
+            .querySelectorAll(
+              "[data-field]"
+            )
+            .forEach(
+              input=>{
+
+                input.addEventListener(
+                  "input",
+                  ()=>{
+
+                    draft[
+                      input.dataset.field
+                    ]=
+                      input.value;
+                  }
+                );
+              }
+            );
+
+
+          card
+            .querySelectorAll(
+              "[data-decision-value]"
+            )
+            .forEach(
+              button=>{
+
+                button.addEventListener(
+                  "click",
+                  ()=>{
+
+                    draft.decision=
+                      button.dataset
+                        .decisionValue;
+
+                    render();
+                  }
+                );
+              }
+            );
         }
-
-        card
-          .querySelectorAll(
-            "[data-field]"
-          )
-          .forEach(input=>{
-
-            input.addEventListener(
-              "input",
-              ()=>{
-
-                draft[
-                  input.dataset.field
-                ]=input.value;
-              }
-            );
-          });
-
-
-        card
-          .querySelectorAll(
-            "[data-decision-value]"
-          )
-          .forEach(button=>{
-
-            button.addEventListener(
-              "click",
-              ()=>{
-
-                draft.decision=
-                  button.dataset
-                    .decisionValue;
-
-                renderFactory();
-              }
-            );
-          });
-      });
+      );
   }
 
-  function renderFactory(){
+
+  function render(){
 
     const list=
       $("cg123List");
+
 
     if(!list){
       return;
     }
 
+
     renderCounters();
 
-    if(!drafts.length){
+
+    if(
+      !drafts.length
+    ){
 
       list.innerHTML=`
         <div class="cg123-empty">
-          Aucun candidat Q/R disponible.
+          Aucune question IA disponible.
         </div>
       `;
 
       return;
     }
 
+
     list.innerHTML=
       drafts
-        .map(renderDraft)
+        .map(renderCard)
         .join("");
+
 
     bindCards();
   }
 
-  function prepare(){
 
-    const data=
+  async function prepare(){
+
+    const source=
       sourceData();
 
-    if(!data){
+
+    if(!source){
 
       setStatus(
-        "Aucune extraction CGWEB122 disponible. Lance d’abord « Extraire tout le contenu ».",
+        "Lance d’abord « Extraire tout le contenu » avec CGWEB122.",
         "error"
       );
 
       return;
     }
 
-    const newFingerprint=
-      hash(
-        JSON.stringify({
-          version:
-            data.version,
 
-          requestedUrl:
-            data.requestedUrl,
+    const button=
+      $("cg123Prepare");
 
-          ficheCount:
-            data.ficheCount,
 
-          fieldCount:
-            data.fieldCount
-        })
+    const targetCount=
+      Math.max(
+        3,
+        Math.min(
+          25,
+          Number(
+            $("cg123Target")
+              ?.value ||
+            10
+          )
+        )
       );
 
-    drafts=
-      buildDrafts(data);
 
-    sourceFingerprint=
-      newFingerprint;
-
-    renderFactory();
-
-    const auxCount=
-      Number(
-        data?.auxiliarySource
-          ?.questionCount || 0
+    const corpus=
+      buildCorpus(
+        source
       );
+
+
+    if(button){
+
+      button.disabled=true;
+
+      button.textContent=
+        "Rédaction IA en cours…";
+    }
+
 
     setStatus(
-      `${drafts.length} candidat(s) Q/R préparé(s). ` +
-      `${auxCount} question(s) QCM annexe(s) conservée(s) séparément et non convertie(s).`,
-      "ok"
+      "Passe 1 : rédaction des questions. Passe 2 : relecture éditoriale. L’opération peut prendre plusieurs dizaines de secondes.",
+      "busy"
     );
+
+
+    drafts=[];
+    render();
+
+
+    try{
+
+      const data=
+        await callFactory(
+          corpus,
+          targetCount
+        );
+
+
+      lastMeta=data;
+
+
+      drafts=
+        (
+          Array.isArray(
+            data.questions
+          )
+            ? data.questions
+            : []
+        )
+          .map(
+            row=>({
+              ...row,
+
+              decision:
+                "pending"
+            })
+          );
+
+
+      render();
+
+
+      if(
+        drafts.length
+      ){
+
+        setStatus(
+          `IA terminée : ${Number(data.generatedCount || 0)} candidat(s) rédigé(s), ` +
+          `${Number(data.preReviewCount || 0)} passé(s) au filtre initial, ` +
+          `${Number(data.reviewedCount || 0)} retenu(s) après relecture. ` +
+          `Aucune écriture Firestore.`,
+          "ok"
+        );
+
+      }else{
+
+        setStatus(
+          `L’IA n’a conservé aucune question suffisamment solide sur ce corpus. ` +
+          `${Number(data.generatedCount || 0)} candidat(s) avaient été envisagé(s). ` +
+          `Aucune écriture Firestore.`,
+          "warn"
+        );
+      }
+
+
+    }catch(error){
+
+      drafts=[];
+      render();
+
+
+      setStatus(
+        `Erreur IA : ${error.message}`,
+        "error"
+      );
+
+
+    }finally{
+
+      if(button){
+
+        button.disabled=false;
+
+        button.textContent=
+          "Préparer les questions Q/R avec l’IA";
+      }
+    }
   }
+
 
   async function exportJson(){
 
     const kept=
-      drafts
-        .filter(
-          draft=>
-            draft.decision==="keep"
-        )
-        .map(draft=>({
-          ...draft,
-          review:{
-            decision:
-              "keep",
+      drafts.filter(
+        row=>
+          row.decision==="keep"
+      );
 
-            exportedAt:
-              new Date()
-                .toISOString()
-          }
-        }));
 
-    if(!kept.length){
+    if(
+      !kept.length
+    ){
 
       setStatus(
-        "Aucune question Q/R retenue à exporter.",
+        "Aucune question retenue à exporter.",
         "warn"
       );
 
       return;
     }
 
+
     const payload={
 
       schema:
-        "cgweb123.qr.export.v1",
+        "cgweb123.qr.ai.export.v1",
 
       game:
         "QR",
@@ -855,7 +923,8 @@
       factoryVersion:
         VERSION,
 
-      sourceFingerprint,
+      model:
+        lastMeta?.model || "",
 
       exportedAt:
         new Date()
@@ -868,6 +937,7 @@
         kept
     };
 
+
     const json=
       JSON.stringify(
         payload,
@@ -875,16 +945,19 @@
         2
       );
 
+
     try{
 
       await navigator
         .clipboard
         .writeText(json);
 
+
       setStatus(
         `${kept.length} question(s) Q/R retenue(s) copiée(s) en JSON. Aucune écriture Firestore.`,
         "ok"
       );
+
 
     }catch{
 
@@ -897,26 +970,43 @@
           }
         );
 
+
       const href=
-        URL.createObjectURL(blob);
+        URL.createObjectURL(
+          blob
+        );
+
 
       const a=
-        document.createElement("a");
+        document
+          .createElement(
+            "a"
+          );
+
 
       a.href=href;
+
       a.download=
-        "cgweb123_qr_questions.json";
+        "cgweb123_ai_qr_questions.json";
+
 
       document.body
         .appendChild(a);
 
+
       a.click();
+
       a.remove();
 
+
       setTimeout(
-        ()=>URL.revokeObjectURL(href),
+        ()=>
+          URL.revokeObjectURL(
+            href
+          ),
         1000
       );
+
 
       setStatus(
         `${kept.length} question(s) Q/R exportée(s). Aucune écriture Firestore.`,
@@ -925,14 +1015,24 @@
     }
   }
 
+
   function install(){
 
     const sourcePanel=
       $("cgweb122Panel");
 
-    if(!sourcePanel){
+
+    const meta=
+      $("cg122Meta");
+
+
+    if(
+      !sourcePanel ||
+      !meta
+    ){
       return false;
     }
+
 
     if(
       $("cgweb123Panel")
@@ -940,16 +1040,20 @@
       return true;
     }
 
+
     const panel=
       document.createElement(
         "section"
       );
 
+
     panel.id=
       "cgweb123Panel";
 
+
     panel.className=
       "cg123-panel";
+
 
     panel.innerHTML=`
 
@@ -958,40 +1062,60 @@
         <div>
 
           <div class="cg123-kicker">
-            CGWEB123
+            CGWEB123 FIX1
           </div>
 
           <h3>
-            Atelier de questions Q/R
+            Fabrique IA de questions Q/R
           </h3>
 
           <p>
-            Génère des candidats pour le futur jeu
-            Question / Réponse à partir des fiches extraites
-            par CGWEB122.
+            L’IA étudie l’ensemble du corpus documentaire,
+            rédige de véritables questions de culture générale
+            puis effectue une seconde passe de relecture.
           </p>
 
           <p class="cg123-separation">
+
             <strong>
-              Jeu distinct du QCM actuel :
+              Jeu Q/R distinct du QCM actuel.
             </strong>
-            aucune proposition A/B/C/D n'est créée,
-            les questionnaires annexes restent des sources
-            auxiliaires et aucune écriture Firestore n'est effectuée.
+
+            Les questionnaires annexes sont uniquement des sources.
+            Aucune question n’est enregistrée dans Firestore.
+
           </p>
 
         </div>
 
 
-        <div class="cg123-actions">
+        <div class="cg123-config">
+
+          <label>
+
+            Nombre cible
+
+            <select id="cg123Target">
+              <option value="5">5</option>
+              <option value="8">8</option>
+              <option value="10" selected>10</option>
+              <option value="12">12</option>
+              <option value="15">15</option>
+              <option value="20">20</option>
+              <option value="25">25</option>
+            </select>
+
+          </label>
+
 
           <button
             id="cg123Prepare"
             type="button"
             class="cg123-primary"
           >
-            Préparer les questions Q/R
+            Préparer les questions Q/R avec l’IA
           </button>
+
 
           <button
             id="cg123Export"
@@ -1006,11 +1130,32 @@
       </header>
 
 
+      <div class="cg123-ai-info">
+
+        <span>
+          Source stricte : CGWEB122
+        </span>
+
+        <span>
+          Rédaction : GPT-5.6 Sol
+        </span>
+
+        <span>
+          Relecture : GPT-5.6 Sol
+        </span>
+
+        <span>
+          Firestore : aucune écriture
+        </span>
+
+      </div>
+
+
       <div
         id="cg123Status"
         class="cg123-status"
       >
-        En attente d'une extraction CGWEB122.
+        En attente d’une extraction CGWEB122.
       </div>
 
 
@@ -1021,7 +1166,7 @@
             0
           </strong>
           <span>
-            candidats
+            questions IA
           </span>
         </div>
 
@@ -1039,7 +1184,7 @@
             0
           </strong>
           <span>
-            retenus
+            retenues
           </span>
         </div>
 
@@ -1048,7 +1193,7 @@
             0
           </strong>
           <span>
-            écartés
+            écartées
           </span>
         </div>
 
@@ -1061,18 +1206,23 @@
       >
 
         <div class="cg123-empty">
-          Lance d'abord l'extraction intégrale
-          CGWEB122, puis prépare les questions Q/R.
+          Extrais d’abord un thème avec CGWEB122,
+          puis lance la rédaction IA.
         </div>
 
       </div>
     `;
 
-    sourcePanel
-      .insertAdjacentElement(
-        "afterend",
-        panel
-      );
+
+    /*
+     * Placement volontairement AVANT le détail énorme
+     * des questionnaires annexes et des fiches.
+     */
+    meta.insertAdjacentElement(
+      "afterend",
+      panel
+    );
+
 
     $("cg123Prepare")
       ?.addEventListener(
@@ -1080,11 +1230,13 @@
         prepare
       );
 
+
     $("cg123Export")
       ?.addEventListener(
         "click",
         exportJson
       );
+
 
     window.CGWEB123_API={
 
@@ -1095,23 +1247,12 @@
 
       getDrafts:
         ()=>drafts.map(
-          item=>({
-            ...item
+          row=>({
+            ...row
           })
-        ),
-
-      getKept:
-        ()=>drafts
-          .filter(
-            item=>
-              item.decision==="keep"
-          )
-          .map(
-            item=>({
-              ...item
-            })
-          )
+        )
     };
+
 
     document
       .documentElement
@@ -1119,24 +1260,34 @@
       .cgweb123=
         VERSION;
 
+
     return true;
   }
 
+
   function boot(){
 
-    if(install()){
+    if(
+      install()
+    ){
       return;
     }
+
 
     const observer=
       new MutationObserver(
         ()=>{
 
-          if(install()){
-            observer.disconnect();
+          if(
+            install()
+          ){
+
+            observer
+              .disconnect();
           }
         }
       );
+
 
     observer.observe(
       document.body,
@@ -1146,6 +1297,7 @@
       }
     );
   }
+
 
   if(
     document.readyState===
