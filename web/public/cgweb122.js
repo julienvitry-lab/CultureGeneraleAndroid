@@ -1,3 +1,7 @@
+// CGWEB122 FIX3 · THEME_CONTEXT_CAPTURE001
+// ANNEX_QUESTIONNAIRE_CAPTURE001
+// ANNEX_PAYLOAD_ARCHIVE001
+// AUXILIARY_SOURCE_SEPARATION001
 // CGWEB122 FIX2 · IMAGE_CREDIT_CAPTURE001
 // SOURCE_METADATA_SEPARATION001
 // RAW_FIDELITY_COMPLETE001
@@ -13,7 +17,7 @@
   "use strict";
 
   const VERSION =
-    "CGWEB122_FIX2_IMAGE_CREDIT_CAPTURE001_SOURCE_METADATA_SEPARATION001_RAW_FIDELITY_COMPLETE001";
+    "CGWEB122_FIX3_THEME_CONTEXT_CAPTURE001_ANNEX_QUESTIONNAIRE_CAPTURE001_ANNEX_PAYLOAD_ARCHIVE001_AUXILIARY_SOURCE_SEPARATION001";
 
   const ENDPOINT =
     "https://europe-west1-culturegeneralesync.cloudfunctions.net/cgimport002Quizypedia";
@@ -241,6 +245,373 @@
   }
 
 
+  function renderThemeContext(
+    data
+  ){
+
+    const ctx=
+      data?.themeContext;
+
+
+    if(!ctx){
+      return "";
+    }
+
+
+    const paragraphs=
+      (ctx.paragraphs || [])
+        .slice(0,12);
+
+
+    return `
+      <section class="cg122-theme-context">
+
+        <h4>
+          Contexte du thème
+        </h4>
+
+        <div class="cg122-theme-grid">
+
+          <div>
+            <strong>Titre</strong>
+            <span>${esc(ctx.heading || ctx.theme || "")}</span>
+          </div>
+
+          ${
+            ctx.metaDescription
+              ? `<div>
+                   <strong>Description</strong>
+                   <span>${esc(ctx.metaDescription)}</span>
+                 </div>`
+              : ""
+          }
+
+          <div>
+            <strong>URL source</strong>
+            <a
+              href="${esc(ctx.canonicalUrl || ctx.effectiveUrl || "")}"
+              target="_blank"
+              rel="noopener noreferrer"
+            >${esc(ctx.canonicalUrl || ctx.effectiveUrl || "")}</a>
+          </div>
+
+        </div>
+
+
+        ${
+          paragraphs.length
+            ? `<details class="cg122-details">
+                 <summary>
+                   Paragraphes de contexte
+                   (${paragraphs.length})
+                 </summary>
+
+                 <div class="cg122-theme-paragraphs">
+                   ${paragraphs.map(p=>`
+                     <p>${esc(p)}</p>
+                   `).join("")}
+                 </div>
+               </details>`
+            : ""
+        }
+
+
+        <details class="cg122-details">
+          <summary>
+            Contexte du thème — JSON
+          </summary>
+
+          <pre>${esc(
+            JSON.stringify(
+              ctx,
+              null,
+              2
+            )
+          )}</pre>
+        </details>
+
+      </section>
+    `;
+  }
+
+
+  function renderAnnexQuestion(
+    q,
+    index
+  ){
+
+    const options=
+      Array.isArray(q.options)
+        ? q.options
+        : [];
+
+
+    return `
+      <div class="cg122-annex-question">
+
+        <div class="cg122-annex-q-title">
+          Q${index+1}. ${esc(q.question || "")}
+        </div>
+
+        ${
+          q.detail
+            ? `<div class="cg122-annex-detail">
+                 ${esc(q.detail)}
+               </div>`
+            : ""
+        }
+
+        ${
+          options.length
+            ? `<ol class="cg122-annex-options">
+                 ${options.map((option,i)=>`
+                   <li class="${
+                     Number(q.correct_index)===i+1
+                       ? "cg122-annex-correct"
+                       : ""
+                   }">
+                     ${esc(option)}
+                   </li>
+                 `).join("")}
+               </ol>`
+            : ""
+        }
+
+        <div class="cg122-annex-answer">
+          <strong>Réponse :</strong>
+          ${esc(q.correct_text || "")}
+        </div>
+
+        ${
+          q.source_fiche
+            ? `<div class="cg122-annex-source">
+                 Fiche source :
+                 ${esc(q.source_fiche)}
+               </div>`
+            : ""
+        }
+
+        ${
+          q.image_url
+            ? `<div class="cg122-annex-source">
+                 Image :
+                 <a
+                   href="${esc(q.image_url)}"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                 >${esc(q.image_url)}</a>
+               </div>`
+            : ""
+        }
+
+      </div>
+    `;
+  }
+
+
+  function renderAnnexQuestionnaire(
+    questionnaire
+  ){
+
+    const questions=
+      Array.isArray(
+        questionnaire.questions
+      )
+        ? questionnaire.questions
+        : [];
+
+
+    const capture=
+      questionnaire.capture || {};
+
+
+    return `
+      <article class="cg122-annex">
+
+        <header class="cg122-annex-head">
+
+          <div>
+            <div class="cg122-annex-position">
+              Questionnaire ${Number(questionnaire.index || 0)}
+            </div>
+
+            <h4>
+              ${esc(
+                questionnaire.label ||
+                questionnaire.title ||
+                "Questionnaire"
+              )}
+            </h4>
+
+            <a
+              href="${esc(questionnaire.url || "")}"
+              target="_blank"
+              rel="noopener noreferrer"
+            >${esc(questionnaire.url || "")}</a>
+          </div>
+
+          <div class="cg122-annex-badges">
+
+            <span>
+              ${questions.length}
+              question(s)
+            </span>
+
+            <span>
+              ${
+                capture.payloadComplete
+                  ? "✓ payload complet"
+                  : capture.payloadCaptured
+                    ? "⚠ payload partiel"
+                    : "⚠ payload absent"
+              }
+            </span>
+
+          </div>
+
+        </header>
+
+
+        ${
+          capture.error
+            ? `<div class="cg122-annex-error">
+                 ${esc(capture.error)}
+               </div>`
+            : ""
+        }
+
+
+        ${
+          questions.length
+            ? `<div class="cg122-annex-questions">
+                 ${questions
+                   .map(renderAnnexQuestion)
+                   .join("")}
+               </div>`
+            : ""
+        }
+
+
+        <details class="cg122-details">
+
+          <summary>
+            Archive du questionnaire
+          </summary>
+
+          <pre>${esc(
+            JSON.stringify(
+              {
+                staticSource:
+                  questionnaire.staticSource,
+
+                capture:
+                  questionnaire.capture,
+
+                rawPayloadSha256:
+                  questionnaire.rawPayloadSha256
+              },
+              null,
+              2
+            )
+          )}</pre>
+
+        </details>
+
+
+        ${
+          questionnaire.rawPayload
+            ? `<details class="cg122-details">
+                 <summary>
+                   Payload brut get_quiz_game
+                 </summary>
+
+                 <pre>${esc(
+                   JSON.stringify(
+                     questionnaire.rawPayload,
+                     null,
+                     2
+                   )
+                 )}</pre>
+               </details>`
+            : ""
+        }
+
+      </article>
+    `;
+  }
+
+
+  function renderAuxiliarySource(
+    data
+  ){
+
+    const aux=
+      data?.auxiliarySource;
+
+
+    const questionnaires=
+      aux?.questionnaires || [];
+
+
+    if(!questionnaires.length){
+      return `
+        <section class="cg122-auxiliary">
+          <h4>Questionnaires annexes</h4>
+          <p>Aucun questionnaire annexe détecté.</p>
+        </section>
+      `;
+    }
+
+
+    return `
+      <section class="cg122-auxiliary">
+
+        <header class="cg122-auxiliary-head">
+
+          <div>
+            <h4>
+              Questionnaires annexes
+            </h4>
+
+            <p>
+              Contenu source séparé des connaissances
+              principales des fiches.
+            </p>
+          </div>
+
+          <div class="cg122-annex-summary">
+            <strong>
+              ${Number(aux.questionnaireCount || 0)}
+              questionnaire(s)
+            </strong>
+
+            <span>
+              ${Number(aux.questionCount || 0)}
+              question(s)
+            </span>
+
+            <span>
+              ${Number(aux.completeCount || 0)}
+              payload(s) complet(s)
+            </span>
+          </div>
+
+        </header>
+
+
+        <div class="cg122-annex-list">
+
+          ${questionnaires
+            .map(renderAnnexQuestionnaire)
+            .join("")}
+
+        </div>
+
+      </section>
+    `;
+  }
+
+
   function renderFiche(
     fiche
   ){
@@ -442,13 +813,43 @@
         }
         page(s) source archivée(s)
       </span>
+
+      <span>
+        ${
+          Number(
+            data.auxiliarySource?.questionnaireCount || 0
+          )
+        }
+        questionnaire(s) annexe(s)
+      </span>
+
+      <span>
+        ${
+          Number(
+            data.auxiliarySource?.questionCount || 0
+          )
+        }
+        question(s) annexe(s)
+      </span>
     `;
 
 
     list.innerHTML=
-      (data.fiches || [])
-        .map(renderFiche)
-        .join("");
+      renderThemeContext(data) +
+      renderAuxiliarySource(data) +
+      `
+        <section class="cg122-main-fiches">
+          <h4 class="cg122-main-fiches-title">
+            Fiches principales
+          </h4>
+
+          <div class="cg122-main-fiches-list">
+            ${(data.fiches || [])
+              .map(renderFiche)
+              .join("")}
+          </div>
+        </section>
+      `;
 
 
     setStatus(
@@ -489,7 +890,7 @@
 
 
     setStatus(
-      "Extraction intégrale des fiches Quizypedia…",
+      "Extraction intégrale du thème, des fiches et des questionnaires…",
       "busy"
     );
 
@@ -615,13 +1016,13 @@
           </div>
 
           <h3>
-            Extraction intégrale des fiches
+            Extraction intégrale Quizypedia
           </h3>
 
           <p>
             Utilise l'adresse Quizypedia saisie ci-dessus.
-            Cette opération ne crée aucune question et
-            ne modifie pas Firestore.
+            Les fiches, le contexte du thème et les questionnaires
+            annexes sont aspirés sans écriture dans Firestore.
           </p>
 
         </div>
@@ -634,7 +1035,7 @@
             type="button"
             class="cg122-primary"
           >
-            Extraire les fiches complètes
+            Extraire tout le contenu
           </button>
 
           <button

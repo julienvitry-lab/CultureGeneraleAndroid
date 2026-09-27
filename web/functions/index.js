@@ -1,3 +1,4 @@
+// CGWEB122 FIX3 · THEME_CONTEXT_CAPTURE001 / ANNEX_QUESTIONNAIRE_CAPTURE001 / ANNEX_PAYLOAD_ARCHIVE001 / AUXILIARY_SOURCE_SEPARATION001
 // CGWEB122 FIX2 · IMAGE_CREDIT_CAPTURE001 / SOURCE_METADATA_SEPARATION001 / RAW_FIDELITY_COMPLETE001
 // CGWEB122 FIX1 · DOM_FIELD_PAIR_CAPTURE001 / COMPOUND_LABEL_PRESERVE001 / RAW_FIELD_FIDELITY001 / IMAGE_URL_EXPOSE001
 // CGWEB122 · QUIZYPEDIA_FULL_FICHE_CAPTURE001 / RAW_SOURCE_ARCHIVE001 / STRUCTURED_KNOWLEDGE_EXTRACTION001
@@ -2458,6 +2459,775 @@ function cgweb122ExtractionScore(extraction){
 }
 
 
+
+/* ==================================================================
+   CGWEB122 FIX3
+
+   THEME_CONTEXT_CAPTURE001
+   ANNEX_QUESTIONNAIRE_CAPTURE001
+   ANNEX_PAYLOAD_ARCHIVE001
+   AUXILIARY_SOURCE_SEPARATION001
+
+   Principe :
+   - les fiches restent dans fiches[] / knowledge ;
+   - les questionnaires restent dans auxiliarySource ;
+   - aucun QCM annexe n'est transformé en knowledge.fact ;
+   - tous les questionnaires découverts sont capturés,
+     même si les fiches sont déjà N/N ;
+   - le payload brut get_quiz_game est archivé.
+   ================================================================== */
+
+
+function cgweb122UniqueText(values){
+
+  const out=[];
+  const seen=new Set();
+
+
+  for(const value0 of values || []){
+
+    const value=
+      one(value0);
+
+
+    if(!value){
+      continue;
+    }
+
+
+    const key=
+      norm(value);
+
+
+    if(
+      !key ||
+      seen.has(key)
+    ){
+      continue;
+    }
+
+
+    seen.add(key);
+    out.push(value);
+  }
+
+
+  return out;
+}
+
+
+function cgweb122ThemeContext(
+  html,
+  effectiveUrl,
+  theme
+){
+
+  const $=
+    cheerio.load(html);
+
+
+  const absolute=raw=>{
+
+    raw=one(raw);
+
+    if(!raw){
+      return '';
+    }
+
+    try{
+
+      return new URL(
+        raw,
+        effectiveUrl
+      ).toString();
+
+    }catch{
+
+      return raw;
+    }
+  };
+
+
+  const pageTitle=
+    one(
+      $('title')
+        .first()
+        .text()
+    );
+
+
+  const h1=
+    one(
+      $('h1')
+        .first()
+        .text()
+    );
+
+
+  const metaDescription=
+    one(
+      $('meta[name="description"]')
+        .attr('content')
+    );
+
+
+  const canonicalUrl=
+    absolute(
+      $('link[rel="canonical"]')
+        .attr('href')
+    ) || effectiveUrl;
+
+
+  const headings=
+    cgweb122UniqueText(
+
+      $('h1,h2,h3')
+        .toArray()
+        .map(
+          node=>
+            $(node).text()
+        )
+    );
+
+
+  /*
+   * On conserve les paragraphes de contexte comme couche source.
+   * Ils ne sont PAS injectés dans knowledge.facts.
+   */
+  const paragraphs=
+    cgweb122UniqueText(
+
+      $('main p, article p, .content p, p')
+        .toArray()
+        .map(
+          node=>
+            $(node).text()
+        )
+        .filter(
+          text=>
+            one(text).length>=20
+        )
+    );
+
+
+  const links=[];
+  const seenLinks=new Set();
+
+
+  $('a[href]').each((_,node)=>{
+
+    const href=
+      absolute(
+        $(node).attr('href')
+      );
+
+
+    if(
+      !href ||
+      !/^https?:\/\//i.test(href)
+    ){
+      return;
+    }
+
+
+    const label=
+      one(
+        $(node).text()
+      );
+
+
+    const key=
+      href.toLowerCase();
+
+
+    if(
+      seenLinks.has(key)
+    ){
+      return;
+    }
+
+
+    seenLinks.add(key);
+
+
+    let host='';
+
+    try{
+      host=
+        new URL(href)
+          .hostname;
+    }catch{
+      host='';
+    }
+
+
+    links.push({
+
+      label,
+
+      url:href,
+
+      internal:
+        /(^|\.)quizypedia\.fr$/i
+          .test(host)
+    });
+  });
+
+
+  return {
+
+    theme:
+      one(theme),
+
+    pageTitle,
+
+    heading:
+      h1 || one(theme),
+
+    metaDescription,
+
+    canonicalUrl,
+
+    effectiveUrl,
+
+    headings,
+
+    paragraphs,
+
+    links,
+
+    rawText:
+      linesFromHtml(html)
+        .join('\n'),
+
+    htmlSha256:
+      cgweb122Sha256(html),
+
+    rawTextSha256:
+      cgweb122Sha256(
+        linesFromHtml(html)
+          .join('\n')
+      )
+  };
+}
+
+
+function cgweb122QuestionnaireStaticContext(
+  html,
+  effectiveUrl,
+  questionnaire
+){
+
+  const $=
+    cheerio.load(html);
+
+
+  const rawText=
+    linesFromHtml(html)
+      .join('\n');
+
+
+  return {
+
+    title:
+      one(
+        questionnaire?.title ||
+        questionnaire?.label
+      ),
+
+    label:
+      one(
+        questionnaire?.label
+      ),
+
+    url:
+      effectiveUrl,
+
+    pageTitle:
+      one(
+        $('title')
+          .first()
+          .text()
+      ),
+
+    heading:
+      one(
+        $('h1')
+          .first()
+          .text()
+      ),
+
+    metaDescription:
+      one(
+        $('meta[name="description"]')
+          .attr('content')
+      ),
+
+    headings:
+      cgweb122UniqueText(
+        $('h1,h2,h3')
+          .toArray()
+          .map(
+            node=>
+              $(node).text()
+          )
+      ),
+
+    rawText,
+
+    htmlBytes:
+      Buffer.byteLength(
+        String(html || ''),
+        'utf8'
+      ),
+
+    htmlSha256:
+      cgweb122Sha256(html),
+
+    rawTextSha256:
+      cgweb122Sha256(rawText)
+  };
+}
+
+
+function cgweb122JsonArchive(value){
+
+  if(
+    value===null ||
+    value===undefined
+  ){
+    return {
+      text:'',
+      sha256:''
+    };
+  }
+
+
+  let text='';
+
+
+  try{
+
+    text=
+      JSON.stringify(
+        value,
+        null,
+        2
+      );
+
+  }catch{
+
+    text=
+      String(value);
+  }
+
+
+  return {
+
+    text,
+
+    sha256:
+      cgweb122Sha256(text)
+  };
+}
+
+
+async function cgweb122CaptureAnnexQuestionnaires(
+  questionnaires,
+  fiches
+){
+
+  questionnaires=
+    Array.isArray(questionnaires)
+      ? questionnaires
+      : [];
+
+
+  if(!questionnaires.length){
+
+    return {
+      questionnaires:[],
+      questionnaireCount:0,
+      capturedCount:0,
+      questionCount:0,
+      completeCount:0
+    };
+  }
+
+
+  if(
+    typeof chromium.executablePath !==
+    'function'
+  ){
+
+    throw new Error(
+      'CGWEB122 FIX3 : API Chromium incompatible.'
+    );
+  }
+
+
+  chromium.setGraphicsMode=false;
+
+
+  const headlessType=
+    'shell';
+
+
+  /*
+   * Un SEUL navigateur pour tous les questionnaires.
+   * Les pages sont traitées séquentiellement.
+   */
+  const browser=
+    await puppeteer.launch({
+
+      args:
+        await puppeteer.defaultArgs({
+          args:
+            chromium.args,
+
+          headless:
+            headlessType
+        }),
+
+      defaultViewport:{
+        width:1440,
+        height:1000,
+        deviceScaleFactor:1
+      },
+
+      executablePath:
+        await chromium.executablePath(),
+
+      headless:
+        headlessType
+    });
+
+
+  const results=[];
+
+
+  try{
+
+    for(
+      let index=0;
+      index<questionnaires.length;
+      index++
+    ){
+
+      const questionnaire=
+        questionnaires[index];
+
+
+      const row={
+
+        index:
+          index+1,
+
+        title:
+          one(
+            questionnaire?.title
+          ),
+
+        label:
+          one(
+            questionnaire?.label
+          ),
+
+        url:
+          one(
+            questionnaire?.url
+          ),
+
+        staticSource:null,
+
+        capture:{
+
+          ok:false,
+
+          started:false,
+
+          payloadCaptured:false,
+
+          payloadComplete:false,
+
+          rawCount:0,
+
+          validQuestionCount:0,
+
+          error:''
+        },
+
+        questions:[],
+
+        /*
+         * ANNEX_PAYLOAD_ARCHIVE001
+         */
+        rawPayload:null,
+
+        rawPayloadText:'',
+
+        rawPayloadSha256:''
+      };
+
+
+      let page=null;
+
+
+      try{
+
+        /*
+         * Archive statique du questionnaire.
+         */
+        try{
+
+          const fetched=
+            await fetchQuizypedia(
+              questionnaire.url
+            );
+
+
+          row.url=
+            fetched.response.url;
+
+
+          row.staticSource=
+            cgweb122QuestionnaireStaticContext(
+              fetched.html,
+              fetched.response.url,
+              questionnaire
+            );
+
+        }catch(error){
+
+          row.staticSource={
+            url:
+              questionnaire.url,
+
+            error:
+              error?.message ||
+              String(error)
+          };
+        }
+
+
+        /*
+         * Capture dynamique du payload officiel.
+         */
+        page=
+          await browser.newPage();
+
+
+        try{
+
+          await page.setUserAgent(
+            fetchHeaders()[
+              'user-agent'
+            ]
+          );
+
+        }catch{
+          // non bloquant
+        }
+
+
+        try{
+
+          await page.setExtraHTTPHeaders({
+            'accept-language':
+              fetchHeaders()[
+                'accept-language'
+              ]
+          });
+
+        }catch{
+          // non bloquant
+        }
+
+
+        await page.goto(
+          questionnaire.url,
+          {
+            waitUntil:
+              'domcontentloaded',
+
+            timeout:
+              45000
+          }
+        );
+
+
+        /*
+         * Le tap est installé AVANT le démarrage du jeu,
+         * comme dans le moteur historique CGIMPORT010.
+         */
+        const tap=
+          cgimport010AttachGetQuizGameTap(
+            page
+          );
+
+
+        const started=
+          await startGame(page);
+
+
+        row.capture.started=
+          Boolean(started);
+
+
+        /*
+         * Même si le clic retourne une valeur peu informative,
+         * on laisse le réseau décider :
+         * si get_quiz_game répond, on archive le payload.
+         */
+        const rawPayload=
+          await tap.wait(7000);
+
+
+        try{
+          tap.stop?.();
+        }catch{
+          // non bloquant
+        }
+
+
+        row.rawPayload=
+          rawPayload ?? null;
+
+
+        const archive=
+          cgweb122JsonArchive(
+            rawPayload
+          );
+
+
+        row.rawPayloadText=
+          archive.text;
+
+
+        row.rawPayloadSha256=
+          archive.sha256;
+
+
+        row.capture.payloadCaptured=
+          Boolean(rawPayload);
+
+
+        const direct=
+          cgimport010ParsePayload(
+            rawPayload,
+            fiches
+          );
+
+
+        row.questions=
+          Array.isArray(
+            direct?.questions
+          )
+            ? direct.questions
+            : [];
+
+
+        row.capture.ok=
+          Boolean(
+            direct?.ok
+          );
+
+
+        row.capture.payloadComplete=
+          Boolean(
+            direct?.payloadComplete
+          );
+
+
+        row.capture.rawCount=
+          Number(
+            direct?.rawCount || 0
+          );
+
+
+        row.capture.validQuestionCount=
+          row.questions.length;
+
+
+        row.capture.diagnostics=
+          Array.isArray(
+            direct?.diagnostics
+          )
+            ? direct.diagnostics
+            : [];
+
+
+      }catch(error){
+
+        row.capture.error=
+          error?.message ||
+          String(error);
+
+      }finally{
+
+        if(page){
+
+          try{
+            await page.close();
+          }catch{
+            // non bloquant
+          }
+        }
+      }
+
+
+      results.push(row);
+    }
+
+  }finally{
+
+    try{
+      await browser.close();
+    }catch{
+      // non bloquant
+    }
+  }
+
+
+  return {
+
+    questionnaires:
+      results,
+
+    questionnaireCount:
+      results.length,
+
+    capturedCount:
+      results.filter(
+        row=>
+          row.capture
+            ?.payloadCaptured
+      ).length,
+
+    completeCount:
+      results.filter(
+        row=>
+          row.capture
+            ?.payloadComplete
+      ).length,
+
+    questionCount:
+      results.reduce(
+        (sum,row)=>
+          sum +
+          (
+            Array.isArray(
+              row.questions
+            )
+              ? row.questions.length
+              : 0
+          ),
+        0
+      )
+  };
+}
+
+
 async function cgweb122CaptureFullFiches(
   parsed,
   requestedUrl
@@ -2501,21 +3271,48 @@ async function cgweb122CaptureFullFiches(
    * On arrête dès qu'une page restitue une série
    * complète N/N.
    */
-  let questionnaires=[];
+  /*
+   * CGWEB122 FIX3
+   * ANNEX_QUESTIONNAIRE_CAPTURE001
+   *
+   * La découverte n'est PLUS conditionnée par une série
+   * de fiches incomplète.
+   *
+   * Même lorsque les fiches sont déjà N/N, les questionnaires
+   * annexes doivent être aspirés.
+   */
+  let questionnaires=
+    parsed.kind==='theme'
+      ? discoverQuestionnairesFromTheme(
+          firstFetch.html,
+          firstFetch.response.url,
+          parsed.theme
+        )
+      : [
+          {
+            title:
+              parsed.questionnaire ||
+              parsed.theme,
+
+            label:
+              parsed.questionnaire ||
+              parsed.theme,
+
+            url:
+              firstFetch.response.url
+          }
+        ];
 
 
+  /*
+   * Le parcours HTML des questionnaires reste utilisé comme
+   * fallback pour trouver de meilleures fiches seulement
+   * lorsque la page principale est incomplète.
+   */
   if(
     parsed.kind==='theme' &&
     !best.complete
   ){
-
-    questionnaires=
-      discoverQuestionnairesFromTheme(
-        firstFetch.html,
-        firstFetch.response.url,
-        parsed.theme
-      );
-
 
     for(const questionnaire of questionnaires){
 
@@ -2590,10 +3387,37 @@ async function cgweb122CaptureFullFiches(
   }
 
 
+  /*
+   * THEME_CONTEXT_CAPTURE001
+   *
+   * Couche documentaire du thème.
+   * Elle reste distincte de knowledge.
+   */
+  const themeContext=
+    cgweb122ThemeContext(
+      firstFetch.html,
+      firstFetch.response.url,
+      parsed.theme
+    );
+
+
+  /*
+   * ANNEX_QUESTIONNAIRE_CAPTURE001
+   * ANNEX_PAYLOAD_ARCHIVE001
+   *
+   * Capture systématique de TOUS les questionnaires découverts.
+   */
+  const auxiliarySource=
+    await cgweb122CaptureAnnexQuestionnaires(
+      questionnaires,
+      best.fiches
+    );
+
+
   return {
 
     version:
-      'CGWEB122_FIX2_IMAGE_CREDIT_CAPTURE001_SOURCE_METADATA_SEPARATION001_RAW_FIDELITY_COMPLETE001',
+      'CGWEB122_FIX3_THEME_CONTEXT_CAPTURE001_ANNEX_QUESTIONNAIRE_CAPTURE001_ANNEX_PAYLOAD_ARCHIVE001_AUXILIARY_SOURCE_SEPARATION001',
 
     requestedUrl,
 
@@ -2605,6 +3429,19 @@ async function cgweb122CaptureFullFiches(
 
     inputKind:
       parsed.kind,
+
+    /*
+     * THEME_CONTEXT_CAPTURE001
+     */
+    themeContext,
+
+    /*
+     * AUXILIARY_SOURCE_SEPARATION001
+     *
+     * Cette branche ne doit jamais être utilisée comme
+     * knowledge.facts sans transformation éditoriale explicite.
+     */
+    auxiliarySource,
 
     ficheCount:
       best.ficheCount,
