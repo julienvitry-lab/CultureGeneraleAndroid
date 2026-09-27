@@ -1,3 +1,4 @@
+// CGWEB122 · QUIZYPEDIA_FULL_FICHE_CAPTURE001 / RAW_SOURCE_ARCHIVE001 / STRUCTURED_KNOWLEDGE_EXTRACTION001
 // CGWEB116_FIX3_FIX4_FIX8_DIRECT_PAYLOAD_AUTHORITY001_SOURCE_FICHE_OPTIONAL001_DIRECT_COUNT_PRIORITY001
 // CGWEB116_FIX3_FIX4_FIX7_UNRESOLVED_QUESTION_SKIP001
 // CGWEB116_FIX3_FIX4_FIX5_FICHE_IMAGE_LINK_CAPTURE001_IMAGE_SOURCE_NORMALIZE001_PHOTO_QUESTION_RESOLVE001
@@ -903,6 +904,720 @@ async function fetchQuizypedia(url){
     html:await response.text()
   };
 }
+
+/* ==================================================================
+   CGWEB122
+   QUIZYPEDIA_FULL_FICHE_CAPTURE001
+   RAW_SOURCE_ARCHIVE001
+   STRUCTURED_KNOWLEDGE_EXTRACTION001
+
+   Objectif :
+   - une URL Quizypedia devient une source documentaire ;
+   - aucune génération de QCM ;
+   - aucune écriture Firestore ;
+   - aucune perte volontaire d'information ;
+   - conservation du texte source ;
+   - structuration déterministe des connaissances.
+   ================================================================== */
+
+function cgweb122Sha256(value){
+  return require('node:crypto')
+    .createHash('sha256')
+    .update(String(value ?? ''),'utf8')
+    .digest('hex');
+}
+
+
+function cgweb122LabelKey(value){
+  return norm(
+    String(value ?? '')
+      .replace(/œ/gi,'oe')
+      .replace(/æ/gi,'ae')
+  );
+}
+
+
+function cgweb122FactRole(label){
+
+  const k=cgweb122LabelKey(label);
+
+
+  /*
+   * CIBLE / IDENTITÉ
+   *
+   * On reste volontairement strict :
+   * "Nom scientifique" ne doit par exemple PAS
+   * être pris pour la cible simplement parce que
+   * son libellé commence par "Nom".
+   */
+  if(
+    /^(heroine|heros|animal|personnage|nom|titre|ville|pays|fleuve|montagne|ile|oeuvre)$/.test(k)
+  ){
+    return 'identity';
+  }
+
+
+  if(
+    /(description|particularite|resume|caracteristique|presentation|biographie|histoire)/.test(k)
+  ){
+    return 'description';
+  }
+
+
+  if(
+    /(nom scientifique|scientifique|nom latin|latin)/.test(k)
+  ){
+    return 'scientific_name';
+  }
+
+
+  if(
+    /(auteur|autrice|ecrivain|realisateur|compositeur|createur|scenariste|dessinateur)/.test(k)
+  ){
+    return 'author';
+  }
+
+
+  if(
+    /(oeuvre|ouvrage|roman|livre|film|serie|album|piece|publication)/.test(k)
+  ){
+    return 'work';
+  }
+
+
+  if(
+    /(date|annee|naissance|deces|mort|publication|creation|fondation)/.test(k)
+  ){
+    return 'date';
+  }
+
+
+  if(
+    /(pays|ville|region|departement|lieu|origine|capitale|continent|ocean|mer)/.test(k)
+  ){
+    return 'place';
+  }
+
+
+  if(
+    /(famille|ordre|classe|espece|genre|type|categorie|embranchement|sous embranchement|regne)/.test(k)
+  ){
+    return 'classification';
+  }
+
+
+  if(
+    /(surnom|autre nom|alias|nom vernaculaire|egalement appele)/.test(k)
+  ){
+    return 'alias';
+  }
+
+
+  return 'other';
+}
+
+
+function cgweb122ImageUrls(fiche){
+
+  const out=[];
+
+
+  for(const link of fiche.imageLinks || []){
+
+    for(const raw of link.urls || []){
+
+      const url=one(raw);
+
+      if(
+        url &&
+        /^https?:\/\//i.test(url)
+      ){
+        out.push(url);
+      }
+    }
+  }
+
+
+  return [...new Set(out)];
+}
+
+
+function cgweb122StructuredKnowledge(fiche){
+
+  const facts=
+    (fiche.fields || [])
+      .map((field,index)=>({
+
+        index:index+1,
+
+        label:
+          one(field.label),
+
+        normalizedLabel:
+          cgweb122LabelKey(field.label),
+
+        value:
+          one(field.value),
+
+        role:
+          cgweb122FactRole(field.label)
+      }))
+      .filter(f=>f.value);
+
+
+  /*
+   * La cible est prioritairement le champ
+   * d'identité explicite de la fiche.
+   *
+   * Exemple :
+   *
+   * Header :
+   * Dorothy (1900)
+   *
+   * Champ :
+   * Héroïne : Dorothy
+   *
+   * => cible = Dorothy, et non "Dorothy (1900)".
+   */
+  const identity=
+    facts.find(
+      f=>f.role==='identity'
+    ) || null;
+
+
+  const sourceHeader=
+    one(fiche.name);
+
+
+  const headerYear=
+    (
+      sourceHeader.match(
+        /\((\d{4})\)\s*$/
+      ) || []
+    )[1] || '';
+
+
+  const fallbackTarget=
+    sourceHeader
+      .replace(
+        /\s*\(\d{4}\)\s*$/,
+        ''
+      )
+      .trim();
+
+
+  const target=
+    one(
+      identity?.value ||
+      fallbackTarget ||
+      sourceHeader
+    );
+
+
+  const roles=[
+    'identity',
+    'description',
+    'scientific_name',
+    'author',
+    'work',
+    'date',
+    'place',
+    'classification',
+    'alias',
+    'other'
+  ];
+
+
+  const groups={};
+
+
+  for(const role of roles){
+
+    groups[role]=
+      facts
+        .filter(
+          fact=>
+            fact.role===role
+        )
+        .map(
+          fact=>({
+            label:fact.label,
+            value:fact.value
+          })
+        );
+  }
+
+
+  const imageUrls=
+    cgweb122ImageUrls(fiche);
+
+
+  return {
+
+    target:{
+      value:target,
+
+      sourceLabel:
+        identity?.label || '',
+
+      sourceHeader,
+
+      headerYear
+    },
+
+    facts,
+
+    groups,
+
+    imageUrls,
+
+    primaryImageUrl:
+      imageUrls[0] || '',
+
+    /*
+     * Texte condensé destiné à la future
+     * génération de la question longue.
+     *
+     * IMPORTANT :
+     * les facts restent la référence structurée.
+     * knowledgeText n'est qu'une vue pratique.
+     */
+    knowledgeText:
+      facts
+        .map(
+          fact=>
+            `${fact.label} : ${fact.value}`
+        )
+        .join('\n')
+  };
+}
+
+
+function cgweb122ExtractPage(
+  html,
+  effectiveUrl
+){
+
+  const lines=
+    linesFromHtml(html);
+
+
+  const labels=
+    dynamicLabels(html);
+
+
+  const fiches=
+    rawFiches(lines);
+
+
+  const inferred=
+    inferLabels(fiches);
+
+
+  const allLabels=[
+    ...new Set([
+      ...labels,
+      ...inferred
+    ])
+  ];
+
+
+  for(const fiche of fiches){
+
+    fiche.fields=
+      parseFields(
+        fiche.lines,
+        allLabels
+      );
+  }
+
+
+  const imageLinkStats=
+    cg116AttachFicheImageLinks(
+      html,
+      fiches,
+      effectiveUrl
+    );
+
+
+  const enriched=
+    fiches.map(fiche=>{
+
+      const knowledge=
+        cgweb122StructuredKnowledge(
+          fiche
+        );
+
+
+      return {
+
+        name:
+          one(fiche.name),
+
+        position:
+          one(fiche.position),
+
+        number:
+          Number(fiche.number || 0),
+
+        total:
+          Number(fiche.total || 0),
+
+        /*
+         * RAW_SOURCE_ARCHIVE001
+         *
+         * Le texte brut de la fiche est conservé
+         * AVANT toute interprétation éditoriale.
+         */
+        rawLines:
+          [...(fiche.lines || [])],
+
+        rawText:
+          (fiche.lines || [])
+            .join('\n'),
+
+        fields:
+          (fiche.fields || [])
+            .map(field=>({
+              label:one(field.label),
+              value:one(field.value)
+            })),
+
+        imageLinks:
+          fiche.imageLinks || [],
+
+        imageUrls:
+          knowledge.imageUrls,
+
+        primaryImageUrl:
+          knowledge.primaryImageUrl,
+
+        knowledge
+      };
+    });
+
+
+  const expected=
+    enriched.length
+      ? Math.max(
+          ...enriched.map(
+            fiche=>
+              Number(
+                fiche.total || 0
+              )
+          )
+        )
+      : 0;
+
+
+  const fieldCount=
+    enriched.reduce(
+      (sum,fiche)=>
+        sum +
+        fiche.fields.length,
+      0
+    );
+
+
+  return {
+
+    effectiveUrl,
+
+    lineCount:
+      lines.length,
+
+    rawText:
+      lines.join('\n'),
+
+    rawTextSha256:
+      cgweb122Sha256(
+        lines.join('\n')
+      ),
+
+    htmlSha256:
+      cgweb122Sha256(html),
+
+    htmlBytes:
+      Buffer.byteLength(
+        String(html || ''),
+        'utf8'
+      ),
+
+    fiches:
+      enriched,
+
+    ficheCount:
+      enriched.length,
+
+    expectedFiches:
+      expected,
+
+    fieldCount,
+
+    complete:
+      expected>0
+        ? enriched.length>=expected
+        : enriched.length>0,
+
+    imageLinkStats
+  };
+}
+
+
+function cgweb122PageArchive(
+  extraction,
+  role
+){
+
+  return {
+
+    role,
+
+    url:
+      extraction.effectiveUrl,
+
+    lineCount:
+      extraction.lineCount,
+
+    ficheCount:
+      extraction.ficheCount,
+
+    expectedFiches:
+      extraction.expectedFiches,
+
+    fieldCount:
+      extraction.fieldCount,
+
+    complete:
+      extraction.complete,
+
+    htmlBytes:
+      extraction.htmlBytes,
+
+    htmlSha256:
+      extraction.htmlSha256,
+
+    rawTextSha256:
+      extraction.rawTextSha256,
+
+    /*
+     * Archive texte intégrale de la page utilisée.
+     * Pas seulement les fiches reconnues.
+     */
+    rawText:
+      extraction.rawText
+  };
+}
+
+
+function cgweb122ExtractionScore(extraction){
+
+  return (
+    (extraction.complete ? 100000000 : 0) +
+    extraction.ficheCount * 100000 +
+    extraction.fieldCount
+  );
+}
+
+
+async function cgweb122CaptureFullFiches(
+  parsed,
+  requestedUrl
+){
+
+  /*
+   * 1. Lecture directe de l'URL fournie.
+   */
+  const firstFetch=
+    await fetchQuizypedia(
+      parsed.url.toString()
+    );
+
+
+  const first=
+    cgweb122ExtractPage(
+      firstFetch.html,
+      firstFetch.response.url
+    );
+
+
+  const archivePages=[
+    cgweb122PageArchive(
+      first,
+      'requested-page'
+    )
+  ];
+
+
+  let best=first;
+
+
+  /*
+   * Une URL de thème contient généralement déjà
+   * les fiches.
+   *
+   * Si ce n'est pas le cas ou si la détection est
+   * incomplète, on utilise les questionnaires
+   * découverts comme pages-source de secours.
+   *
+   * On arrête dès qu'une page restitue une série
+   * complète N/N.
+   */
+  let questionnaires=[];
+
+
+  if(
+    parsed.kind==='theme' &&
+    !best.complete
+  ){
+
+    questionnaires=
+      discoverQuestionnairesFromTheme(
+        firstFetch.html,
+        firstFetch.response.url,
+        parsed.theme
+      );
+
+
+    for(const questionnaire of questionnaires){
+
+      try{
+
+        const fetched=
+          await fetchQuizypedia(
+            questionnaire.url
+          );
+
+
+        const extraction=
+          cgweb122ExtractPage(
+            fetched.html,
+            fetched.response.url
+          );
+
+
+        archivePages.push(
+          cgweb122PageArchive(
+            extraction,
+            'questionnaire-fallback'
+          )
+        );
+
+
+        if(
+          cgweb122ExtractionScore(
+            extraction
+          ) >
+          cgweb122ExtractionScore(
+            best
+          )
+        ){
+          best=extraction;
+        }
+
+
+        if(best.complete){
+          break;
+        }
+
+      }catch(error){
+
+        archivePages.push({
+
+          role:
+            'questionnaire-fallback',
+
+          url:
+            questionnaire.url,
+
+          error:
+            error?.message ||
+            String(error)
+        });
+      }
+    }
+  }
+
+
+  if(!best.ficheCount){
+
+    throw Object.assign(
+      new Error(
+        'CGWEB122 : aucune fiche Quizypedia exploitable détectée sur cette URL.'
+      ),
+      {
+        status:422
+      }
+    );
+  }
+
+
+  return {
+
+    version:
+      'CGWEB122_QUIZYPEDIA_FULL_FICHE_CAPTURE001_RAW_SOURCE_ARCHIVE001_STRUCTURED_KNOWLEDGE_EXTRACTION001',
+
+    requestedUrl,
+
+    effectiveUrl:
+      best.effectiveUrl,
+
+    theme:
+      parsed.theme,
+
+    inputKind:
+      parsed.kind,
+
+    ficheCount:
+      best.ficheCount,
+
+    expectedFiches:
+      best.expectedFiches,
+
+    fieldCount:
+      best.fieldCount,
+
+    complete:
+      best.complete,
+
+    imageLinkStats:
+      best.imageLinkStats,
+
+    /*
+     * QUIZYPEDIA_FULL_FICHE_CAPTURE001
+     */
+    fiches:
+      best.fiches,
+
+    /*
+     * RAW_SOURCE_ARCHIVE001
+     */
+    sourceArchive:{
+
+      capturedAt:
+        new Date()
+          .toISOString(),
+
+      selectedUrl:
+        best.effectiveUrl,
+
+      pageCount:
+        archivePages.length,
+
+      pages:
+        archivePages
+    },
+
+    discovery:{
+
+      questionnairesDiscovered:
+        questionnaires.length,
+
+      questionnaires
+    }
+  };
+}
+
 
 function discoverQuestionnairesFromTheme(html,effectiveUrl,theme){
   const $=cheerio.load(html);
@@ -3297,6 +4012,45 @@ exports.cgimport002Quizypedia=onRequest({
     const raw=one(req.body?.url);
     const mode=one(req.body?.mode||'auto').toLowerCase();
     const parsed=parseQuizypediaUrl(raw);
+
+    /*
+     * CGWEB122
+     * QUIZYPEDIA_FULL_FICHE_CAPTURE001
+     *
+     * Mode purement documentaire :
+     * - pas de Chromium ;
+     * - pas de QCM ;
+     * - pas d'écriture Firestore.
+     */
+    if(
+      mode==='full_fiches' ||
+      mode==='full-fiches' ||
+      mode==='fiches'
+    ){
+      const capture=
+        await cgweb122CaptureFullFiches(
+          parsed,
+          raw
+        );
+
+      console.log(
+        'CGWEB122 full fiche capture',
+        {
+          theme:capture.theme,
+          fiches:capture.ficheCount,
+          expected:capture.expectedFiches,
+          fields:capture.fieldCount,
+          complete:capture.complete,
+          ms:Date.now()-startedAt
+        }
+      );
+
+      return res.json({
+        ok:true,
+        mode:'full_fiches',
+        ...capture
+      });
+    }
 
     /*
      * CGIMPORT009 DISCOVERY
