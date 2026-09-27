@@ -1,3 +1,7 @@
+// CGWEB122 FIX1 · DOM_FIELD_PAIR_CAPTURE001
+// COMPOUND_LABEL_PRESERVE001
+// RAW_FIELD_FIDELITY001
+// IMAGE_URL_EXPOSE001
 // CGWEB122 · QUIZYPEDIA_FULL_FICHE_CAPTURE001
 // RAW_SOURCE_ARCHIVE001
 // STRUCTURED_KNOWLEDGE_EXTRACTION001
@@ -6,7 +10,7 @@
   "use strict";
 
   const VERSION =
-    "CGWEB122_QUIZYPEDIA_FULL_FICHE_CAPTURE001_RAW_SOURCE_ARCHIVE001_STRUCTURED_KNOWLEDGE_EXTRACTION001";
+    "CGWEB122_FIX1_DOM_FIELD_PAIR_CAPTURE001_COMPOUND_LABEL_PRESERVE001_RAW_FIELD_FIDELITY001_IMAGE_URL_EXPOSE001";
 
   const ENDPOINT =
     "https://europe-west1-culturegeneralesync.cloudfunctions.net/cgimport002Quizypedia";
@@ -143,6 +147,55 @@
   }
 
 
+  function renderImageUrls(
+    fiche
+  ){
+
+    const urls=
+      [...new Set(
+        (fiche.imageUrls || [])
+          .map(url=>
+            String(url || "").trim()
+          )
+          .filter(url=>
+            /^https?:\/\//i.test(url)
+          )
+      )];
+
+
+    if(!urls.length){
+      return "";
+    }
+
+
+    return `
+      <div class="cg122-image-urls">
+
+        <div class="cg122-image-urls-title">
+          URL image${urls.length>1 ? "s" : ""}
+        </div>
+
+        ${urls.map((url,index)=>`
+          <div class="cg122-image-url-row">
+
+            <span>
+              ${urls.length>1 ? `${index+1}.` : ""}
+            </span>
+
+            <a
+              href="${esc(url)}"
+              target="_blank"
+              rel="noopener noreferrer"
+            >${esc(url)}</a>
+
+          </div>
+        `).join("")}
+
+      </div>
+    `;
+  }
+
+
   function renderFiche(
     fiche
   ){
@@ -201,6 +254,50 @@
             ${renderFields(fiche)}
           </tbody>
         </table>
+
+
+        ${renderImageUrls(fiche)}
+
+
+        <div class="cg122-fidelity">
+
+          <span>
+            Source champs :
+            <strong>
+              ${
+                fiche.fieldSource === "dom"
+                  ? "DOM Quizypedia"
+                  : "fallback texte"
+              }
+            </strong>
+          </span>
+
+          <span>
+            Couverture texte brut :
+            <strong>
+              ${Number(
+                fiche.fieldFidelity?.coveredLineCount || 0
+              )}
+              /
+              ${Number(
+                fiche.fieldFidelity?.rawLineCount || 0
+              )}
+            </strong>
+          </span>
+
+          ${
+            Number(
+              fiche.fieldFidelity?.uncoveredCount || 0
+            ) > 0
+              ? `<span class="cg122-fidelity-warn">
+                  ⚠ ${Number(
+                    fiche.fieldFidelity.uncoveredCount
+                  )} ligne(s) non couverte(s)
+                 </span>`
+              : `<span>✓ couverture complète</span>`
+          }
+
+        </div>
 
 
         <details class="cg122-details">

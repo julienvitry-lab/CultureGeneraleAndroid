@@ -1,3 +1,4 @@
+// CGWEB122 FIX1 · DOM_FIELD_PAIR_CAPTURE001 / COMPOUND_LABEL_PRESERVE001 / RAW_FIELD_FIDELITY001 / IMAGE_URL_EXPOSE001
 // CGWEB122 · QUIZYPEDIA_FULL_FICHE_CAPTURE001 / RAW_SOURCE_ARCHIVE001 / STRUCTURED_KNOWLEDGE_EXTRACTION001
 // CGWEB116_FIX3_FIX4_FIX8_DIRECT_PAYLOAD_AUTHORITY001_SOURCE_FICHE_OPTIONAL001_DIRECT_COUNT_PRIORITY001
 // CGWEB116_FIX3_FIX4_FIX7_UNRESOLVED_QUESTION_SKIP001
@@ -1042,6 +1043,463 @@ function cgweb122ImageUrls(fiche){
 }
 
 
+
+/* ==================================================================
+   CGWEB122 FIX1
+   DOM_FIELD_PAIR_CAPTURE001
+   COMPOUND_LABEL_PRESERVE001
+   RAW_FIELD_FIDELITY001
+   IMAGE_URL_EXPOSE001
+
+   Règle :
+   - priorité absolue aux couples libellé / valeur explicitement
+     structurés dans le DOM Quizypedia ;
+   - aucun découpage lexical d'un libellé DOM ;
+   - "Nom scientifique" reste donc "Nom scientifique" ;
+   - le parseur texte historique reste uniquement un fallback ;
+   - chaque fiche expose également toutes ses URL d'image.
+   ================================================================== */
+
+function cgweb122DedupFields(fields){
+
+  const out=[];
+  const seen=new Set();
+
+
+  for(const field of fields || []){
+
+    const label=
+      one(field?.label);
+
+    const value=
+      one(field?.value);
+
+
+    if(
+      !label ||
+      !value
+    ){
+      continue;
+    }
+
+
+    const key=
+      norm(label) +
+      '|' +
+      norm(value);
+
+
+    if(
+      seen.has(key)
+    ){
+      continue;
+    }
+
+
+    seen.add(key);
+
+
+    out.push({
+      label,
+      value,
+      source:
+        one(field?.source || '')
+    });
+  }
+
+
+  return out;
+}
+
+
+function cgweb122IdentifyFicheFromNode(
+  $,
+  node,
+  fiches
+){
+
+  let current=node;
+
+
+  for(
+    let depth=0;
+    current && depth<16;
+    depth++
+  ){
+
+    const text=
+      norm(
+        $(current).text()
+      );
+
+
+    if(text){
+
+      const hits=
+        fiches.filter(fiche=>{
+
+          const exact=
+            norm(fiche.name);
+
+
+          const withoutYear=
+            norm(
+              String(fiche.name || '')
+                .replace(
+                  /\s*\(\d{4}\)\s*$/,
+                  ''
+                )
+            );
+
+
+          if(
+            exact.length>=3 &&
+            text.includes(exact)
+          ){
+            return true;
+          }
+
+
+          return (
+            withoutYear.length>=4 &&
+            text.includes(withoutYear)
+          );
+        });
+
+
+      if(hits.length===1){
+        return hits[0];
+      }
+    }
+
+
+    current=
+      $(current)
+        .parent()
+        .get(0);
+  }
+
+
+  return null;
+}
+
+
+function cgweb122CaptureDomFieldPairs(
+  html,
+  fiches
+){
+
+  const $=
+    cheerio.load(html);
+
+
+  const byNumber=
+    new Map(
+      fiches.map(fiche=>[
+        Number(fiche.number),
+        []
+      ])
+    );
+
+
+  const add=(
+    node,
+    label,
+    value,
+    source
+  )=>{
+
+    label=one(label);
+    value=one(value);
+
+
+    if(
+      !label ||
+      !value
+    ){
+      return;
+    }
+
+
+    /*
+     * Les couples sont rattachés à une fiche uniquement
+     * lorsqu'un bloc DOM identifie UNE SEULE fiche.
+     */
+    const fiche=
+      cgweb122IdentifyFicheFromNode(
+        $,
+        node,
+        fiches
+      );
+
+
+    if(!fiche){
+      return;
+    }
+
+
+    const rows=
+      byNumber.get(
+        Number(fiche.number)
+      );
+
+
+    if(!rows){
+      return;
+    }
+
+
+    rows.push({
+      label,
+      value,
+      source
+    });
+  };
+
+
+  /*
+   * Cas principal Quizypedia :
+   *
+   * <tr>
+   *   <th>Nom scientifique</th>
+   *   <td>Chimaera monstrosa</td>
+   * </tr>
+   *
+   * On ne tente AUCUNE interprétation du libellé.
+   */
+  $('tr').each((_,tr)=>{
+
+    const directCells=
+      $(tr)
+        .children('th,td')
+        .toArray();
+
+
+    if(
+      directCells.length<2
+    ){
+      return;
+    }
+
+
+    const label=
+      one(
+        $(directCells[0]).text()
+      );
+
+
+    const value=
+      directCells
+        .slice(1)
+        .map(cell=>
+          one(
+            $(cell).text()
+          )
+        )
+        .filter(Boolean)
+        .join(' ');
+
+
+    add(
+      tr,
+      label,
+      value,
+      'dom-table-row'
+    );
+  });
+
+
+  /*
+   * Autre structure HTML sémantique fréquente :
+   *
+   * <dt>Nom scientifique</dt>
+   * <dd>Chimaera monstrosa</dd>
+   */
+  $('dt').each((_,dt)=>{
+
+    const dd=
+      $(dt).next('dd');
+
+
+    if(!dd.length){
+      return;
+    }
+
+
+    add(
+      dt,
+      $(dt).text(),
+      dd.text(),
+      'dom-definition-list'
+    );
+  });
+
+
+  /*
+   * Quelques sites structurent les paires via label + valeur
+   * sans tableau. On accepte uniquement les structures explicites
+   * afin de ne pas recréer l'ancien problème de devinette lexicale.
+   */
+  $('[data-label]').each((_,node)=>{
+
+    const label=
+      one(
+        $(node).attr('data-label')
+      );
+
+
+    const value=
+      one(
+        $(node).text()
+      );
+
+
+    add(
+      node,
+      label,
+      value,
+      'dom-data-label'
+    );
+  });
+
+
+  let ficheCount=0;
+  let fieldCount=0;
+
+
+  for(const fiche of fiches){
+
+    const domFields=
+      cgweb122DedupFields(
+        byNumber.get(
+          Number(fiche.number)
+        ) || []
+      );
+
+
+    fiche.domFields=
+      domFields;
+
+
+    if(domFields.length){
+      ficheCount++;
+      fieldCount+=domFields.length;
+    }
+  }
+
+
+  return {
+    ficheCount,
+    fieldCount
+  };
+}
+
+
+function cgweb122RawFieldFidelity(
+  fiche
+){
+
+  const fields=
+    fiche.fields || [];
+
+
+  const labels=
+    fields
+      .map(field=>
+        norm(field.label)
+      )
+      .filter(Boolean);
+
+
+  const values=
+    fields
+      .map(field=>
+        norm(field.value)
+      )
+      .filter(Boolean);
+
+
+  const pairs=
+    fields
+      .map(field=>
+        norm(
+          `${field.label} ${field.value}`
+        )
+      )
+      .filter(Boolean);
+
+
+  const rawLines=
+    (fiche.lines || [])
+      .map(one)
+      .filter(Boolean);
+
+
+  const uncoveredRawLines=[];
+
+
+  for(const raw of rawLines){
+
+    const key=
+      norm(raw);
+
+
+    if(!key){
+      continue;
+    }
+
+
+    const covered=
+      labels.includes(key) ||
+      values.includes(key) ||
+      pairs.includes(key) ||
+
+      values.some(value=>
+        value.length>=4 &&
+        (
+          value.includes(key) ||
+          key.includes(value)
+        )
+      ) ||
+
+      pairs.some(pair=>
+        pair.length>=4 &&
+        (
+          pair.includes(key) ||
+          key.includes(pair)
+        )
+      );
+
+
+    if(!covered){
+      uncoveredRawLines.push(raw);
+    }
+  }
+
+
+  return {
+
+    source:
+      fiche.fieldSource || '',
+
+    rawLineCount:
+      rawLines.length,
+
+    coveredLineCount:
+      rawLines.length -
+      uncoveredRawLines.length,
+
+    uncoveredCount:
+      uncoveredRawLines.length,
+
+    uncoveredRawLines,
+
+    complete:
+      uncoveredRawLines.length===0
+  };
+}
+
+
 function cgweb122StructuredKnowledge(fiche){
 
   const facts=
@@ -1222,12 +1680,67 @@ function cgweb122ExtractPage(
   ];
 
 
+  /*
+   * CGWEB122 FIX1
+   *
+   * On capture d'abord les paires réellement structurées
+   * dans le DOM Quizypedia.
+   */
+  const domFieldStats=
+    cgweb122CaptureDomFieldPairs(
+      html,
+      fiches
+    );
+
+
   for(const fiche of fiches){
 
-    fiche.fields=
+    const fallbackFields=
       parseFields(
         fiche.lines,
         allLabels
+      );
+
+
+    /*
+     * COMPOUND_LABEL_PRESERVE001
+     *
+     * Si Quizypedia expose de vrais couples DOM,
+     * ils deviennent la source de vérité.
+     *
+     * Le parseur lexical historique ne sert que
+     * lorsqu'aucune paire DOM n'a été détectée.
+     */
+    if(
+      Array.isArray(
+        fiche.domFields
+      ) &&
+      fiche.domFields.length
+    ){
+
+      fiche.fields=
+        cgweb122DedupFields(
+          fiche.domFields
+        );
+
+      fiche.fieldSource=
+        'dom';
+
+    }else{
+
+      fiche.fields=
+        cgweb122DedupFields(
+          fallbackFields
+        );
+
+      fiche.fieldSource=
+        'text-fallback';
+    }
+
+
+    fiche.fieldFidelity=
+      cgweb122RawFieldFidelity(
+        fiche
       );
   }
 
@@ -1280,12 +1793,31 @@ function cgweb122ExtractPage(
           (fiche.fields || [])
             .map(field=>({
               label:one(field.label),
-              value:one(field.value)
+              value:one(field.value),
+              source:one(field.source || fiche.fieldSource || '')
             })),
+
+        fieldSource:
+          fiche.fieldSource || '',
+
+        /*
+         * RAW_FIELD_FIDELITY001
+         *
+         * Permet d'identifier immédiatement une ligne brute
+         * qui n'aurait trouvé aucun couple champ / valeur.
+         */
+        fieldFidelity:
+          fiche.fieldFidelity || null,
 
         imageLinks:
           fiche.imageLinks || [],
 
+        /*
+         * IMAGE_URL_EXPOSE001
+         *
+         * Liste explicite et persistante de toutes les URL
+         * d'image rattachées à la fiche.
+         */
         imageUrls:
           knowledge.imageUrls,
 
@@ -1359,7 +1891,37 @@ function cgweb122ExtractPage(
         ? enriched.length>=expected
         : enriched.length>0,
 
-    imageLinkStats
+    imageLinkStats,
+
+    domFieldStats,
+
+    fidelityStats:{
+      domFiches:
+        enriched.filter(
+          fiche=>
+            fiche.fieldSource==='dom'
+        ).length,
+
+      fallbackFiches:
+        enriched.filter(
+          fiche=>
+            fiche.fieldSource==='text-fallback'
+        ).length,
+
+      perfectFiches:
+        enriched.filter(
+          fiche=>
+            fiche.fieldFidelity?.complete
+        ).length,
+
+      fichesWithUncoveredRawLines:
+        enriched.filter(
+          fiche=>
+            Number(
+              fiche.fieldFidelity?.uncoveredCount || 0
+            )>0
+        ).length
+    }
   };
 }
 

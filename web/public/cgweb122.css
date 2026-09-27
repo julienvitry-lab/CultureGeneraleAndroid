@@ -175,3 +175,52 @@
     height:72px;
   }
 }
+
+/* ============================================================
+   CGWEB122 FIX1
+   IMAGE_URL_EXPOSE001 / RAW_FIELD_FIDELITY001
+   ============================================================ */
+
+.cg122-image-urls{
+  margin-top:10px;
+  padding:10px 12px;
+  border-radius:9px;
+  background:rgba(0,0,0,.14);
+  overflow:hidden;
+}
+
+.cg122-image-urls-title{
+  margin-bottom:6px;
+  font-weight:700;
+  font-size:12px;
+  opacity:.78;
+}
+
+.cg122-image-url-row{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  gap:6px;
+  align-items:start;
+  margin-top:3px;
+  font-size:12px;
+}
+
+.cg122-image-url-row a{
+  min-width:0;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+
+.cg122-fidelity{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px 16px;
+  margin-top:9px;
+  font-size:11px;
+  opacity:.78;
+}
+
+.cg122-fidelity-warn{
+  opacity:1;
+  font-weight:700;
+}
