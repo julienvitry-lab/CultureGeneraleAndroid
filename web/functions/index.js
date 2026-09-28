@@ -6376,4 +6376,353 @@ exports.cgweb123AiQuestionFactory =
 
   console.log(FIX6_MARK + " : fallback vignette Quizypedia + normalisation image activés");
 })();
+// ===== CGWEB124 · RAW_TEXT_EXTRACTOR001 · START =====
+const functionsCGWEB124 = require("firebase-functions");
+const dnsCGWEB124 = require("node:dns").promises;
+const netCGWEB124 = require("node:net");
+const { JSDOM: JSDOMCGWEB124 } = require("jsdom");
+const { Readability: ReadabilityCGWEB124 } = require("@mozilla/readability");
+const ExcelJSCGWEB124 = require("exceljs");
+
+const CG124_MAX_URLS_PER_CALL = 25;
+const CG124_MAX_HTML_BYTES = 5 * 1024 * 1024;
+const CG124_FETCH_TIMEOUT_MS = 18000;
+const CG124_MAX_REDIRECTS = 5;
+const CG124_MAX_EXPORT_ROWS = 5000;
+const CG124_XLSX_CELL_LIMIT = 32767;
+
+function cg124Cors(res) {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type");
+  res.set("Access-Control-Expose-Headers", "Content-Disposition");
+}
+
+function cg124IsBlockedIpv4(ip) {
+  const p = ip.split(".").map(Number);
+  if (p.length !== 4 || p.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return true;
+  const [a, b] = p;
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    a >= 224
+  );
+}
+
+function cg124IsBlockedIp(ip) {
+  const value = String(ip || "").toLowerCase();
+  if (netCGWEB124.isIP(value) === 4) return cg124IsBlockedIpv4(value);
+  if (value.startsWith("::ffff:")) {
+    const mapped = value.slice(7);
+    if (netCGWEB124.isIP(mapped) === 4) return cg124IsBlockedIpv4(mapped);
+  }
+  if (netCGWEB124.isIP(value) === 6) {
+    return (
+      value === "::1" ||
+      value === "::" ||
+      value.startsWith("fc") ||
+      value.startsWith("fd") ||
+      /^fe[89ab]/.test(value)
+    );
+  }
+  return true;
+}
+
+async function cg124ValidateRemoteUrl(raw) {
+  let url;
+  try {
+    url = new URL(String(raw || "").trim());
+  } catch (_) {
+    throw new Error("Adresse invalide");
+  }
+  if (!/^https?:$/.test(url.protocol)) throw new Error("Seules les adresses HTTP/HTTPS sont acceptées");
+  if (url.username || url.password) throw new Error("Adresse avec identifiants refusée");
+
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+  if (netCGWEB124.isIP(host)) {
+    if (cg124IsBlockedIp(host)) throw new Error("Adresse réseau privée ou locale refusée");
+  } else {
+    let answers;
+    try {
+      answers = await dnsCGWEB124.lookup(host, { all: true, verbatim: true });
+    } catch (_) {
+      throw new Error("Nom de domaine introuvable");
+    }
+    if (!answers.length || answers.some((a) => cg124IsBlockedIp(a.address))) {
+      throw new Error("Adresse réseau privée ou locale refusée");
+    }
+  }
+  return url;
+}
+
+async function cg124ReadResponseBody(res) {
+  const announced = Number(res.headers.get("content-length") || 0);
+  if (announced && announced > CG124_MAX_HTML_BYTES) {
+    throw new Error("Page trop volumineuse (> 5 Mo)");
+  }
+  if (!res.body || typeof res.body.getReader !== "function") {
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > CG124_MAX_HTML_BYTES) throw new Error("Page trop volumineuse (> 5 Mo)");
+    return buf.toString("utf8");
+  }
+
+  const reader = res.body.getReader();
+  const chunks = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > CG124_MAX_HTML_BYTES) {
+      try { await reader.cancel(); } catch (_) {}
+      throw new Error("Page trop volumineuse (> 5 Mo)");
+    }
+    chunks.push(Buffer.from(value));
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+async function cg124FetchHtml(rawUrl) {
+  let current = await cg124ValidateRemoteUrl(rawUrl);
+
+  for (let redirectCount = 0; redirectCount <= CG124_MAX_REDIRECTS; redirectCount += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), CG124_FETCH_TIMEOUT_MS);
+    let response;
+    try {
+      response = await fetch(current.href, {
+        method: "GET",
+        redirect: "manual",
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (compatible; CGWEB124-RawTextExtractor/1.0)",
+          "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
+          "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.6",
+        },
+      });
+    } catch (err) {
+      if (err && err.name === "AbortError") throw new Error("Délai de réponse dépassé");
+      throw new Error(`Téléchargement impossible: ${err && err.message ? err.message : "erreur réseau"}`);
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const location = response.headers.get("location");
+      if (!location) throw new Error(`Redirection HTTP ${response.status} sans destination`);
+      if (redirectCount >= CG124_MAX_REDIRECTS) throw new Error("Trop de redirections");
+      current = await cg124ValidateRemoteUrl(new URL(location, current.href).href);
+      continue;
+    }
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+    if (contentType && !contentType.includes("text/html") && !contentType.includes("application/xhtml+xml")) {
+      throw new Error(`Contenu non HTML (${contentType.split(";")[0]})`);
+    }
+    return { html: await cg124ReadResponseBody(response), finalUrl: current.href };
+  }
+  throw new Error("Trop de redirections");
+}
+
+const CG124_NOISE_SELECTOR = [
+  "script", "style", "noscript", "template", "svg", "canvas", "iframe", "object", "embed",
+  "nav", "header", "footer", "aside", "form", "button", "input", "select", "textarea",
+  "[role='navigation']", "[role='banner']", "[role='contentinfo']", "[aria-hidden='true']",
+  ".cookie", ".cookies", ".cookie-banner", ".consent", ".advert", ".advertisement", ".ads",
+  ".social", ".share", ".sharing", ".newsletter", ".breadcrumb", ".breadcrumbs"
+].join(",");
+
+function cg124DomToText(root) {
+  if (!root) return "";
+  root.querySelectorAll(CG124_NOISE_SELECTOR).forEach((el) => el.remove());
+  root.querySelectorAll("img, picture, source, video, audio").forEach((el) => el.remove());
+
+  root.querySelectorAll("br").forEach((el) => el.replaceWith(root.ownerDocument.createTextNode("\n")));
+  root.querySelectorAll("td, th").forEach((el) => el.appendChild(root.ownerDocument.createTextNode("\t")));
+  root.querySelectorAll("li").forEach((el) => {
+    el.insertBefore(root.ownerDocument.createTextNode("• "), el.firstChild);
+    el.appendChild(root.ownerDocument.createTextNode("\n"));
+  });
+  root.querySelectorAll("h1,h2,h3,h4,h5,h6,p,div,section,article,dt,dd,tr,blockquote,pre").forEach((el) => {
+    el.insertBefore(root.ownerDocument.createTextNode("\n"), el.firstChild);
+    el.appendChild(root.ownerDocument.createTextNode("\n"));
+  });
+
+  return root.textContent || "";
+}
+
+function cg124NormalizeText(text) {
+  const rawLines = String(text || "")
+    .replace(/\u00a0/g, " ")
+    .replace(/\r/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]{2,}/g, " ").trim());
+
+  const out = [];
+  let previousNonEmpty = null;
+  for (const line of rawLines) {
+    if (!line) {
+      if (out.length && out[out.length - 1] !== "") out.push("");
+      continue;
+    }
+    if (line === previousNonEmpty) continue;
+    out.push(line);
+    previousNonEmpty = line;
+  }
+  while (out.length && out[0] === "") out.shift();
+  while (out.length && out[out.length - 1] === "") out.pop();
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function cg124ExtractReadableText(html, pageUrl) {
+  const dom = new JSDOMCGWEB124(html, { url: pageUrl });
+  const original = dom.window.document;
+  original.querySelectorAll(CG124_NOISE_SELECTOR).forEach((el) => el.remove());
+
+  const h1 = cg124NormalizeText(original.querySelector("h1")?.textContent || "");
+  const docTitle = cg124NormalizeText(original.title || "");
+
+  let article = null;
+  try {
+    const clone = original.cloneNode(true);
+    article = new ReadabilityCGWEB124(clone, { charThreshold: 80 }).parse();
+  } catch (_) {
+    article = null;
+  }
+
+  let bodyText = "";
+  let articleTitle = "";
+  if (article && article.content && cg124NormalizeText(article.textContent || "").length >= 80) {
+    articleTitle = cg124NormalizeText(article.title || "");
+    const articleDom = new JSDOMCGWEB124(`<body>${article.content}</body>`, { url: pageUrl });
+    bodyText = cg124NormalizeText(cg124DomToText(articleDom.window.document.body));
+  }
+
+  if (bodyText.length < 80) {
+    const fallback = original.querySelector("main, article, [role='main']") || original.body;
+    bodyText = cg124NormalizeText(cg124DomToText(fallback));
+  }
+
+  const title = h1 || articleTitle || docTitle;
+  let finalText = bodyText;
+  if (title && !bodyText.toLocaleLowerCase("fr").startsWith(title.toLocaleLowerCase("fr"))) {
+    finalText = `${title}\n\n${bodyText}`;
+  }
+  finalText = cg124NormalizeText(finalText);
+
+  if (finalText.length < 30) throw new Error("Aucun texte exploitable détecté");
+  return finalText;
+}
+
+async function cg124ExtractMany(urls) {
+  const results = new Array(urls.length);
+  const concurrency = 4;
+
+  for (let start = 0; start < urls.length; start += concurrency) {
+    const group = urls.slice(start, start + concurrency);
+    await Promise.all(group.map(async (url, offset) => {
+      const index = start + offset;
+      try {
+        const fetched = await cg124FetchHtml(url);
+        const text = cg124ExtractReadableText(fetched.html, fetched.finalUrl);
+        results[index] = { index, ok: true, text, chars: text.length };
+      } catch (err) {
+        results[index] = {
+          index,
+          ok: false,
+          text: "",
+          error: err && err.message ? err.message : "Erreur inconnue",
+        };
+      }
+    }));
+  }
+  return results;
+}
+
+async function cg124BuildXlsx(texts) {
+  const workbook = new ExcelJSCGWEB124.Workbook();
+  workbook.creator = "CGWEB124 RAW_TEXT_EXTRACTOR001";
+  workbook.created = new Date();
+  const sheet = workbook.addWorksheet("Fiches");
+  sheet.getColumn(1).width = 120;
+
+  texts.forEach((value, index) => {
+    const cell = sheet.getCell(index + 1, 1);
+    cell.value = String(value || "");
+    cell.alignment = { wrapText: true, vertical: "top" };
+  });
+
+  return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
+exports.cgweb124RawTextExtract = functionsCGWEB124
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .https.onRequest(async (req, res) => {
+    cg124Cors(res);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    if (req.method !== "POST") return res.status(405).json({ ok: false, error: "POST requis" });
+
+    try {
+      const action = String(req.body?.action || "extract");
+
+      if (action === "extract") {
+        const urls = Array.isArray(req.body?.urls)
+          ? req.body.urls.map((v) => String(v || "").trim()).filter(Boolean)
+          : [];
+        if (!urls.length) return res.status(400).json({ ok: false, error: "Aucune adresse fournie" });
+        if (urls.length > CG124_MAX_URLS_PER_CALL) {
+          return res.status(400).json({ ok: false, error: `Maximum ${CG124_MAX_URLS_PER_CALL} adresses par appel` });
+        }
+
+        const results = await cg124ExtractMany(urls);
+        const successCount = results.filter((r) => r?.ok).length;
+        return res.json({
+          ok: true,
+          successCount,
+          failureCount: results.length - successCount,
+          results,
+        });
+      }
+
+      if (action === "export") {
+        const texts = Array.isArray(req.body?.texts) ? req.body.texts.map((v) => String(v || "")) : [];
+        if (!texts.length) return res.status(400).json({ ok: false, error: "Aucun texte à exporter" });
+        if (texts.length > CG124_MAX_EXPORT_ROWS) {
+          return res.status(400).json({ ok: false, error: `Maximum ${CG124_MAX_EXPORT_ROWS} lignes par export` });
+        }
+        const tooLong = texts.findIndex((text) => text.length > CG124_XLSX_CELL_LIMIT);
+        if (tooLong >= 0) {
+          return res.status(413).json({
+            ok: false,
+            error: `La fiche ${tooLong + 1} dépasse la limite XLSX de ${CG124_XLSX_CELL_LIMIT} caractères par cellule`,
+          });
+        }
+
+        const buffer = await cg124BuildXlsx(texts);
+        const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+$/, "").replace("T", "_");
+        res.set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.set("Content-Disposition", `attachment; filename="CGWEB124_RAW_TEXT_${stamp}.xlsx"`);
+        return res.status(200).send(buffer);
+      }
+
+      return res.status(400).json({ ok: false, error: "Action inconnue" });
+    } catch (err) {
+      console.error("CGWEB124", err);
+      return res.status(500).json({
+        ok: false,
+        error: err && err.message ? err.message : "Erreur serveur",
+      });
+    }
+  });
+// ===== CGWEB124 · RAW_TEXT_EXTRACTOR001 · END =====
 

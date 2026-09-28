@@ -1,0 +1,190 @@
+#cgweb124Launcher,
+#cgweb124Modal,
+#cgweb124Modal * {
+  box-sizing: border-box;
+}
+
+#cgweb124Launcher {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 99980;
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 12px;
+  padding: 10px 14px;
+  background: #17191f;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 10px 28px rgba(0,0,0,.28);
+}
+
+#cgweb124Launcher:hover { filter: brightness(1.08); }
+
+#cgweb124Modal[hidden] { display: none !important; }
+
+#cgweb124Modal {
+  position: fixed;
+  inset: 0;
+  z-index: 99990;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  font: inherit;
+}
+
+#cgweb124Modal .cg124-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,.62);
+  backdrop-filter: blur(2px);
+}
+
+#cgweb124Modal .cg124-card {
+  position: relative;
+  width: min(900px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 16px;
+  padding: 18px;
+  background: #111318;
+  color: #f3f4f6;
+  box-shadow: 0 24px 70px rgba(0,0,0,.45);
+}
+
+#cgweb124Modal .cg124-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+#cgweb124Modal h2 {
+  margin: 0;
+  font-size: 1.2em;
+}
+
+#cgweb124Modal .cg124-head p {
+  margin: 4px 0 0;
+  opacity: .68;
+}
+
+#cgweb124Modal .cg124-close {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 9px;
+  background: rgba(255,255,255,.08);
+  color: #fff;
+  font: inherit;
+  font-size: 1.35em;
+  cursor: pointer;
+}
+
+#cgweb124Modal .cg124-label {
+  display: block;
+  margin-bottom: 7px;
+  font-weight: 700;
+}
+
+#cgweb124Urls {
+  width: 100%;
+  min-height: 260px;
+  resize: vertical;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 10px;
+  padding: 12px;
+  background: #090b0f;
+  color: #f7f7f7;
+  font: inherit;
+  line-height: 1.5;
+}
+
+#cgweb124Urls:focus {
+  outline: 2px solid rgba(255,255,255,.24);
+  outline-offset: 2px;
+}
+
+#cgweb124Modal .cg124-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 13px;
+}
+
+#cgweb124Modal .cg124-actions button {
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 9px;
+  padding: 9px 13px;
+  background: #f4f4f5;
+  color: #111318;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+#cgweb124Modal .cg124-actions .cg124-secondary {
+  background: rgba(255,255,255,.06);
+  color: #f3f4f6;
+}
+
+#cgweb124Modal button:disabled,
+#cgweb124Urls:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+#cgweb124Modal .cg124-status,
+#cgweb124Modal .cg124-summary,
+#cgweb124Modal .cg124-failures {
+  margin-top: 14px;
+}
+
+#cgweb124Modal .cg124-status {
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,.055);
+}
+
+#cgweb124Modal .cg124-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+#cgweb124Modal .cg124-warning {
+  width: 100%;
+  padding-top: 4px;
+}
+
+#cgweb124Modal .cg124-failures details {
+  border-top: 1px solid rgba(255,255,255,.12);
+  padding-top: 12px;
+}
+
+#cgweb124Modal .cg124-failures summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+#cgweb124Modal .cg124-failure-list {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+#cgweb124Modal .cg124-failure-list > div {
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: rgba(255,255,255,.045);
+  overflow-wrap: anywhere;
+}
+
+#cgweb124Modal .cg124-failure-list span { opacity: .72; }
+html.cg124-open { overflow: hidden; }
+
