@@ -1,12 +1,21 @@
 /*
- * CGWEB123 FIX3
+ * CGWEB123 FIX4
  *
+ * TOKEN_COST_METER001
+ * OPENAI_USAGE_CAPTURE001
+ * STANDARD_COST_CALC001
+ * BATCH_COST_PROJECTION001
+ * SAMPLE_COST_HISTORY001
+ * QUIZYPEDIA_6000_PROJECTION001
+ * NO_EXTRA_AI_CALL001
+ *
+ * Hérite de CGWEB123 FIX3 :
  * STANDALONE_QUESTION001
  * MIXED_DOMAIN_CONTEXT001
  * CONTEXT_ANCHOR001
  * AMBIGUITY_REWRITE001
  *
- * Hérite de FIX2 :
+ * Hérite de CGWEB123 FIX2 :
  * FULL_FICHE_COVERAGE001
  * PER_FICHE_AI_GENERATION001
  * PER_FICHE_QUOTA001
@@ -51,7 +60,7 @@ const MODEL =
 
 
 const VERSION =
-  'CGWEB123_FIX3_STANDALONE_QUESTION001_MIXED_DOMAIN_CONTEXT001_CONTEXT_ANCHOR001_AMBIGUITY_REWRITE001';
+  'CGWEB123_FIX4_TOKEN_COST_METER001_OPENAI_USAGE_CAPTURE001_STANDARD_COST_CALC001_BATCH_COST_PROJECTION001';
 
 
 const GENERATION_BATCH_SIZE =
@@ -64,6 +73,70 @@ const REVIEW_BATCH_SIZE =
 
 const API_CONCURRENCY =
   2;
+
+/*
+ * ============================================================
+ * CGWEB123 FIX4 · TOKEN_COST_METER001
+ *
+ * IMPORTANT :
+ * Il s'agit d'un SNAPSHOT TARIFAIRE.
+ * Les tarifs API peuvent évoluer ultérieurement.
+ * ============================================================
+ */
+
+const TOKEN_PRICE_SNAPSHOT =
+  '2026-09-28';
+
+
+const LONG_CONTEXT_THRESHOLD =
+  272000;
+
+
+const TOKEN_PRICES={
+
+  standard:{
+
+    short:{
+      input:4.00,
+      cachedInput:0.40,
+      cacheWrite:5.00,
+      output:20.00
+    },
+
+    long:{
+      input:8.00,
+      cachedInput:0.80,
+      cacheWrite:10.00,
+      output:30.00
+    }
+  },
+
+  batch:{
+
+    short:{
+      input:2.00,
+      cachedInput:0.20,
+      cacheWrite:2.50,
+      output:10.00
+    },
+
+    long:{
+      input:4.00,
+      cachedInput:0.40,
+      cacheWrite:5.00,
+      output:15.00
+    }
+  }
+};
+
+
+const QUIZYPEDIA_PROJECT_THEMES =
+  6000;
+
+
+const QUIZYPEDIA_PROJECT_FICHES =
+  60000;
+
 
 
 /* ============================================================
@@ -945,6 +1018,619 @@ function contextAnchorPresent(
   ).includes(
     anchor
   );
+}
+
+
+
+/* ============================================================
+   TOKEN_COST_METER001
+   ============================================================ */
+
+
+function tokenInteger(value){
+
+  const number=
+    Number(
+      value || 0
+    );
+
+
+  if(
+    !Number.isFinite(number) ||
+    number<0
+  ){
+    return 0;
+  }
+
+
+  return Math.round(
+    number
+  );
+}
+
+
+function money(value){
+
+  const number=
+    Number(
+      value || 0
+    );
+
+
+  if(
+    !Number.isFinite(number)
+  ){
+    return 0;
+  }
+
+
+  return Math.round(
+    number * 100000000
+  ) / 100000000;
+}
+
+
+/*
+ * L'API inclut :
+ *
+ * cached_tokens       dans input_tokens
+ * cache_write_tokens  dans input_tokens
+ * reasoning_tokens    dans output_tokens
+ */
+function measureOneUsage(
+  usage
+){
+
+  usage=
+    usage &&
+    typeof usage==='object'
+      ? usage
+      : {};
+
+
+  const inputTokens=
+    tokenInteger(
+      usage.input_tokens
+    );
+
+
+  let cachedInputTokens=
+    tokenInteger(
+      usage
+        ?.input_tokens_details
+        ?.cached_tokens
+    );
+
+
+  let cacheWriteTokens=
+    tokenInteger(
+      usage
+        ?.input_tokens_details
+        ?.cache_write_tokens
+    );
+
+
+  cachedInputTokens=
+    Math.min(
+      inputTokens,
+      cachedInputTokens
+    );
+
+
+  cacheWriteTokens=
+    Math.min(
+      Math.max(
+        0,
+        inputTokens -
+        cachedInputTokens
+      ),
+      cacheWriteTokens
+    );
+
+
+  const ordinaryInputTokens=
+    Math.max(
+      0,
+      inputTokens -
+      cachedInputTokens -
+      cacheWriteTokens
+    );
+
+
+  const outputTokens=
+    tokenInteger(
+      usage.output_tokens
+    );
+
+
+  const reasoningTokens=
+    Math.min(
+      outputTokens,
+      tokenInteger(
+        usage
+          ?.output_tokens_details
+          ?.reasoning_tokens
+      )
+    );
+
+
+  const visibleOutputTokens=
+    Math.max(
+      0,
+      outputTokens -
+      reasoningTokens
+    );
+
+
+  const totalTokens=
+    tokenInteger(
+      usage.total_tokens
+    ) ||
+    (
+      inputTokens +
+      outputTokens
+    );
+
+
+  /*
+   * La tarification long context est déterminée
+   * appel par appel.
+   */
+  const longContext=
+    inputTokens >
+    LONG_CONTEXT_THRESHOLD;
+
+
+  const contextClass=
+    longContext
+      ? 'long'
+      : 'short';
+
+
+  function calculateCost(
+    mode
+  ){
+
+    const prices=
+      TOKEN_PRICES[
+        mode
+      ][
+        contextClass
+      ];
+
+
+    const inputCost=
+      (
+        ordinaryInputTokens *
+        prices.input
+      ) /
+      1000000;
+
+
+    const cachedInputCost=
+      (
+        cachedInputTokens *
+        prices.cachedInput
+      ) /
+      1000000;
+
+
+    const cacheWriteCost=
+      (
+        cacheWriteTokens *
+        prices.cacheWrite
+      ) /
+      1000000;
+
+
+    /*
+     * outputTokens inclut déjà les reasoning_tokens.
+     */
+    const outputCost=
+      (
+        outputTokens *
+        prices.output
+      ) /
+      1000000;
+
+
+    return {
+
+      input:
+        money(
+          inputCost
+        ),
+
+      cachedInput:
+        money(
+          cachedInputCost
+        ),
+
+      cacheWrite:
+        money(
+          cacheWriteCost
+        ),
+
+      output:
+        money(
+          outputCost
+        ),
+
+      total:
+        money(
+          inputCost +
+          cachedInputCost +
+          cacheWriteCost +
+          outputCost
+        )
+    };
+  }
+
+
+  return {
+
+    inputTokens,
+
+    ordinaryInputTokens,
+
+    cachedInputTokens,
+
+    cacheWriteTokens,
+
+    outputTokens,
+
+    reasoningTokens,
+
+    visibleOutputTokens,
+
+    totalTokens,
+
+    longContext,
+
+    contextClass,
+
+    standardCost:
+      calculateCost(
+        'standard'
+      ),
+
+    batchCost:
+      calculateCost(
+        'batch'
+      )
+  };
+}
+
+
+function aggregateUsage(
+  usages
+){
+
+  const rows=
+    (
+      Array.isArray(
+        usages
+      )
+        ? usages
+        : []
+    )
+      .filter(
+        value=>
+          value &&
+          typeof value==='object'
+      )
+      .map(
+        measureOneUsage
+      );
+
+
+  const out={
+
+    apiCalls:
+      rows.length,
+
+    longContextCalls:0,
+
+    inputTokens:0,
+
+    ordinaryInputTokens:0,
+
+    cachedInputTokens:0,
+
+    cacheWriteTokens:0,
+
+    outputTokens:0,
+
+    reasoningTokens:0,
+
+    visibleOutputTokens:0,
+
+    totalTokens:0,
+
+    standardCostUSD:0,
+
+    batchEquivalentCostUSD:0
+  };
+
+
+  for(
+    const row of rows
+  ){
+
+    out.longContextCalls +=
+      row.longContext
+        ? 1
+        : 0;
+
+
+    out.inputTokens +=
+      row.inputTokens;
+
+
+    out.ordinaryInputTokens +=
+      row.ordinaryInputTokens;
+
+
+    out.cachedInputTokens +=
+      row.cachedInputTokens;
+
+
+    out.cacheWriteTokens +=
+      row.cacheWriteTokens;
+
+
+    out.outputTokens +=
+      row.outputTokens;
+
+
+    out.reasoningTokens +=
+      row.reasoningTokens;
+
+
+    out.visibleOutputTokens +=
+      row.visibleOutputTokens;
+
+
+    out.totalTokens +=
+      row.totalTokens;
+
+
+    out.standardCostUSD +=
+      row.standardCost.total;
+
+
+    out.batchEquivalentCostUSD +=
+      row.batchCost.total;
+  }
+
+
+  out.standardCostUSD=
+    money(
+      out.standardCostUSD
+    );
+
+
+  out.batchEquivalentCostUSD=
+    money(
+      out.batchEquivalentCostUSD
+    );
+
+
+  return out;
+}
+
+
+function combineUsageMeters(
+  generation,
+  review
+){
+
+  return {
+
+    apiCalls:
+      generation.apiCalls +
+      review.apiCalls,
+
+    longContextCalls:
+      generation.longContextCalls +
+      review.longContextCalls,
+
+    inputTokens:
+      generation.inputTokens +
+      review.inputTokens,
+
+    ordinaryInputTokens:
+      generation.ordinaryInputTokens +
+      review.ordinaryInputTokens,
+
+    cachedInputTokens:
+      generation.cachedInputTokens +
+      review.cachedInputTokens,
+
+    cacheWriteTokens:
+      generation.cacheWriteTokens +
+      review.cacheWriteTokens,
+
+    outputTokens:
+      generation.outputTokens +
+      review.outputTokens,
+
+    reasoningTokens:
+      generation.reasoningTokens +
+      review.reasoningTokens,
+
+    visibleOutputTokens:
+      generation.visibleOutputTokens +
+      review.visibleOutputTokens,
+
+    totalTokens:
+      generation.totalTokens +
+      review.totalTokens,
+
+    standardCostUSD:
+      money(
+        generation.standardCostUSD +
+        review.standardCostUSD
+      ),
+
+    batchEquivalentCostUSD:
+      money(
+        generation.batchEquivalentCostUSD +
+        review.batchEquivalentCostUSD
+      )
+  };
+}
+
+
+function buildTokenCostMeter(
+  generationUsage,
+  reviewUsage,
+  ficheCount
+){
+
+  const generation=
+    aggregateUsage(
+      generationUsage
+    );
+
+
+  const review=
+    aggregateUsage(
+      reviewUsage
+    );
+
+
+  const total=
+    combineUsageMeters(
+      generation,
+      review
+    );
+
+
+  const count=
+    Math.max(
+      0,
+      tokenInteger(
+        ficheCount
+      )
+    );
+
+
+  const standardPerFiche=
+    count
+      ? (
+          total.standardCostUSD /
+          count
+        )
+      : 0;
+
+
+  const batchPerFiche=
+    count
+      ? (
+          total.batchEquivalentCostUSD /
+          count
+        )
+      : 0;
+
+
+  return {
+
+    version:
+      'TOKEN_COST_METER001',
+
+    currency:
+      'USD',
+
+    model:
+      MODEL,
+
+    pricingSnapshot:
+      TOKEN_PRICE_SNAPSHOT,
+
+    longContextThreshold:
+      LONG_CONTEXT_THRESHOLD,
+
+    pricing:{
+
+      standard:
+        TOKEN_PRICES.standard,
+
+      batch:
+        TOKEN_PRICES.batch
+    },
+
+    generation,
+
+    review,
+
+    total,
+
+    ficheCount:
+      count,
+
+    perFiche:{
+
+      standardCostUSD:
+        money(
+          standardPerFiche
+        ),
+
+      batchEquivalentCostUSD:
+        money(
+          batchPerFiche
+        )
+    },
+
+    /*
+     * Projection brute du thème courant.
+     */
+    currentThemeProjection:{
+
+      themeCount:
+        QUIZYPEDIA_PROJECT_THEMES,
+
+      ficheCount:
+        QUIZYPEDIA_PROJECT_FICHES,
+
+      standardBy6000ThemesUSD:
+        money(
+          total.standardCostUSD *
+          QUIZYPEDIA_PROJECT_THEMES
+        ),
+
+      batchBy6000ThemesUSD:
+        money(
+          total.batchEquivalentCostUSD *
+          QUIZYPEDIA_PROJECT_THEMES
+        ),
+
+      standardBy60000FichesUSD:
+        money(
+          standardPerFiche *
+          QUIZYPEDIA_PROJECT_FICHES
+        ),
+
+      batchBy60000FichesUSD:
+        money(
+          batchPerFiche *
+          QUIZYPEDIA_PROJECT_FICHES
+        )
+    },
+
+    notes:[
+
+      'Mesure basée sur usage retourné par OpenAI.',
+
+      'reasoning_tokens est inclus dans output_tokens.',
+
+      'Le coût Batch est une projection : le traitement actuel reste Standard.',
+
+      'Aucun appel IA supplémentaire n’est effectué par le compteur.',
+
+      'Les tarifs sont un snapshot et peuvent évoluer.'
+    ]
+  };
 }
 
 
@@ -2920,6 +3606,20 @@ exports.cgweb123AiQuestionFactory =
           );
 
 
+        /*
+         * TOKEN_COST_METER001
+         *
+         * Aucun appel OpenAI supplémentaire :
+         * nous exploitons seulement les objets usage déjà reçus.
+         */
+        const tokenMeter=
+          buildTokenCostMeter(
+            generationUsage,
+            reviewUsage,
+            units.length
+          );
+
+
         return json(
           res,
           200,
@@ -2962,6 +3662,11 @@ exports.cgweb123AiQuestionFactory =
                 candidates.length -
                 finalQuestions.length
               ),
+
+            /*
+             * TOKEN_COST_METER001
+             */
+            tokenMeter,
 
             coverage,
 

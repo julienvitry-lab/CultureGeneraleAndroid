@@ -374,3 +374,2466 @@
 .cg123-context-control p{
   margin:5px 0 0;
 }
+
+/* ============================================================
+   CGWEB123 FIX4 · TOKEN_COST_METER001
+   ============================================================ */
+
+.cg123-token-meter{
+  margin-top:12px;
+}
+
+.cg123-token-box{
+  padding:12px;
+  border-radius:11px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(0,0,0,.12);
+}
+
+.cg123-token-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
+.cg123-token-head > div{
+  display:grid;
+  gap:2px;
+}
+
+.cg123-token-head > div > strong{
+  font-size:12px;
+}
+
+.cg123-token-head > div > span{
+  font-size:10px;
+  opacity:.65;
+}
+
+.cg123-token-reset{
+  min-height:30px;
+  padding:5px 8px;
+  border-radius:7px;
+  cursor:pointer;
+  font-size:10px;
+}
+
+.cg123-token-wait{
+  margin:0;
+  opacity:.7;
+  font-size:11px;
+}
+
+.cg123-token-sample-mini{
+  margin-top:7px;
+  font-size:10px;
+  opacity:.75;
+}
+
+.cg123-token-grid{
+  display:grid;
+  grid-template-columns:
+    repeat(6,minmax(0,1fr));
+  gap:7px;
+  margin-top:10px;
+}
+
+.cg123-token-grid > div,
+.cg123-cost-main > div,
+.cg123-projection-grid > div{
+  padding:8px;
+  border-radius:8px;
+  background:rgba(255,255,255,.04);
+}
+
+.cg123-token-grid strong,
+.cg123-cost-main strong,
+.cg123-projection-grid strong{
+  display:block;
+}
+
+.cg123-token-grid span,
+.cg123-cost-main span,
+.cg123-projection-grid span{
+  display:block;
+  margin-top:2px;
+  font-size:9px;
+  opacity:.68;
+}
+
+.cg123-cost-main{
+  display:grid;
+  grid-template-columns:
+    repeat(3,minmax(0,1fr));
+  gap:7px;
+  margin-top:8px;
+}
+
+.cg123-cost-main strong{
+  margin-top:2px;
+  font-size:15px;
+}
+
+.cg123-token-details{
+  margin-top:9px;
+}
+
+.cg123-token-details > summary{
+  cursor:pointer;
+  font-size:10px;
+  font-weight:700;
+}
+
+.cg123-token-detail-grid{
+  display:grid;
+  grid-template-columns:
+    repeat(2,minmax(0,1fr));
+  gap:8px;
+  margin-top:8px;
+}
+
+.cg123-token-detail-grid > div{
+  display:grid;
+  gap:3px;
+  padding:8px;
+  border-radius:8px;
+  background:rgba(255,255,255,.035);
+  font-size:10px;
+}
+
+.cg123-token-projection{
+  margin-top:10px;
+  padding-top:9px;
+  border-top:
+cat > "$TMPDIR/apply_cgweb123_fix4.sh" <<'SH'
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+
+REPO="$HOME/CultureGeneraleAndroid"
+
+BACK="$REPO/web/functions/cgweb123.js"
+FRONT="$REPO/web/public/cgweb123.js"
+CSS="$REPO/web/public/cgweb123.css"
+HTML="$REPO/web/public/index.html"
+README="$REPO/README_CGWEB123_FIX4.txt"
+
+echo "===================================================================="
+echo "CGWEB123 FIX4 · TOKEN_COST_METER001"
+echo "OPENAI_USAGE_CAPTURE001"
+echo "STANDARD_COST_CALC001"
+echo "BATCH_COST_PROJECTION001"
+echo "SAMPLE_COST_HISTORY001"
+echo "QUIZYPEDIA_6000_PROJECTION001"
+echo "NO_EXTRA_AI_CALL001"
+echo "===================================================================="
+
+cd "$REPO"
+
+echo
+echo "=== 0. Préflight ==="
+
+git pull --ff-only origin main
+
+if [ -n "$(git status --porcelain)" ]; then
+  echo "ERREUR : dépôt non propre."
+  git status --short
+  exit 1
+fi
+
+grep -Fq \
+  "CGWEB123_FIX3_STANDALONE_QUESTION001" \
+  "$BACK" || {
+    echo "ERREUR : backend CGWEB123 FIX3 non reconnu."
+    exit 1
+  }
+
+grep -Fq \
+  "CGWEB123_FIX3_STANDALONE_QUESTION001" \
+  "$FRONT" || {
+    echo "ERREUR : frontend CGWEB123 FIX3 non reconnu."
+    exit 1
+  }
+
+grep -Fq \
+  "generationUsage" \
+  "$BACK" || {
+    echo "ERREUR : usage génération introuvable."
+    exit 1
+  }
+
+grep -Fq \
+  "reviewUsage" \
+  "$BACK" || {
+    echo "ERREUR : usage relecture introuvable."
+    exit 1
+  }
+
+if grep -Fq \
+  "TOKEN_COST_METER001" \
+  "$BACK"
+then
+  echo "ERREUR : FIX4 semble déjà installé."
+  exit 1
+fi
+
+echo "HEAD : $(git rev-parse --short HEAD)"
+echo "✓ CGWEB123 FIX3 reconnue"
+echo "✓ métriques OpenAI déjà disponibles"
+
+
+echo
+echo "=== 1. Backend TOKEN_COST_METER001 ==="
+
+python - <<'PY'
+from pathlib import Path
+
+p = (
+    Path.home()
+    / "CultureGeneraleAndroid"
+    / "web"
+    / "functions"
+    / "cgweb123.js"
+)
+
+s = p.read_text(
+    encoding="utf-8"
+)
+
+
+def once(old, new, label):
+
+    global s
+
+    if old not in s:
+        raise SystemExit(
+            f"ERREUR : {label} introuvable."
+        )
+
+    s = s.replace(
+        old,
+        new,
+        1
+    )
+
+
+# ============================================================
+# 1. HEADER
+# ============================================================
+
+old_header = """/*
+ * CGWEB123 FIX3
+ *
+ * STANDALONE_QUESTION001
+ * MIXED_DOMAIN_CONTEXT001
+ * CONTEXT_ANCHOR001
+ * AMBIGUITY_REWRITE001
+ *
+ * Hérite de CGWEB123 FIX2 :"""
+
+new_header = """/*
+ * CGWEB123 FIX4
+ *
+ * TOKEN_COST_METER001
+ * OPENAI_USAGE_CAPTURE001
+ * STANDARD_COST_CALC001
+ * BATCH_COST_PROJECTION001
+ * SAMPLE_COST_HISTORY001
+ * QUIZYPEDIA_6000_PROJECTION001
+ * NO_EXTRA_AI_CALL001
+ *
+ * Hérite de CGWEB123 FIX3 :
+ * STANDALONE_QUESTION001
+ * MIXED_DOMAIN_CONTEXT001
+ * CONTEXT_ANCHOR001
+ * AMBIGUITY_REWRITE001
+ *
+ * Hérite de CGWEB123 FIX2 :"""
+
+once(
+    old_header,
+    new_header,
+    "header FIX3"
+)
+
+
+once(
+"""  'CGWEB123_FIX3_STANDALONE_QUESTION001_MIXED_DOMAIN_CONTEXT001_CONTEXT_ANCHOR001_AMBIGUITY_REWRITE001';""",
+"""  'CGWEB123_FIX4_TOKEN_COST_METER001_OPENAI_USAGE_CAPTURE001_STANDARD_COST_CALC001_BATCH_COST_PROJECTION001';""",
+"VERSION FIX3"
+)
+
+
+# ============================================================
+# 2. TARIFS
+#
+# Snapshot officiel OpenAI au 28/09/2026.
+#
+# GPT-5.6 Sol
+#
+# Standard / contexte court :
+# input       = 4.00 $ / 1M
+# cached      = 0.40 $ / 1M
+# cache write = 5.00 $ / 1M
+# output      = 20.00 $ / 1M
+#
+# Standard / contexte long (>272k input) :
+# input       = 8.00
+# cached      = 0.80
+# cache write = 10.00
+# output      = 30.00
+#
+# Batch = 50 % des tarifs Standard.
+# ============================================================
+
+anchor = """const API_CONCURRENCY =
+  2;"""
+
+
+pricing = r'''
+
+/*
+ * ============================================================
+ * CGWEB123 FIX4 · TOKEN_COST_METER001
+ *
+ * IMPORTANT :
+ * Il s'agit d'un SNAPSHOT TARIFAIRE.
+ * Les tarifs API peuvent évoluer ultérieurement.
+ * ============================================================
+ */
+
+const TOKEN_PRICE_SNAPSHOT =
+  '2026-09-28';
+
+
+const LONG_CONTEXT_THRESHOLD =
+  272000;
+
+
+const TOKEN_PRICES={
+
+  standard:{
+
+    short:{
+      input:4.00,
+      cachedInput:0.40,
+      cacheWrite:5.00,
+      output:20.00
+    },
+
+    long:{
+      input:8.00,
+      cachedInput:0.80,
+      cacheWrite:10.00,
+      output:30.00
+    }
+  },
+
+  batch:{
+
+    short:{
+      input:2.00,
+      cachedInput:0.20,
+      cacheWrite:2.50,
+      output:10.00
+    },
+
+    long:{
+      input:4.00,
+      cachedInput:0.40,
+      cacheWrite:5.00,
+      output:15.00
+    }
+  }
+};
+
+
+const QUIZYPEDIA_PROJECT_THEMES =
+  6000;
+
+
+const QUIZYPEDIA_PROJECT_FICHES =
+  60000;
+'''
+
+
+if anchor not in s:
+    raise SystemExit(
+        "ERREUR : API_CONCURRENCY introuvable."
+    )
+
+
+s = s.replace(
+    anchor,
+    anchor + pricing,
+    1
+)
+
+
+# ============================================================
+# 3. MOTEUR DE MESURE
+# ============================================================
+
+anchor = """/* ============================================================
+   OPENAI
+   ============================================================ */"""
+
+
+meter_helpers = r'''
+/* ============================================================
+   TOKEN_COST_METER001
+   ============================================================ */
+
+
+function tokenInteger(value){
+
+  const number=
+    Number(
+      value || 0
+    );
+
+
+  if(
+    !Number.isFinite(number) ||
+    number<0
+  ){
+    return 0;
+  }
+
+
+  return Math.round(
+    number
+  );
+}
+
+
+function money(value){
+
+  const number=
+    Number(
+      value || 0
+    );
+
+
+  if(
+    !Number.isFinite(number)
+  ){
+    return 0;
+  }
+
+
+  return Math.round(
+    number * 100000000
+  ) / 100000000;
+}
+
+
+/*
+ * L'API inclut :
+ *
+ * cached_tokens       dans input_tokens
+ * cache_write_tokens  dans input_tokens
+ * reasoning_tokens    dans output_tokens
+ */
+function measureOneUsage(
+  usage
+){
+
+  usage=
+    usage &&
+    typeof usage==='object'
+      ? usage
+      : {};
+
+
+  const inputTokens=
+    tokenInteger(
+      usage.input_tokens
+    );
+
+
+  let cachedInputTokens=
+    tokenInteger(
+      usage
+        ?.input_tokens_details
+        ?.cached_tokens
+    );
+
+
+  let cacheWriteTokens=
+    tokenInteger(
+      usage
+        ?.input_tokens_details
+        ?.cache_write_tokens
+    );
+
+
+  cachedInputTokens=
+    Math.min(
+      inputTokens,
+      cachedInputTokens
+    );
+
+
+  cacheWriteTokens=
+    Math.min(
+      Math.max(
+        0,
+        inputTokens -
+        cachedInputTokens
+      ),
+      cacheWriteTokens
+    );
+
+
+  const ordinaryInputTokens=
+    Math.max(
+      0,
+      inputTokens -
+      cachedInputTokens -
+      cacheWriteTokens
+    );
+
+
+  const outputTokens=
+    tokenInteger(
+      usage.output_tokens
+    );
+
+
+  const reasoningTokens=
+    Math.min(
+      outputTokens,
+      tokenInteger(
+        usage
+          ?.output_tokens_details
+          ?.reasoning_tokens
+      )
+    );
+
+
+  const visibleOutputTokens=
+    Math.max(
+      0,
+      outputTokens -
+      reasoningTokens
+    );
+
+
+  const totalTokens=
+    tokenInteger(
+      usage.total_tokens
+    ) ||
+    (
+      inputTokens +
+      outputTokens
+    );
+
+
+  /*
+   * La tarification long context est déterminée
+   * appel par appel.
+   */
+  const longContext=
+    inputTokens >
+    LONG_CONTEXT_THRESHOLD;
+
+
+  const contextClass=
+    longContext
+      ? 'long'
+      : 'short';
+
+
+  function calculateCost(
+    mode
+  ){
+
+    const prices=
+      TOKEN_PRICES[
+        mode
+      ][
+        contextClass
+      ];
+
+
+    const inputCost=
+      (
+        ordinaryInputTokens *
+        prices.input
+      ) /
+      1000000;
+
+
+    const cachedInputCost=
+      (
+        cachedInputTokens *
+        prices.cachedInput
+      ) /
+      1000000;
+
+
+    const cacheWriteCost=
+      (
+        cacheWriteTokens *
+        prices.cacheWrite
+      ) /
+      1000000;
+
+
+    /*
+     * outputTokens inclut déjà les reasoning_tokens.
+     */
+    const outputCost=
+      (
+        outputTokens *
+        prices.output
+      ) /
+      1000000;
+
+
+    return {
+
+      input:
+        money(
+          inputCost
+        ),
+
+      cachedInput:
+        money(
+          cachedInputCost
+        ),
+
+      cacheWrite:
+        money(
+          cacheWriteCost
+        ),
+
+      output:
+        money(
+          outputCost
+        ),
+
+      total:
+        money(
+          inputCost +
+          cachedInputCost +
+          cacheWriteCost +
+          outputCost
+        )
+    };
+  }
+
+
+  return {
+
+    inputTokens,
+
+    ordinaryInputTokens,
+
+    cachedInputTokens,
+
+    cacheWriteTokens,
+
+    outputTokens,
+
+    reasoningTokens,
+
+    visibleOutputTokens,
+
+    totalTokens,
+
+    longContext,
+
+    contextClass,
+
+    standardCost:
+      calculateCost(
+        'standard'
+      ),
+
+    batchCost:
+      calculateCost(
+        'batch'
+      )
+  };
+}
+
+
+function aggregateUsage(
+  usages
+){
+
+  const rows=
+    (
+      Array.isArray(
+        usages
+      )
+        ? usages
+        : []
+    )
+      .filter(
+        value=>
+          value &&
+          typeof value==='object'
+      )
+      .map(
+        measureOneUsage
+      );
+
+
+  const out={
+
+    apiCalls:
+      rows.length,
+
+    longContextCalls:0,
+
+    inputTokens:0,
+
+    ordinaryInputTokens:0,
+
+    cachedInputTokens:0,
+
+    cacheWriteTokens:0,
+
+    outputTokens:0,
+
+    reasoningTokens:0,
+
+    visibleOutputTokens:0,
+
+    totalTokens:0,
+
+    standardCostUSD:0,
+
+    batchEquivalentCostUSD:0
+  };
+
+
+  for(
+    const row of rows
+  ){
+
+    out.longContextCalls +=
+      row.longContext
+        ? 1
+        : 0;
+
+
+    out.inputTokens +=
+      row.inputTokens;
+
+
+    out.ordinaryInputTokens +=
+      row.ordinaryInputTokens;
+
+
+    out.cachedInputTokens +=
+      row.cachedInputTokens;
+
+
+    out.cacheWriteTokens +=
+      row.cacheWriteTokens;
+
+
+    out.outputTokens +=
+      row.outputTokens;
+
+
+    out.reasoningTokens +=
+      row.reasoningTokens;
+
+
+    out.visibleOutputTokens +=
+      row.visibleOutputTokens;
+
+
+    out.totalTokens +=
+      row.totalTokens;
+
+
+    out.standardCostUSD +=
+      row.standardCost.total;
+
+
+    out.batchEquivalentCostUSD +=
+      row.batchCost.total;
+  }
+
+
+  out.standardCostUSD=
+    money(
+      out.standardCostUSD
+    );
+
+
+  out.batchEquivalentCostUSD=
+    money(
+      out.batchEquivalentCostUSD
+    );
+
+
+  return out;
+}
+
+
+function combineUsageMeters(
+  generation,
+  review
+){
+
+  return {
+
+    apiCalls:
+      generation.apiCalls +
+      review.apiCalls,
+
+    longContextCalls:
+      generation.longContextCalls +
+      review.longContextCalls,
+
+    inputTokens:
+      generation.inputTokens +
+      review.inputTokens,
+
+    ordinaryInputTokens:
+      generation.ordinaryInputTokens +
+      review.ordinaryInputTokens,
+
+    cachedInputTokens:
+      generation.cachedInputTokens +
+      review.cachedInputTokens,
+
+    cacheWriteTokens:
+      generation.cacheWriteTokens +
+      review.cacheWriteTokens,
+
+    outputTokens:
+      generation.outputTokens +
+      review.outputTokens,
+
+    reasoningTokens:
+      generation.reasoningTokens +
+      review.reasoningTokens,
+
+    visibleOutputTokens:
+      generation.visibleOutputTokens +
+      review.visibleOutputTokens,
+
+    totalTokens:
+      generation.totalTokens +
+      review.totalTokens,
+
+    standardCostUSD:
+      money(
+        generation.standardCostUSD +
+        review.standardCostUSD
+      ),
+
+    batchEquivalentCostUSD:
+      money(
+        generation.batchEquivalentCostUSD +
+        review.batchEquivalentCostUSD
+      )
+  };
+}
+
+
+function buildTokenCostMeter(
+  generationUsage,
+  reviewUsage,
+  ficheCount
+){
+
+  const generation=
+    aggregateUsage(
+      generationUsage
+    );
+
+
+  const review=
+    aggregateUsage(
+      reviewUsage
+    );
+
+
+  const total=
+    combineUsageMeters(
+      generation,
+      review
+    );
+
+
+  const count=
+    Math.max(
+      0,
+      tokenInteger(
+        ficheCount
+      )
+    );
+
+
+  const standardPerFiche=
+    count
+      ? (
+          total.standardCostUSD /
+          count
+        )
+      : 0;
+
+
+  const batchPerFiche=
+    count
+      ? (
+          total.batchEquivalentCostUSD /
+          count
+        )
+      : 0;
+
+
+  return {
+
+    version:
+      'TOKEN_COST_METER001',
+
+    currency:
+      'USD',
+
+    model:
+      MODEL,
+
+    pricingSnapshot:
+      TOKEN_PRICE_SNAPSHOT,
+
+    longContextThreshold:
+      LONG_CONTEXT_THRESHOLD,
+
+    pricing:{
+
+      standard:
+        TOKEN_PRICES.standard,
+
+      batch:
+        TOKEN_PRICES.batch
+    },
+
+    generation,
+
+    review,
+
+    total,
+
+    ficheCount:
+      count,
+
+    perFiche:{
+
+      standardCostUSD:
+        money(
+          standardPerFiche
+        ),
+
+      batchEquivalentCostUSD:
+        money(
+          batchPerFiche
+        )
+    },
+
+    /*
+     * Projection brute du thème courant.
+     */
+    currentThemeProjection:{
+
+      themeCount:
+        QUIZYPEDIA_PROJECT_THEMES,
+
+      ficheCount:
+        QUIZYPEDIA_PROJECT_FICHES,
+
+      standardBy6000ThemesUSD:
+        money(
+          total.standardCostUSD *
+          QUIZYPEDIA_PROJECT_THEMES
+        ),
+
+      batchBy6000ThemesUSD:
+        money(
+          total.batchEquivalentCostUSD *
+          QUIZYPEDIA_PROJECT_THEMES
+        ),
+
+      standardBy60000FichesUSD:
+        money(
+          standardPerFiche *
+          QUIZYPEDIA_PROJECT_FICHES
+        ),
+
+      batchBy60000FichesUSD:
+        money(
+          batchPerFiche *
+          QUIZYPEDIA_PROJECT_FICHES
+        )
+    },
+
+    notes:[
+
+      'Mesure basée sur usage retourné par OpenAI.',
+
+      'reasoning_tokens est inclus dans output_tokens.',
+
+      'Le coût Batch est une projection : le traitement actuel reste Standard.',
+
+      'Aucun appel IA supplémentaire n’est effectué par le compteur.',
+
+      'Les tarifs sont un snapshot et peuvent évoluer.'
+    ]
+  };
+}
+
+
+'''
+
+
+if anchor not in s:
+    raise SystemExit(
+        "ERREUR : ancre OPENAI introuvable."
+    )
+
+
+s = s.replace(
+    anchor,
+    meter_helpers + anchor,
+    1
+)
+
+
+# ============================================================
+# 4. CALCUL DU COMPTEUR AVANT LA RÉPONSE
+# ============================================================
+
+anchor = """        const generatedCount=
+          coverage.reduce(
+            (
+              sum,
+              row
+            )=>
+              sum +
+              Number(
+                row.generatedCount ||
+                0
+              ),
+            0
+          );
+
+
+        return json("""
+
+
+replacement = """        const generatedCount=
+          coverage.reduce(
+            (
+              sum,
+              row
+            )=>
+              sum +
+              Number(
+                row.generatedCount ||
+                0
+              ),
+            0
+          );
+
+
+        /*
+         * TOKEN_COST_METER001
+         *
+         * Aucun appel OpenAI supplémentaire :
+         * nous exploitons seulement les objets usage déjà reçus.
+         */
+        const tokenMeter=
+          buildTokenCostMeter(
+            generationUsage,
+            reviewUsage,
+            units.length
+          );
+
+
+        return json("""
+
+
+once(
+    anchor,
+    replacement,
+    "calcul tokenMeter"
+)
+
+
+# ============================================================
+# 5. AJOUT AU JSON DE RÉPONSE
+# ============================================================
+
+anchor = """            rejectedCount:
+              Math.max(
+                0,
+                candidates.length -
+                finalQuestions.length
+              ),
+
+            coverage,"""
+
+
+replacement = """            rejectedCount:
+              Math.max(
+                0,
+                candidates.length -
+                finalQuestions.length
+              ),
+
+            /*
+             * TOKEN_COST_METER001
+             */
+            tokenMeter,
+
+            coverage,"""
+
+
+once(
+    anchor,
+    replacement,
+    "tokenMeter dans réponse"
+)
+
+
+p.write_text(
+    s,
+    encoding="utf-8"
+)
+
+print("✓ métriques usage agrégées")
+print("✓ cached tokens distingués")
+print("✓ cache write tokens distingués")
+print("✓ reasoning tokens distingués")
+print("✓ coût Standard calculé")
+print("✓ équivalent Batch calculé")
+print("✓ projections 6000 thèmes / 60000 fiches calculées")
+print("✓ aucun appel IA supplémentaire")
+PY
+
+
+echo
+echo "=== 2. Frontend TOKEN_COST_METER001 ==="
+
+python - <<'PY'
+from pathlib import Path
+
+p = (
+    Path.home()
+    / "CultureGeneraleAndroid"
+    / "web"
+    / "public"
+    / "cgweb123.js"
+)
+
+s = p.read_text(
+    encoding="utf-8"
+)
+
+
+def once(old, new, label):
+
+    global s
+
+    if old not in s:
+        raise SystemExit(
+            f"ERREUR : {label} introuvable."
+        )
+
+    s = s.replace(
+        old,
+        new,
+        1
+    )
+
+
+# ============================================================
+# 1. VERSION
+# ============================================================
+
+once(
+"""// CGWEB123 FIX3
+// STANDALONE_QUESTION001""",
+"""// CGWEB123 FIX4
+// TOKEN_COST_METER001
+// OPENAI_USAGE_CAPTURE001
+// STANDARD_COST_CALC001
+// BATCH_COST_PROJECTION001
+// SAMPLE_COST_HISTORY001
+// QUIZYPEDIA_6000_PROJECTION001
+// NO_EXTRA_AI_CALL001
+// STANDALONE_QUESTION001""",
+"header frontend"
+)
+
+
+once(
+"""    "CGWEB123_FIX3_STANDALONE_QUESTION001_MIXED_DOMAIN_CONTEXT001_CONTEXT_ANCHOR001_AMBIGUITY_REWRITE001";""",
+"""    "CGWEB123_FIX4_TOKEN_COST_METER001_OPENAI_USAGE_CAPTURE001_STANDARD_COST_CALC001_BATCH_COST_PROJECTION001";""",
+"VERSION frontend"
+)
+
+
+# ============================================================
+# 2. CONSTANTES LOCALES
+# ============================================================
+
+anchor = """  const ENDPOINT =
+    "https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb123AiQuestionFactory";"""
+
+
+replacement = """  const ENDPOINT =
+    "https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb123AiQuestionFactory";
+
+
+  const TOKEN_SAMPLE_STORAGE_KEY =
+    "CGWEB123_TOKEN_COST_SAMPLE_V1";
+
+
+  const PROJECT_THEME_COUNT =
+    6000;
+
+
+  const PROJECT_FICHE_COUNT =
+    60000;"""
+
+
+once(
+    anchor,
+    replacement,
+    "constantes token meter"
+)
+
+
+# ============================================================
+# 3. FONCTIONS COMPTEUR
+# ============================================================
+
+anchor = """  function renderCounters(){"""
+
+
+helpers = r'''  function numberOrZero(
+    value
+  ){
+
+    const n=
+      Number(
+        value || 0
+      );
+
+
+    return Number.isFinite(n)
+      ? n
+      : 0;
+  }
+
+
+  function fmtTokens(
+    value
+  ){
+
+    return new Intl.NumberFormat(
+      "fr-FR"
+    ).format(
+      Math.round(
+        numberOrZero(
+          value
+        )
+      )
+    );
+  }
+
+
+  function fmtUSD(
+    value,
+    digits=4
+  ){
+
+    const n=
+      numberOrZero(
+        value
+      );
+
+
+    return new Intl.NumberFormat(
+      "fr-FR",
+      {
+        style:"currency",
+        currency:"USD",
+        minimumFractionDigits:
+          digits,
+        maximumFractionDigits:
+          digits
+      }
+    ).format(
+      n
+    );
+  }
+
+
+  function fmtUSDProjection(
+    value
+  ){
+
+    return new Intl.NumberFormat(
+      "fr-FR",
+      {
+        style:"currency",
+        currency:"USD",
+        minimumFractionDigits:2,
+        maximumFractionDigits:2
+      }
+    ).format(
+      numberOrZero(
+        value
+      )
+    );
+  }
+
+
+  function readTokenSamples(){
+
+    try{
+
+      const raw=
+        localStorage.getItem(
+          TOKEN_SAMPLE_STORAGE_KEY
+        );
+
+
+      if(!raw){
+        return {
+          version:1,
+          themes:{}
+        };
+      }
+
+
+      const parsed=
+        JSON.parse(
+          raw
+        );
+
+
+      if(
+        !parsed ||
+        typeof parsed!=="object"
+      ){
+        throw new Error(
+          "invalid"
+        );
+      }
+
+
+      return {
+
+        version:1,
+
+        themes:
+          parsed.themes &&
+          typeof parsed.themes==="object"
+            ? parsed.themes
+            : {}
+      };
+
+
+    }catch{
+
+      return {
+        version:1,
+        themes:{}
+      };
+    }
+  }
+
+
+  function writeTokenSamples(
+    history
+  ){
+
+    try{
+
+      localStorage.setItem(
+        TOKEN_SAMPLE_STORAGE_KEY,
+        JSON.stringify(
+          history
+        )
+      );
+
+    }catch{
+      // Le compteur courant reste disponible.
+    }
+  }
+
+
+  function tokenSampleKey(
+    corpus
+  ){
+
+    const url=
+      text(
+        corpus
+          ?.theme
+          ?.url
+      )
+        .toLowerCase();
+
+
+    if(url){
+      return url;
+    }
+
+
+    const title=
+      text(
+        corpus
+          ?.theme
+          ?.title
+      )
+        .toLowerCase();
+
+
+    if(title){
+      return `title:${title}`;
+    }
+
+
+    return "";
+  }
+
+
+  function recordTokenSample(
+    data,
+    corpus
+  ){
+
+    const meter=
+      data?.tokenMeter;
+
+
+    if(
+      !meter?.total
+    ){
+      return;
+    }
+
+
+    const key=
+      tokenSampleKey(
+        corpus
+      );
+
+
+    /*
+     * Sans identité stable du thème, on évite
+     * de polluer l'échantillon.
+     */
+    if(!key){
+      return;
+    }
+
+
+    const history=
+      readTokenSamples();
+
+
+    history.themes[
+      key
+    ]={
+
+      title:
+        text(
+          corpus
+            ?.theme
+            ?.title
+        ),
+
+      url:
+        text(
+          corpus
+            ?.theme
+            ?.url
+        ),
+
+      ficheCount:
+        numberOrZero(
+          meter.ficheCount
+        ),
+
+      standardCostUSD:
+        numberOrZero(
+          meter
+            ?.total
+            ?.standardCostUSD
+        ),
+
+      batchEquivalentCostUSD:
+        numberOrZero(
+          meter
+            ?.total
+            ?.batchEquivalentCostUSD
+        ),
+
+      inputTokens:
+        numberOrZero(
+          meter
+            ?.total
+            ?.inputTokens
+        ),
+
+      outputTokens:
+        numberOrZero(
+          meter
+            ?.total
+            ?.outputTokens
+        ),
+
+      reasoningTokens:
+        numberOrZero(
+          meter
+            ?.total
+            ?.reasoningTokens
+        ),
+
+      measuredAt:
+        new Date()
+          .toISOString()
+    };
+
+
+    writeTokenSamples(
+      history
+    );
+  }
+
+
+  function tokenSampleStats(){
+
+    const history=
+      readTokenSamples();
+
+
+    const rows=
+      Object.values(
+        history.themes || {}
+      )
+        .filter(
+          row=>
+            row &&
+            typeof row==="object"
+        );
+
+
+    const themeCount=
+      rows.length;
+
+
+    const ficheCount=
+      rows.reduce(
+        (
+          sum,
+          row
+        )=>
+          sum +
+          numberOrZero(
+            row.ficheCount
+          ),
+        0
+      );
+
+
+    const standardTotal=
+      rows.reduce(
+        (
+          sum,
+          row
+        )=>
+          sum +
+          numberOrZero(
+            row.standardCostUSD
+          ),
+        0
+      );
+
+
+    const batchTotal=
+      rows.reduce(
+        (
+          sum,
+          row
+        )=>
+          sum +
+          numberOrZero(
+            row.batchEquivalentCostUSD
+          ),
+        0
+      );
+
+
+    const averageStandardTheme=
+      themeCount
+        ? standardTotal /
+          themeCount
+        : 0;
+
+
+    const averageBatchTheme=
+      themeCount
+        ? batchTotal /
+          themeCount
+        : 0;
+
+
+    const averageStandardFiche=
+      ficheCount
+        ? standardTotal /
+          ficheCount
+        : 0;
+
+
+    const averageBatchFiche=
+      ficheCount
+        ? batchTotal /
+          ficheCount
+        : 0;
+
+
+    return {
+
+      themeCount,
+
+      ficheCount,
+
+      standardTotal,
+
+      batchTotal,
+
+      averageStandardTheme,
+
+      averageBatchTheme,
+
+      averageStandardFiche,
+
+      averageBatchFiche,
+
+      projectedStandardByThemes:
+        averageStandardTheme *
+        PROJECT_THEME_COUNT,
+
+      projectedBatchByThemes:
+        averageBatchTheme *
+        PROJECT_THEME_COUNT,
+
+      projectedStandardByFiches:
+        averageStandardFiche *
+        PROJECT_FICHE_COUNT,
+
+      projectedBatchByFiches:
+        averageBatchFiche *
+        PROJECT_FICHE_COUNT
+    };
+  }
+
+
+  function renderTokenMeter(){
+
+    const host=
+      $("cg123TokenMeter");
+
+
+    if(!host){
+      return;
+    }
+
+
+    const meter=
+      lastMeta?.tokenMeter;
+
+
+    const sample=
+      tokenSampleStats();
+
+
+    if(!meter){
+
+      host.innerHTML=`
+
+        <section class="cg123-token-box">
+
+          <header class="cg123-token-head">
+
+            <div>
+              <strong>
+                Coût API / tokens
+              </strong>
+
+              <span>
+                TOKEN_COST_METER001
+              </span>
+            </div>
+
+          </header>
+
+
+          <p class="cg123-token-wait">
+            Le coût réel du traitement apparaîtra ici
+            après la prochaine génération IA.
+          </p>
+
+
+          ${
+            sample.themeCount
+              ? `
+                <div class="cg123-token-sample-mini">
+                  Échantillon mémorisé :
+                  <strong>
+                    ${sample.themeCount}
+                    thème(s)
+                  </strong>
+                  ·
+                  ${fmtTokens(sample.ficheCount)}
+                  fiche(s)
+                </div>
+              `
+              : ""
+          }
+
+        </section>
+      `;
+
+      return;
+    }
+
+
+    const total=
+      meter.total || {};
+
+
+    const generation=
+      meter.generation || {};
+
+
+    const review=
+      meter.review || {};
+
+
+    host.innerHTML=`
+
+      <section class="cg123-token-box">
+
+        <header class="cg123-token-head">
+
+          <div>
+
+            <strong>
+              Coût API / tokens
+            </strong>
+
+            <span>
+              GPT-5.6 Sol · tarifs au
+              ${esc(meter.pricingSnapshot || "")}
+            </span>
+
+          </div>
+
+          <button
+            type="button"
+            id="cg123TokenReset"
+            class="cg123-token-reset"
+          >
+            Réinitialiser l’échantillon
+          </button>
+
+        </header>
+
+
+        <div class="cg123-token-grid">
+
+          <div>
+            <strong>
+              ${fmtTokens(total.inputTokens)}
+            </strong>
+            <span>
+              tokens d’entrée
+            </span>
+          </div>
+
+          <div>
+            <strong>
+              ${fmtTokens(total.cachedInputTokens)}
+            </strong>
+            <span>
+              entrée en cache
+            </span>
+          </div>
+
+          <div>
+            <strong>
+              ${fmtTokens(total.cacheWriteTokens)}
+            </strong>
+            <span>
+              écritures cache
+            </span>
+          </div>
+
+          <div>
+            <strong>
+              ${fmtTokens(total.outputTokens)}
+            </strong>
+            <span>
+              tokens de sortie
+            </span>
+          </div>
+
+          <div>
+            <strong>
+              ${fmtTokens(total.reasoningTokens)}
+            </strong>
+            <span>
+              dont raisonnement
+            </span>
+          </div>
+
+          <div>
+            <strong>
+              ${fmtTokens(total.apiCalls)}
+            </strong>
+            <span>
+              appels API
+            </span>
+          </div>
+
+        </div>
+
+
+        <div class="cg123-cost-main">
+
+          <div>
+
+            <span>
+              Coût du thème — Standard
+            </span>
+
+            <strong>
+              ${fmtUSD(
+                total.standardCostUSD,
+                4
+              )}
+            </strong>
+
+          </div>
+
+
+          <div>
+
+            <span>
+              Équivalent Batch
+            </span>
+
+            <strong>
+              ${fmtUSD(
+                total.batchEquivalentCostUSD,
+                4
+              )}
+            </strong>
+
+          </div>
+
+
+          <div>
+
+            <span>
+              Standard / fiche
+            </span>
+
+            <strong>
+              ${fmtUSD(
+                meter
+                  ?.perFiche
+                  ?.standardCostUSD,
+                5
+              )}
+            </strong>
+
+          </div>
+
+        </div>
+
+
+        <details class="cg123-token-details">
+
+          <summary>
+            Détail génération / relecture
+          </summary>
+
+
+          <div class="cg123-token-detail-grid">
+
+            <div>
+
+              <strong>
+                Génération
+              </strong>
+
+              <span>
+                ${fmtTokens(generation.inputTokens)}
+                entrée
+              </span>
+
+              <span>
+                ${fmtTokens(generation.outputTokens)}
+                sortie
+              </span>
+
+              <span>
+                ${fmtTokens(generation.reasoningTokens)}
+                raisonnement
+              </span>
+
+              <span>
+                ${fmtUSD(
+                  generation.standardCostUSD,
+                  4
+                )}
+              </span>
+
+            </div>
+
+
+            <div>
+
+              <strong>
+                Relecture
+              </strong>
+
+              <span>
+                ${fmtTokens(review.inputTokens)}
+                entrée
+              </span>
+
+              <span>
+                ${fmtTokens(review.outputTokens)}
+                sortie
+              </span>
+
+              <span>
+                ${fmtTokens(review.reasoningTokens)}
+                raisonnement
+              </span>
+
+              <span>
+                ${fmtUSD(
+                  review.standardCostUSD,
+                  4
+                )}
+              </span>
+
+            </div>
+
+          </div>
+
+        </details>
+
+
+        <div class="cg123-token-projection">
+
+          <h4>
+            Projection Quizypedia
+          </h4>
+
+
+          <p>
+            Échantillon :
+            <strong>
+              ${sample.themeCount}
+              thème(s)
+            </strong>
+            ·
+            <strong>
+              ${fmtTokens(sample.ficheCount)}
+              fiche(s)
+            </strong>.
+            Un même thème retraité remplace sa mesure précédente.
+          </p>
+
+
+          ${
+            sample.themeCount
+              ? `
+
+                <div class="cg123-projection-grid">
+
+                  <div>
+
+                    <span>
+                      Moyenne Standard / thème
+                    </span>
+
+                    <strong>
+                      ${fmtUSD(
+                        sample.averageStandardTheme,
+                        4
+                      )}
+                    </strong>
+
+                  </div>
+
+
+                  <div>
+
+                    <span>
+                      6 000 thèmes — Standard
+                    </span>
+
+                    <strong>
+                      ${fmtUSDProjection(
+                        sample.projectedStandardByThemes
+                      )}
+                    </strong>
+
+                  </div>
+
+
+                  <div>
+
+                    <span>
+                      60 000 fiches — Standard
+                    </span>
+
+                    <strong>
+                      ${fmtUSDProjection(
+                        sample.projectedStandardByFiches
+                      )}
+                    </strong>
+
+                  </div>
+
+
+                  <div>
+
+                    <span>
+                      6 000 thèmes — Batch
+                    </span>
+
+                    <strong>
+                      ${fmtUSDProjection(
+                        sample.projectedBatchByThemes
+                      )}
+                    </strong>
+
+                  </div>
+
+
+                  <div>
+
+                    <span>
+                      60 000 fiches — Batch
+                    </span>
+
+                    <strong>
+                      ${fmtUSDProjection(
+                        sample.projectedBatchByFiches
+                      )}
+                    </strong>
+
+                  </div>
+
+                </div>
+
+              `
+              : `
+                <p>
+                  Aucune projection statistique :
+                  aucun thème n’est encore dans l’échantillon.
+                </p>
+              `
+          }
+
+
+          <p class="cg123-token-note">
+            Le coût Batch est une simulation.
+            CGWEB123 utilise actuellement le traitement Standard.
+            Les reasoning tokens sont déjà compris
+            dans les tokens de sortie facturés.
+          </p>
+
+        </div>
+
+      </section>
+    `;
+
+
+    $("cg123TokenReset")
+      ?.addEventListener(
+        "click",
+        ()=>{
+
+          if(
+            !confirm(
+              "Réinitialiser tout l’échantillon de coûts TOKEN_COST_METER001 ?"
+            )
+          ){
+            return;
+          }
+
+
+          try{
+
+            localStorage.removeItem(
+              TOKEN_SAMPLE_STORAGE_KEY
+            );
+
+          }catch{
+            // rien
+          }
+
+
+          renderTokenMeter();
+        }
+      );
+  }
+
+
+'''
+
+
+if anchor not in s:
+    raise SystemExit(
+        "ERREUR : renderCounters introuvable."
+    )
+
+
+s = s.replace(
+    anchor,
+    helpers + anchor,
+    1
+)
+
+
+# ============================================================
+# 4. RENDER GLOBAL
+# ============================================================
+
+once(
+"""    renderCounters();
+    renderCoverage();""",
+"""    renderCounters();
+    renderCoverage();
+    renderTokenMeter();""",
+"appel renderTokenMeter"
+)
+
+
+# ============================================================
+# 5. MÉMORISATION APRÈS CHAQUE THÈME
+# ============================================================
+
+once(
+"""      lastMeta=data;
+
+
+      drafts=""",
+"""      lastMeta=data;
+
+
+      /*
+       * SAMPLE_COST_HISTORY001
+       *
+       * Le même thème remplace sa mesure antérieure,
+       * afin qu'un thème testé plusieurs fois ne pèse
+       * pas artificiellement plusieurs fois dans la moyenne.
+       */
+      recordTokenSample(
+        data,
+        corpus
+      );
+
+
+      drafts=""",
+"recordTokenSample"
+)
+
+
+# ============================================================
+# 6. BLOC UI
+# ============================================================
+
+anchor = """      <div
+        id="cg123Status"
+        class="cg123-status"
+      >
+        En attente d’une extraction CGWEB122.
+      </div>
+
+
+      <div class="cg123-counters cg123-counters-fix2">"""
+
+
+replacement = """      <div
+        id="cg123Status"
+        class="cg123-status"
+      >
+        En attente d’une extraction CGWEB122.
+      </div>
+
+
+      <div
+        id="cg123TokenMeter"
+        class="cg123-token-meter"
+      >
+
+        <section class="cg123-token-box">
+
+          <p class="cg123-token-wait">
+            Le coût API réel apparaîtra après la génération.
+          </p>
+
+        </section>
+
+      </div>
+
+
+      <div class="cg123-counters cg123-counters-fix2">"""
+
+
+once(
+    anchor,
+    replacement,
+    "bloc Token Meter UI"
+)
+
+
+# ============================================================
+# 7. BADGE
+# ============================================================
+
+once(
+"""        <span>
+          Firestore : aucune écriture
+        </span>""",
+"""        <span>
+          Firestore : aucune écriture
+        </span>
+
+        <span>
+          Coût : mesure réelle des tokens API
+        </span>""",
+"badge coût"
+)
+
+
+p.write_text(
+    s,
+    encoding="utf-8"
+)
+
+print("✓ compteur tokens frontend installé")
+print("✓ historique local des thèmes installé")
+print("✓ doublons de thèmes remplacés")
+print("✓ projection 6000 thèmes installée")
+print("✓ projection 60000 fiches installée")
+print("✓ comparaison Batch installée")
+PY
+
+
+echo
+echo "=== 3. CSS FIX4 ==="
+
+cat >> "$CSS" <<'CSS'
+
+/* ============================================================
+   CGWEB123 FIX4 · TOKEN_COST_METER001
+   ============================================================ */
+
+.cg123-token-meter{
+  margin-top:12px;
+}
+
+.cg123-token-box{
+  padding:12px;
+  border-radius:11px;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(0,0,0,.12);
+}
+
+.cg123-token-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
+.cg123-token-head > div{
+  display:grid;
+  gap:2px;
+}
+
+.cg123-token-head > div > strong{
+  font-size:12px;
+}
+
+.cg123-token-head > div > span{
+  font-size:10px;
+  opacity:.65;
+}
+
+.cg123-token-reset{
+  min-height:30px;
+  padding:5px 8px;
+  border-radius:7px;
+  cursor:pointer;
+  font-size:10px;
+}
+
+.cg123-token-wait{
+  margin:0;
+  opacity:.7;
+  font-size:11px;
+}
+
+.cg123-token-sample-mini{
+  margin-top:7px;
+  font-size:10px;
+  opacity:.75;
+}
+
+.cg123-token-grid{
+  display:grid;
+  grid-template-columns:
+    repeat(6,minmax(0,1fr));
+  gap:7px;
+  margin-top:10px;
+}
+
+.cg123-token-grid > div,
+.cg123-cost-main > div,
+.cg123-projection-grid > div{
+  padding:8px;
+  border-radius:8px;
+  background:rgba(255,255,255,.04);
+}
+
+.cg123-token-grid strong,
+.cg123-cost-main strong,
+.cg123-projection-grid strong{
+  display:block;
+}
+
+.cg123-token-grid span,
+.cg123-cost-main span,
+.cg123-projection-grid span{
+  display:block;
+  margin-top:2px;
+  font-size:9px;
+  opacity:.68;
+}
+
+.cg123-cost-main{
+  display:grid;
+  grid-template-columns:
+    repeat(3,minmax(0,1fr));
+  gap:7px;
+  margin-top:8px;
+}
+
+.cg123-cost-main strong{
+  margin-top:2px;
+  font-size:15px;
+}
+
+.cg123-token-details{
+  margin-top:9px;
+}
+
+.cg123-token-details > summary{
+  cursor:pointer;
+  font-size:10px;
+  font-weight:700;
+}
+
+.cg123-token-detail-grid{
+  display:grid;
+  grid-template-columns:
+    repeat(2,minmax(0,1fr));
+  gap:8px;
+  margin-top:8px;
+}
+
+.cg123-token-detail-grid > div{
+  display:grid;
+  gap:3px;
+  padding:8px;
+  border-radius:8px;
+  background:rgba(255,255,255,.035);
+  font-size:10px;
+}
+
+.cg123-token-projection{
+  margin-top:10px;
+  padding-top:9px;
+  border-top:1px solid rgba(255,255,255,.10);
+}
+
+.cg123-token-projection h4{
+  margin:0 0 5px;
+  font-size:11px;
+}
+
+.cg123-token-projection p{
+  margin:5px 0;
+  font-size:10px;
+}
+
+.cg123-projection-grid{
+  display:grid;
+  grid-template-columns:
+    repeat(5,minmax(0,1fr));
+  gap:7px;
+  margin-top:8px;
+}
+
+.cg123-projection-grid strong{
+  margin-top:3px;
+  font-size:13px;
+}
+
+.cg123-token-note{
+  margin-top:8px !important;
+  opacity:.60;
+  font-style:italic;
+}
+
+@media(max-width:1050px){
+
+  .cg123-token-grid{
+    grid-template-columns:
+      repeat(3,minmax(0,1fr));
+  }
+
+  .cg123-projection-grid{
+    grid-template-columns:
+      repeat(3,minmax(0,1fr));
+  }
+}
+
+@media(max-width:700px){
+
+  .cg123-token-grid,
+  .cg123-cost-main,
+  .cg123-token-detail-grid,
+  .cg123-projection-grid{
+    grid-template-columns:
+      repeat(2,minmax(0,1fr));
+  }
+}
