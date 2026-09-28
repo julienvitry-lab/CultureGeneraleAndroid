@@ -43,6 +43,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -129,6 +131,11 @@ public class TabletMainActivity extends Activity {
     private boolean answering = false;
     private String screen = "home";
 
+    // CGANDROID004 · HISTORY_QR001
+    private static final int HISTORY_MAX_EVENTS = 1000;
+    private final List<CgHistoryItem> historyItems = new ArrayList<>();
+    private String historyFilter = "all";
+
     // CGANDROID002 FIX1 · BOTTOM_BAR_LAYOUT001
 
     @Override
@@ -155,6 +162,18 @@ public class TabletMainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+
+        // CGANDROID004 · HISTORY_NAVIGATION001
+        if ("history_detail".equals(screen)) {
+            renderHistory();
+            return;
+        }
+
+        if ("history".equals(screen)) {
+            showHome();
+            return;
+        }
+
         if ("answers".equals(screen) && current != null) {
             showQuestion(current);
             return;
@@ -252,8 +271,1219 @@ public class TabletMainActivity extends Activity {
         start.setOnClickListener(v -> showMegathemes());
 
         TextView helper = text("Créer une nouvelle session", 15, LIGHT_GREY, Gravity.CENTER);
-        add(helper, -1, -2, dp(40), 0, dp(40), 0);
+        add(helper, -1, -2, dp(40), 0, dp(40), dp(30));
+
+        // CGANDROID004 · HISTORY_HOME_ENTRY001
+        Button history = button("Historique", DARK, 21);
+        history.setBackground(roundedStroke(DARK, 14, Color.WHITE, 1));
+        add(history, -1, dp(62), dp(220), 0, dp(220), dp(10));
+        history.setOnClickListener(v -> showHistory());
+
+        TextView historyHelper =
+                text(
+                        "Consulter réussites, échecs et progression",
+                        14,
+                        LIGHT_GREY,
+                        Gravity.CENTER
+                );
+
+        add(historyHelper, -1, -2, dp(30), 0, dp(30), 0);
     }
+
+
+    /*
+     * ================================================================
+     * CGANDROID004 · HISTORY_QR001
+     * ================================================================
+     */
+
+    private void showHistory() {
+
+        screen = "history";
+        historyFilter = "all";
+
+        baseScreen();
+
+        addTitle(
+                "Historique",
+                31,
+                Color.WHITE
+        );
+
+        addSub(
+                "Chargement de tes réponses…",
+                16,
+                LIGHT_GREY
+        );
+
+        gap(20);
+
+        TextView loading =
+                text(
+                        "Lecture de l’historique Cloud…",
+                        18,
+                        YELLOW,
+                        Gravity.CENTER
+                );
+
+        add(
+                loading,
+                -1,
+                dp(80),
+                dp(30),
+                dp(20),
+                dp(30),
+                0
+        );
+
+
+        io.submit(() -> {
+
+            try {
+
+                String token =
+                        auth.tokenSync();
+
+                List<CgHistoryItem> loaded =
+                        firestore.listPlayHistorySync(
+                                token,
+                                auth.uid(),
+                                HISTORY_MAX_EVENTS
+                        );
+
+                main.post(() -> {
+
+                    if (!"history".equals(screen)) {
+                        return;
+                    }
+
+                    historyItems.clear();
+                    historyItems.addAll(loaded);
+
+                    renderHistory();
+                });
+
+            } catch (Exception ex) {
+
+                main.post(() -> {
+
+                    if (!"history".equals(screen)) {
+                        return;
+                    }
+
+                    showHistoryError(
+                            ex.getMessage()
+                    );
+                });
+            }
+        });
+    }
+
+
+    private void renderHistory() {
+
+        screen = "history";
+
+        baseScreen();
+
+        addTitle(
+                "Historique",
+                31,
+                Color.WHITE
+        );
+
+        addSub(
+                "Apprentissage par question / réponse",
+                16,
+                LIGHT_GREY
+        );
+
+        gap(12);
+
+
+        int total = historyItems.size();
+        int success = 0;
+
+        for (CgHistoryItem item : historyItems) {
+
+            if (item.correct) {
+                success++;
+            }
+        }
+
+        int failures =
+                total - success;
+
+        int rate =
+                total <= 0
+                        ? 0
+                        : Math.round(
+                                success * 100f / total
+                        );
+
+
+        /*
+         * Résumé global.
+         */
+        LinearLayout stats =
+                new LinearLayout(this);
+
+        stats.setOrientation(
+                LinearLayout.HORIZONTAL
+        );
+
+        stats.setGravity(
+                Gravity.CENTER
+        );
+
+
+        stats.addView(
+                historyStatCard(
+                        "Questions vues",
+                        String.valueOf(total),
+                        BLUE
+                ),
+                historyStatLp()
+        );
+
+        stats.addView(
+                historyStatCard(
+                        "Réussites",
+                        String.valueOf(success),
+                        GREEN
+                ),
+                historyStatLp()
+        );
+
+        stats.addView(
+                historyStatCard(
+                        "Échecs",
+                        String.valueOf(failures),
+                        RED
+                ),
+                historyStatLp()
+        );
+
+        stats.addView(
+                historyStatCard(
+                        "Taux",
+                        rate + " %",
+                        GREY
+                ),
+                historyStatLp()
+        );
+
+
+        LinearLayout.LayoutParams statsLp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        dp(92)
+                );
+
+        statsLp.setMargins(
+                0,
+                dp(4),
+                0,
+                dp(18)
+        );
+
+        root.addView(
+                stats,
+                statsLp
+        );
+
+
+        /*
+         * Filtres.
+         */
+        LinearLayout filters =
+                new LinearLayout(this);
+
+        filters.setOrientation(
+                LinearLayout.HORIZONTAL
+        );
+
+        filters.setGravity(
+                Gravity.CENTER
+        );
+
+
+        filters.addView(
+                historyFilterButton(
+                        "Tout",
+                        "all",
+                        BLUE
+                ),
+                historyFilterLp()
+        );
+
+        filters.addView(
+                historyFilterButton(
+                        "Réussites",
+                        "success",
+                        GREEN
+                ),
+                historyFilterLp()
+        );
+
+        filters.addView(
+                historyFilterButton(
+                        "Échecs",
+                        "failure",
+                        RED
+                ),
+                historyFilterLp()
+        );
+
+
+        LinearLayout.LayoutParams filtersLp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        dp(58)
+                );
+
+        filtersLp.setMargins(
+                0,
+                0,
+                0,
+                dp(18)
+        );
+
+        root.addView(
+                filters,
+                filtersLp
+        );
+
+
+        if (historyItems.isEmpty()) {
+
+            TextView empty =
+                    cardText(
+                            "Aucune réponse enregistrée pour le moment.",
+                            18,
+                            DARK,
+                            Color.WHITE
+                    );
+
+            empty.setGravity(
+                    Gravity.CENTER
+            );
+
+            add(
+                    empty,
+                    -1,
+                    dp(100),
+                    dp(40),
+                    dp(20),
+                    dp(40),
+                    dp(20)
+            );
+
+        } else {
+
+            int displayed = 0;
+
+            for (CgHistoryItem item : historyItems) {
+
+                if (!historyMatchesFilter(item)) {
+                    continue;
+                }
+
+                addHistoryRow(item);
+                displayed++;
+            }
+
+
+            if (displayed == 0) {
+
+                TextView empty =
+                        text(
+                                "Aucune réponse dans ce filtre.",
+                                17,
+                                LIGHT_GREY,
+                                Gravity.CENTER
+                        );
+
+                add(
+                        empty,
+                        -1,
+                        dp(80),
+                        dp(30),
+                        dp(20),
+                        dp(30),
+                        dp(20)
+                );
+            }
+        }
+
+
+        if (
+                historyItems.size()
+                        >= HISTORY_MAX_EVENTS
+        ) {
+
+            TextView limit =
+                    text(
+                            "Affichage limité aux "
+                                    + HISTORY_MAX_EVENTS
+                                    + " réponses les plus récentes.",
+                            13,
+                            LIGHT_GREY,
+                            Gravity.CENTER
+                    );
+
+            add(
+                    limit,
+                    -1,
+                    -2,
+                    dp(20),
+                    dp(10),
+                    dp(20),
+                    dp(8)
+            );
+        }
+
+
+        Button back =
+                button(
+                        "Retour",
+                        BLUE,
+                        18
+                );
+
+        add(
+                back,
+                -1,
+                dp(56),
+                dp(140),
+                dp(18),
+                dp(140),
+                0
+        );
+
+        back.setOnClickListener(
+                v -> showHome()
+        );
+    }
+
+
+    private boolean historyMatchesFilter(
+            CgHistoryItem item
+    ) {
+
+        if ("success".equals(historyFilter)) {
+            return item.correct;
+        }
+
+        if ("failure".equals(historyFilter)) {
+            return !item.correct;
+        }
+
+        return true;
+    }
+
+
+    private Button historyFilterButton(
+            String label,
+            String filter,
+            int color
+    ) {
+
+        boolean selected =
+                filter.equals(historyFilter);
+
+        Button button =
+                button(
+                        label,
+                        selected ? color : DARK,
+                        16
+                );
+
+        button.setTextColor(
+                Color.WHITE
+        );
+
+        button.setBackground(
+                roundedStroke(
+                        selected ? color : DARK,
+                        12,
+                        color,
+                        selected ? 2 : 1
+                )
+        );
+
+        button.setOnClickListener(v -> {
+
+            historyFilter = filter;
+            renderHistory();
+        });
+
+        return button;
+    }
+
+
+    private LinearLayout.LayoutParams
+    historyFilterLp() {
+
+        LinearLayout.LayoutParams lp =
+                new LinearLayout.LayoutParams(
+                        0,
+                        -1,
+                        1f
+                );
+
+        lp.setMargins(
+                dp(5),
+                0,
+                dp(5),
+                0
+        );
+
+        return lp;
+    }
+
+
+    private LinearLayout historyStatCard(
+            String label,
+            String value,
+            int color
+    ) {
+
+        LinearLayout card =
+                new LinearLayout(this);
+
+        card.setOrientation(
+                LinearLayout.VERTICAL
+        );
+
+        card.setGravity(
+                Gravity.CENTER
+        );
+
+        card.setPadding(
+                dp(6),
+                dp(6),
+                dp(6),
+                dp(6)
+        );
+
+        card.setBackground(
+                roundedStroke(
+                        DARK,
+                        13,
+                        color,
+                        2
+                )
+        );
+
+
+        TextView number =
+                text(
+                        value,
+                        23,
+                        Color.WHITE,
+                        Gravity.CENTER
+                );
+
+        number.setTypeface(
+                appFont,
+                Typeface.BOLD
+        );
+
+
+        TextView title =
+                text(
+                        label,
+                        13,
+                        LIGHT_GREY,
+                        Gravity.CENTER
+                );
+
+
+        card.addView(
+                number,
+                new LinearLayout.LayoutParams(
+                        -1,
+                        0,
+                        .58f
+                )
+        );
+
+        card.addView(
+                title,
+                new LinearLayout.LayoutParams(
+                        -1,
+                        0,
+                        .42f
+                )
+        );
+
+        return card;
+    }
+
+
+    private LinearLayout.LayoutParams
+    historyStatLp() {
+
+        LinearLayout.LayoutParams lp =
+                new LinearLayout.LayoutParams(
+                        0,
+                        -1,
+                        1f
+                );
+
+        lp.setMargins(
+                dp(4),
+                0,
+                dp(4),
+                0
+        );
+
+        return lp;
+    }
+
+
+    private void addHistoryRow(
+            CgHistoryItem item
+    ) {
+
+        int color =
+                item.correct
+                        ? GREEN
+                        : RED;
+
+
+        LinearLayout card =
+                new LinearLayout(this);
+
+        card.setOrientation(
+                LinearLayout.VERTICAL
+        );
+
+        card.setPadding(
+                dp(18),
+                dp(14),
+                dp(18),
+                dp(14)
+        );
+
+        card.setBackground(
+                roundedStroke(
+                        DARK,
+                        14,
+                        color,
+                        1
+                )
+        );
+
+
+        String top =
+                formatHistoryDate(
+                        item.playedAtMs
+                );
+
+        if (
+                item.domain != null &&
+                !item.domain.trim().isEmpty()
+        ) {
+
+            top += "  ·  "
+                    + item.domain;
+        }
+
+
+        TextView meta =
+                text(
+                        top,
+                        13,
+                        LIGHT_GREY,
+                        Gravity.LEFT
+                );
+
+        card.addView(
+                meta,
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                )
+        );
+
+
+        if (
+                item.theme != null &&
+                !item.theme.trim().isEmpty()
+        ) {
+
+            TextView theme =
+                    text(
+                            item.theme,
+                            14,
+                            YELLOW,
+                            Gravity.LEFT
+                    );
+
+            LinearLayout.LayoutParams themeLp =
+                    new LinearLayout.LayoutParams(
+                            -1,
+                            -2
+                    );
+
+            themeLp.setMargins(
+                    0,
+                    dp(4),
+                    0,
+                    0
+            );
+
+            card.addView(
+                    theme,
+                    themeLp
+            );
+        }
+
+
+        TextView question =
+                text(
+                        safeHistoryText(
+                                item.question,
+                                "Question indisponible"
+                        ),
+                        18,
+                        Color.WHITE,
+                        Gravity.LEFT
+                );
+
+        LinearLayout.LayoutParams questionLp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                );
+
+        questionLp.setMargins(
+                0,
+                dp(9),
+                0,
+                dp(8)
+        );
+
+        card.addView(
+                question,
+                questionLp
+        );
+
+
+        TextView answer =
+                text(
+                        "Réponse : "
+                                + safeHistoryText(
+                                        item.correctAnswer,
+                                        "—"
+                                ),
+                        16,
+                        Color.WHITE,
+                        Gravity.LEFT
+                );
+
+        card.addView(
+                answer,
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                )
+        );
+
+
+        TextView result =
+                text(
+                        item.correct
+                                ? "✓ J’avais bon"
+                                : "✕ J’avais faux",
+                        16,
+                        color,
+                        Gravity.LEFT
+                );
+
+        result.setTypeface(
+                appFont,
+                Typeface.BOLD
+        );
+
+        LinearLayout.LayoutParams resultLp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                );
+
+        resultLp.setMargins(
+                0,
+                dp(8),
+                0,
+                0
+        );
+
+        card.addView(
+                result,
+                resultLp
+        );
+
+
+        LinearLayout.LayoutParams cardLp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                );
+
+        cardLp.setMargins(
+                0,
+                0,
+                0,
+                dp(10)
+        );
+
+        root.addView(
+                card,
+                cardLp
+        );
+
+
+        card.setOnClickListener(
+                v -> showHistoryDetail(item)
+        );
+    }
+
+
+    private void showHistoryDetail(
+            CgHistoryItem selected
+    ) {
+
+        screen = "history_detail";
+
+        baseScreen();
+
+        addTitle(
+                "Historique de la question",
+                28,
+                Color.WHITE
+        );
+
+        addSub(
+                safeHistoryText(
+                        selected.domain,
+                        ""
+                ),
+                15,
+                LIGHT_GREY
+        );
+
+        gap(10);
+
+
+        TextView question =
+                cardText(
+                        safeHistoryText(
+                                selected.question,
+                                "Question indisponible"
+                        ),
+                        21,
+                        DARK,
+                        Color.WHITE
+                );
+
+        question.setGravity(
+                Gravity.CENTER
+        );
+
+        add(
+                question,
+                -1,
+                -2,
+                dp(20),
+                dp(4),
+                dp(20),
+                dp(12)
+        );
+
+
+        TextView answer =
+                cardText(
+                        "Réponse
+
+"
+                                + safeHistoryText(
+                                        selected.correctAnswer,
+                                        "—"
+                                ),
+                        22,
+                        DARK,
+                        Color.WHITE
+                );
+
+        answer.setGravity(
+                Gravity.CENTER
+        );
+
+        add(
+                answer,
+                -1,
+                -2,
+                dp(20),
+                0,
+                dp(20),
+                dp(20)
+        );
+
+
+        int attempts = 0;
+        int success = 0;
+        int failures = 0;
+
+
+        for (CgHistoryItem item : historyItems) {
+
+            if (!sameHistoryQuestion(
+                    selected,
+                    item
+            )) {
+                continue;
+            }
+
+            attempts++;
+
+            if (item.correct) {
+                success++;
+            } else {
+                failures++;
+            }
+        }
+
+
+        LinearLayout stats =
+                new LinearLayout(this);
+
+        stats.setOrientation(
+                LinearLayout.HORIZONTAL
+        );
+
+
+        stats.addView(
+                historyStatCard(
+                        "Passages",
+                        String.valueOf(attempts),
+                        BLUE
+                ),
+                historyStatLp()
+        );
+
+        stats.addView(
+                historyStatCard(
+                        "Réussites",
+                        String.valueOf(success),
+                        GREEN
+                ),
+                historyStatLp()
+        );
+
+        stats.addView(
+                historyStatCard(
+                        "Échecs",
+                        String.valueOf(failures),
+                        RED
+                ),
+                historyStatLp()
+        );
+
+
+        String last =
+                selected.correct
+                        ? "✓"
+                        : "✕";
+
+
+        stats.addView(
+                historyStatCard(
+                        "Dernière",
+                        last,
+                        selected.correct
+                                ? GREEN
+                                : RED
+                ),
+                historyStatLp()
+        );
+
+
+        LinearLayout.LayoutParams statsLp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        dp(92)
+                );
+
+        statsLp.setMargins(
+                0,
+                0,
+                0,
+                dp(18)
+        );
+
+        root.addView(
+                stats,
+                statsLp
+        );
+
+
+        TextView historyTitle =
+                text(
+                        "Passages",
+                        19,
+                        Color.WHITE,
+                        Gravity.LEFT
+                );
+
+        add(
+                historyTitle,
+                -1,
+                -2,
+                dp(4),
+                0,
+                dp(4),
+                dp(8)
+        );
+
+
+        for (CgHistoryItem item : historyItems) {
+
+            if (!sameHistoryQuestion(
+                    selected,
+                    item
+            )) {
+                continue;
+            }
+
+
+            int resultColor =
+                    item.correct
+                            ? GREEN
+                            : RED;
+
+
+            TextView attempt =
+                    text(
+                            formatHistoryDate(
+                                    item.playedAtMs
+                            )
+                                    + "     "
+                                    + (
+                                    item.correct
+                                            ? "✓ Réussite"
+                                            : "✕ Échec"
+                            ),
+                            17,
+                            resultColor,
+                            Gravity.CENTER
+                    );
+
+            attempt.setBackground(
+                    roundedStroke(
+                            DARK,
+                            12,
+                            resultColor,
+                            1
+                    )
+            );
+
+            add(
+                    attempt,
+                    -1,
+                    dp(52),
+                    dp(20),
+                    0,
+                    dp(20),
+                    dp(8)
+            );
+        }
+
+
+        Button back =
+                button(
+                        "Retour à l’historique",
+                        BLUE,
+                        18
+                );
+
+        add(
+                back,
+                -1,
+                dp(58),
+                dp(120),
+                dp(18),
+                dp(120),
+                0
+        );
+
+        back.setOnClickListener(
+                v -> renderHistory()
+        );
+    }
+
+
+    private boolean sameHistoryQuestion(
+            CgHistoryItem a,
+            CgHistoryItem b
+    ) {
+
+        if (
+                a.questionId != null &&
+                !a.questionId.trim().isEmpty() &&
+                b.questionId != null &&
+                !b.questionId.trim().isEmpty()
+        ) {
+
+            return a.questionId.equals(
+                    b.questionId
+            );
+        }
+
+
+        return safeHistoryText(
+                a.question,
+                ""
+        ).equals(
+                safeHistoryText(
+                        b.question,
+                        ""
+                )
+        );
+    }
+
+
+    private String safeHistoryText(
+            String value,
+            String fallback
+    ) {
+
+        if (
+                value == null ||
+                value.trim().isEmpty()
+        ) {
+
+            return fallback;
+        }
+
+        return value.trim();
+    }
+
+
+    private String formatHistoryDate(
+            long timestamp
+    ) {
+
+        if (timestamp <= 0L) {
+            return "Date inconnue";
+        }
+
+        try {
+
+            return new SimpleDateFormat(
+                    "dd/MM/yyyy · HH:mm",
+                    Locale.FRANCE
+            ).format(
+                    new Date(timestamp)
+            );
+
+        } catch (Exception ignored) {
+
+            return "Date inconnue";
+        }
+    }
+
+
+    private void showHistoryError(
+            String message
+    ) {
+
+        screen = "history";
+
+        baseScreen();
+
+        addTitle(
+                "Historique",
+                31,
+                Color.WHITE
+        );
+
+
+        TextView error =
+                cardText(
+                        "Historique indisponible.
+
+"
+                                + safeHistoryText(
+                                        message,
+                                        "Erreur inconnue"
+                                ),
+                        17,
+                        DARK,
+                        Color.WHITE
+                );
+
+        error.setGravity(
+                Gravity.CENTER
+        );
+
+        add(
+                error,
+                -1,
+                -2,
+                dp(40),
+                dp(30),
+                dp(40),
+                dp(20)
+        );
+
+
+        Button retry =
+                button(
+                        "Réessayer",
+                        GREEN,
+                        18
+                );
+
+        add(
+                retry,
+                -1,
+                dp(58),
+                dp(160),
+                0,
+                dp(160),
+                dp(10)
+        );
+
+        retry.setOnClickListener(
+                v -> showHistory()
+        );
+
+
+        Button back =
+                button(
+                        "Retour",
+                        BLUE,
+                        18
+                );
+
+        add(
+                back,
+                -1,
+                dp(58),
+                dp(160),
+                0,
+                dp(160),
+                0
+        );
+
+        back.setOnClickListener(
+                v -> showHome()
+        );
+    }
+
 
     private void showMegathemes() {
         screen = "megathemes";
@@ -1579,6 +2809,346 @@ final class CgFirestore {
         return q;
     }
 
+    /*
+     * CGANDROID004 · HISTORY_FIRESTORE_READ001
+     *
+     * Lecture directe de users/<uid>/play_history
+     * avec pagination Firestore REST.
+     */
+    List<CgHistoryItem> listPlayHistorySync(
+            String token,
+            String uid,
+            int maxItems
+    ) throws Exception {
+
+        List<CgHistoryItem> out =
+                new ArrayList<>();
+
+        String pageToken = "";
+
+        while (
+                out.size() < maxItems
+        ) {
+
+            int pageSize =
+                    Math.min(
+                            100,
+                            maxItems - out.size()
+                    );
+
+
+            String url =
+                    "https://firestore.googleapis.com/v1/projects/"
+                            + enc(
+                            BuildConfig.FIREBASE_PROJECT_ID
+                    )
+                            + "/databases/(default)/documents/users/"
+                            + enc(uid)
+                            + "/play_history"
+                            + "?pageSize="
+                            + pageSize
+                            + "&orderBy=client_played_at_ms%20desc";
+
+
+            if (
+                    pageToken != null &&
+                    !pageToken.isEmpty()
+            ) {
+
+                url +=
+                        "&pageToken="
+                                + enc(pageToken);
+            }
+
+
+            JSONObject response =
+                    CgHttp.json(
+                            "GET",
+                            url,
+                            token,
+                            null
+                    );
+
+
+            JSONArray documents =
+                    response.optJSONArray(
+                            "documents"
+                    );
+
+
+            if (
+                    documents == null ||
+                    documents.length() == 0
+            ) {
+
+                break;
+            }
+
+
+            for (
+                    int i = 0;
+                    i < documents.length()
+                            && out.size() < maxItems;
+                    i++
+            ) {
+
+                JSONObject document =
+                        documents.optJSONObject(i);
+
+                if (document == null) {
+                    continue;
+                }
+
+
+                JSONObject fields =
+                        document.optJSONObject(
+                                "fields"
+                        );
+
+                if (fields == null) {
+                    continue;
+                }
+
+
+                /*
+                 * HISTORY_QR001 ne retient que les événements
+                 * réellement évaluables.
+                 */
+                JSONObject correctField =
+                        fields.optJSONObject(
+                                "is_correct"
+                        );
+
+                if (
+                        correctField == null ||
+                        !correctField.has(
+                                "booleanValue"
+                        )
+                ) {
+
+                    continue;
+                }
+
+
+                CgHistoryItem item =
+                        new CgHistoryItem();
+
+
+                item.playedAtMs =
+                        longish(
+                                fields,
+                                "client_played_at_ms"
+                        );
+
+                item.correct =
+                        boolish(
+                                fields,
+                                "is_correct"
+                        );
+
+                item.questionId =
+                        str(
+                                fields,
+                                "question_id"
+                        );
+
+                item.domain =
+                        str(
+                                fields,
+                                "domain"
+                        );
+
+                item.theme =
+                        str(
+                                fields,
+                                "theme"
+                        );
+
+                item.correctAnswer =
+                        str(
+                                fields,
+                                "correct_answer"
+                        );
+
+                item.interactionMode =
+                        str(
+                                fields,
+                                "interaction_mode"
+                        );
+
+
+                JSONObject snapshotValue =
+                        fields.optJSONObject(
+                                "question_snapshot"
+                        );
+
+                JSONObject snapshotFields =
+                        null;
+
+
+                if (snapshotValue != null) {
+
+                    JSONObject mapValue =
+                            snapshotValue.optJSONObject(
+                                    "mapValue"
+                            );
+
+                    if (mapValue != null) {
+
+                        snapshotFields =
+                                mapValue.optJSONObject(
+                                        "fields"
+                                );
+                    }
+                }
+
+
+                if (snapshotFields != null) {
+
+                    if (
+                            item.questionId == null ||
+                            item.questionId.isEmpty()
+                    ) {
+
+                        item.questionId =
+                                str(
+                                        snapshotFields,
+                                        "question_id"
+                                );
+                    }
+
+
+                    item.question =
+                            str(
+                                    snapshotFields,
+                                    "question"
+                            );
+
+
+                    if (
+                            item.domain == null ||
+                            item.domain.isEmpty()
+                    ) {
+
+                        item.domain =
+                                str(
+                                        snapshotFields,
+                                        "domain"
+                                );
+                    }
+
+
+                    if (
+                            item.theme == null ||
+                            item.theme.isEmpty()
+                    ) {
+
+                        item.theme =
+                                str(
+                                        snapshotFields,
+                                        "theme"
+                                );
+                    }
+
+
+                    /*
+                     * Compatibilité avec anciens événements
+                     * qui auraient le snapshot mais pas
+                     * correct_answer au niveau racine.
+                     */
+                    if (
+                            item.correctAnswer == null ||
+                            item.correctAnswer.isEmpty()
+                    ) {
+
+                        int correctIndex =
+                                integer(
+                                        snapshotFields,
+                                        "correct_index"
+                                );
+
+
+                        String answerKey = "";
+
+                        switch (correctIndex) {
+
+                            case 1:
+                                answerKey =
+                                        "proposition_a";
+                                break;
+
+                            case 2:
+                                answerKey =
+                                        "proposition_b";
+                                break;
+
+                            case 3:
+                                answerKey =
+                                        "proposition_c";
+                                break;
+
+                            case 4:
+                                answerKey =
+                                        "proposition_d";
+                                break;
+
+                            default:
+                                break;
+                        }
+
+
+                        if (!answerKey.isEmpty()) {
+
+                            item.correctAnswer =
+                                    str(
+                                            snapshotFields,
+                                            answerKey
+                                    );
+                        }
+                    }
+                }
+
+
+                out.add(item);
+            }
+
+
+            pageToken =
+                    response.optString(
+                            "nextPageToken",
+                            ""
+                    );
+
+
+            if (pageToken.isEmpty()) {
+                break;
+            }
+        }
+
+
+        return out;
+    }
+
+
+    private static long longish(
+            JSONObject fields,
+            String key
+    ) {
+
+        String value =
+                str(
+                        fields,
+                        key
+                );
+
+        try {
+            return Long.parseLong(value);
+        } catch (Exception ignored) {
+            return 0L;
+        }
+    }
+
+
     void createDocumentSync(String token, String uid, String collection, JSONObject payload) throws Exception {
         String url = "https://firestore.googleapis.com/v1/projects/" + enc(BuildConfig.FIREBASE_PROJECT_ID) +
                 "/databases/(default)/documents/users/" + enc(uid) + "/" + enc(collection);
@@ -1667,6 +3237,24 @@ final class CgFirestore {
 
     private static String enc(String value) { return Uri.encode(value == null ? "" : value, ""); }
 }
+
+/*
+ * CGANDROID004 · HISTORY_QR_MODEL001
+ */
+final class CgHistoryItem {
+
+    long playedAtMs = 0L;
+
+    boolean correct = false;
+
+    String questionId = "";
+    String domain = "";
+    String theme = "";
+    String question = "";
+    String correctAnswer = "";
+    String interactionMode = "";
+}
+
 
 final class CgQuestion {
     String id = "";
