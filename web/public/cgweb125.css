@@ -1,0 +1,45 @@
+/*
+ * CGWEB125
+ * QUIZYPEDIA_MINIMAL001
+ */
+
+
+/* Anciennes fonctions Quizypedia */
+
+#cgimport011Bulk,
+#cgweb040ControlCenter,
+#cgweb122Panel,
+#cgweb123Panel{
+  display:none!important;
+}
+
+
+/* Commandes devenues inutiles */
+
+#cgimp2All,
+#cgimp2None,
+#cgimp2Import,
+#cgimport002Panel .cgimp2-toolbar{
+  display:none!important;
+}
+
+
+/* Thème détecté automatiquement */
+
+#cgimp2Theme{
+  display:none!important;
+}
+
+
+/* Panneau URL unique */
+
+#cgimport002Panel{
+  margin-bottom:0!important;
+}
+
+
+/* Unique commande utilisateur */
+
+#cgimport002Panel #cgimp2Analyze{
+  white-space:nowrap;
+}

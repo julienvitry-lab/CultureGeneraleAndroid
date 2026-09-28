@@ -60,11 +60,9 @@
   <link rel="stylesheet" href="./cgweb033.css?v=CGWEB033_1">
   <link rel="stylesheet" href="./cgweb034.css?v=CGWEB034_1">
   <link rel="stylesheet" href="./cgweb035.css?v=CGPLAY004_LONG_SESSION001_ADAPTIVE_BATCH001_SESSION_RESUME001&cb=CGWEB115">
-  <link rel="stylesheet" href="./cgimport011.css?v=CGIMPORT011_FIX5_RESIDUE_CLEANUP002">
   <link rel="stylesheet" href="./cgweb037.css?v=CGWEB037_DIRECTORY_SEARCH002">
   <link rel="stylesheet" href="./cgweb038.css?v=CGWEB038_QUESTION_WORKSPACE001">
   <link rel="stylesheet" href="./cgweb039.css?v=CGWEB039_BULK_ACTIONS001">
-  <link rel="stylesheet" href="./cgweb040.css?v=CGWEB040_IMPORT_CONTROL_CENTER001">
   <link rel="stylesheet" href="./cgweb041.css?v=CGWEB041_QUALITY_DASHBOARD001">
   <link rel="stylesheet" href="./cgweb043.css?v=CGWEB043_PERFORMANCE001">
   <link rel="stylesheet" href="./cgweb044.css?v=CGWEB044_UX_POLISH001">
@@ -87,12 +85,11 @@
   <link rel="stylesheet" href="./cgweb060.css?v=CGWEB060_CONTROL_TOWER001">
   <link rel="stylesheet" href="./cgweb107fix2.css?v=CGWEB107_FIX2_PRIMARY_NAV_SINGLE_ROW001">
   <link rel="stylesheet" href="./cgweb109.css?v=CGWEB111">
-  <link rel="stylesheet" href="./cgweb122.css?v=CGWEB122_FIX3_ANNEX_QUESTIONNAIRE_CAPTURE001">
   <link rel="stylesheet" href="./cgweb115.css?v=CGWEB115_FIX5_DETAIL_METRICS_DENSITY001">
   <link rel="stylesheet" href="./cgweb116fix2.css?v=CGWEB116_FIX2_QUIZYPEDIA_COMPACT_LAYOUT001">
   <link rel="stylesheet" href="./cgweb116fix3.css?v=CGWEB116_FIX3_FIX4_ONE_CLICK_IMPORT001">
-  <link rel="stylesheet" href="./cgweb123.css?v=CGWEB123_FIX5_REVIEW_BEFORE_REJECT001">
   <link rel="stylesheet" href="cgweb124.css?v=124001">
+  <link rel="stylesheet" href="./cgweb125.css?v=CGWEB125_QUIZYPEDIA_MINIMAL001">
 </head>
 <body>
   <div class="app-shell">
@@ -306,12 +303,19 @@
   <div class="cgimp2-grid cgweb111-import-fields">
     <div class="cgimp2-field"><label for="cgimp2Url">Adresse Quizypedia</label><input id="cgimp2Url" type="url" placeholder="https://www.quizypedia.fr/quiz/..."></div>
     <div class="cgimp2-field"><label for="cgimp2Mega">Mégathème</label><select id="cgimp2Mega"><option>Animaux et Plantes</option><option>Culture Classique</option><option selected>Culture Générale</option><option>Culture Moderne</option><option>Géographie</option><option>Histoire</option><option>Sciences et Techniques</option><option>Sport</option></select></div>
-    <div class="cgimp2-field"><label for="cgimp2Theme">Thème</label><input id="cgimp2Theme" placeholder="Détecté depuis l’URL si laissé vide"></div>
+    <input id="cgimp2Theme" type="hidden" value="">
   </div>
   <div class="cgimp2-actions"><button id="cgimp2Analyze" class="cgimp2-btn cgimp2-btn-primary">Analyser l’URL</button></div>
   <div id="cgimp2Status" class="cgimp2-status warn">Aucune donnée n’est écrite avant le bouton Importer.</div>
   <div class="cgimp2-summary"><div class="cgimp2-stat"><small>Fiches extraites</small><strong id="cgimp2Fiches">—</strong></div><div class="cgimp2-stat"><small>Questions générées</small><strong id="cgimp2Questions">0</strong></div><div class="cgimp2-stat"><small>Champs exploitables</small><strong id="cgimp2Fields">0</strong></div><div class="cgimp2-stat"><small>Sélectionnées</small><strong id="cgimp2Selected">0</strong></div></div>
-  <div class="cgimp2-toolbar"><button id="cgimp2All" class="cgimp2-btn">Tout sélectionner</button><button id="cgimp2None" class="cgimp2-btn">Tout désélectionner</button><button id="cgimp2Import" class="cgimp2-btn cgimp2-btn-primary" disabled>Importer les questions sélectionnées</button></div>
+  <button
+    id="cgimp2Import"
+    type="button"
+    hidden
+    disabled
+    aria-hidden="true"
+    tabindex="-1"
+  ></button>
   <div id="cgimp2List" class="cgimp2-list"></div>
 </section>
 
@@ -343,11 +347,9 @@
   <script type="module" src="cgimage008.js?v=CGIMAGE008_1"></script>
 <script src="/cgweb036.js?v=CGWEB036_FIX2B_CACHE_BUST_STRUCTURAL002" defer></script>
   <script src="./vendor/xlsx.full.min.js?v=XLSX_0_18_5" defer></script>
-  <script src="./cgimport011.js?v=CGWEB116_FIX3_FIX4_FIX3_MULTI_DIRECT_CALL001" defer></script>
   <script src="./cgweb037.js?v=CGWEB037_DIRECTORY_SEARCH002" defer></script>
   <script src="./cgweb038.js?v=CGWEB038_QUESTION_WORKSPACE001" defer></script>
   <script src="./cgweb039.js?v=CGWEB039_BULK_ACTIONS001&cb=CGWEB109" defer></script>
-  <script src="./cgweb040.js?v=CGWEB040_IMPORT_CONTROL_CENTER001" defer></script>
   <script src="./cgweb041.js?v=CGWEB041_QUALITY_DASHBOARD001" defer></script>
   <script src="./cgweb043.js?v=CGWEB043_PERFORMANCE001" defer></script>
   <script src="./cgweb044.js?v=CGWEB044_UX_POLISH001" defer></script>
@@ -369,9 +371,8 @@
   <script src="./cgweb060.js?v=CGWEB060_CONTROL_TOWER001" defer></script>
   <script src="./cgweb_question_fullwidth001.js?v=ANDROID_PREVIEW_REMOVE001_QUESTION_DETAIL_FULLWIDTH001" defer></script>
   <script src="./cgweb109.js?v=CGWEB116_FIX3_FIX1_QUIZYPEDIA_STACK_SOURCE001" defer></script>
-  <script src="./cgweb122.js?v=CGWEB122_FIX3_ANNEX_QUESTIONNAIRE_CAPTURE001" defer></script>
 <script type="module" src="./cgweb115.js?v=CGWEB116_FIX3_FIX4_FIX1_MULTI_READ_CLICK_FIX001"></script>
-  <script src="./cgweb123.js?v=CGWEB123_FIX5_REVIEW_BEFORE_REJECT001"></script>
   <script src="cgweb124.js?v=124001" defer></script>
+  <script src="./cgweb125.js?v=CGWEB125_QUIZYPEDIA_MINIMAL001" defer></script>
 </body>
 </html>
