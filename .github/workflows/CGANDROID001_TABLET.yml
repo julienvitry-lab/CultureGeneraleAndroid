@@ -1,4 +1,4 @@
-name: CGANDROID001 Tablet APK
+name: CGANDROID003 Tablet APK
 
 on:
   workflow_dispatch:
@@ -40,7 +40,7 @@ jobs:
       - name: Publier l'APK
         uses: actions/upload-artifact@v4
         with:
-          name: CultureGenerale-Tablet-CGANDROID002
+          name: CultureGenerale-Tablet-CGANDROID003
           path: tablet/build/outputs/apk/debug/tablet-debug.apk
           if-no-files-found: error
           retention-days: 14

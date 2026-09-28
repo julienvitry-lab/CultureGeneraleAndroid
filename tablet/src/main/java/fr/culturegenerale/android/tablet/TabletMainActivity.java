@@ -58,11 +58,11 @@ import java.util.concurrent.Executors;
  * CGANDROID001
  * - nouvelle APK indépendante de l'ancien module app/ ;
  * - Session intelligente comme unique mode de jeu ;
- * - QCM natif ;
+ * - CGANDROID003 : Q/R en deux étapes avec auto-évaluation binaire ;
  * - Comfortaa systématique ;
  * - P = signalement éditorial ;
  * - T = exclusion analogue locale immédiate + file Cloud/pending ;
- * - réponses QCM écrites dans play_history pour alimenter CGWEB035.
+ * - réussite / échec auto-évalués conservés dans play_history.
  */
 public class TabletMainActivity extends Activity {
 
@@ -547,7 +547,8 @@ public class TabletMainActivity extends Activity {
         Button p = microButton("P");
         Button t = microButton("T");
         Button menu = button("Menu", RED, 18);
-        Button proposals = button("Propositions", GREEN, 18);
+        // CGANDROID003 · REVEAL_ANSWER001
+        Button proposals = button("Révéler", GREEN, 18);
 
         footer.addView(p, footerMicroLp());
         footer.addView(t, footerMicroLp());
@@ -561,7 +562,22 @@ public class TabletMainActivity extends Activity {
         proposals.setOnClickListener(v -> showAnswers(q));
     }
 
+    /*
+     * CGANDROID003
+     *
+     * SELF_ASSESSMENT_QR001
+     * QCM_UI_RETIRE001
+     * REVEAL_ANSWER001
+     * BINARY_SELF_EVAL001
+     *
+     * Les quatre propositions restent présentes dans les données
+     * historiques mais ne sont plus affichées.
+     *
+     * La bonne réponse est extraite de :
+     * q.options[q.correctIndex - 1]
+     */
     private void showAnswers(CgQuestion q) {
+
         screen = "answers";
         answering = false;
         answerButtons.clear();
@@ -569,45 +585,288 @@ public class TabletMainActivity extends Activity {
 
         addStatsBanner();
 
-        TextView question = cardText(q.question, 19, YELLOW, Color.BLACK);
-        question.setGravity(Gravity.CENTER);
-        question.setMinHeight(dp(60));
-        add(question, -1, -2, 0, 0, 0, dp(10));
 
-        for (int i = 0; i < 4; i++) {
-            final int choice = i + 1;
-            String label = q.options[i] == null ? "" : q.options[i];
-            Button b = button(label, GREY, 20);
-            b.setGravity(Gravity.CENTER);
-            b.setPadding(dp(16), dp(8), dp(16), dp(8));
-            b.setMinHeight(dp(78));
-            b.setBackground(roundedStroke(GREY, 14, Color.WHITE, 1));
-            add(b, -1, -2, 0, 0, 0, dp(8));
-            answerButtons.add(b);
-            b.setOnClickListener(v -> answer(q, choice));
+        String correctAnswer = "";
+
+        if (
+                q != null &&
+                q.correctIndex >= 1 &&
+                q.correctIndex <= 4
+        ) {
+
+            correctAnswer =
+                    q.options[
+                            q.correctIndex - 1
+                    ];
         }
 
-        addFlexSpacer();
 
-        LinearLayout footer = new LinearLayout(this);
-        footer.setOrientation(LinearLayout.HORIZONTAL);
-        footer.setGravity(Gravity.CENTER);
+        if (
+                correctAnswer == null ||
+                correctAnswer.trim().isEmpty()
+        ) {
 
-        Button p = microButton("P");
-        Button t = microButton("T");
-        Button menu = button("Menu", RED, 17);
-        Button back = button("Retour question", BLUE, 17);
+            correctAnswer =
+                    "Réponse indisponible";
+        }
 
-        footer.addView(p, footerMicroLp());
-        footer.addView(t, footerMicroLp());
-        footer.addView(menu, footerLp(1.15f));
-        footer.addView(back, footerLp(1.25f));
-        root.addView(footer, footerBarLp());
 
-        p.setOnClickListener(v -> reportProblem(q, p));
-        t.setOnClickListener(v -> confirmAnalogExclusion(q));
-        menu.setOnClickListener(v -> showHome());
-        back.setOnClickListener(v -> showQuestion(q));
+        /*
+         * Zone occupant tout l'espace disponible.
+         * Son contenu est centré horizontalement ET verticalement.
+         */
+        LinearLayout center =
+                new LinearLayout(this);
+
+        center.setOrientation(
+                LinearLayout.VERTICAL
+        );
+
+        center.setGravity(
+                Gravity.CENTER
+        );
+
+        center.setPadding(
+                dp(60),
+                dp(28),
+                dp(60),
+                dp(28)
+        );
+
+
+        LinearLayout.LayoutParams centerLp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        0,
+                        1f
+                );
+
+        root.addView(
+                center,
+                centerLp
+        );
+
+
+        TextView answerLabel =
+                text(
+                        "Réponse",
+                        18,
+                        LIGHT_GREY,
+                        Gravity.CENTER
+                );
+
+        center.addView(
+                answerLabel,
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                )
+        );
+
+
+        TextView answer =
+                text(
+                        correctAnswer,
+                        34,
+                        Color.WHITE,
+                        Gravity.CENTER
+                );
+
+        answer.setTypeface(
+                appFont,
+                Typeface.BOLD
+        );
+
+        answer.setPadding(
+                dp(18),
+                dp(22),
+                dp(18),
+                dp(30)
+        );
+
+
+        LinearLayout.LayoutParams answerLp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                );
+
+        answerLp.setMargins(
+                0,
+                dp(8),
+                0,
+                dp(26)
+        );
+
+        center.addView(
+                answer,
+                answerLp
+        );
+
+
+        /*
+         * Les DEUX seules commandes de validation
+         * visibles sur l'écran de réponse.
+         */
+        LinearLayout evaluationRow =
+                new LinearLayout(this);
+
+        evaluationRow.setOrientation(
+                LinearLayout.HORIZONTAL
+        );
+
+        evaluationRow.setGravity(
+                Gravity.CENTER
+        );
+
+
+        Button success =
+                button(
+                        "✓ J’avais bon",
+                        GREEN,
+                        22
+                );
+
+        Button failure =
+                button(
+                        "✕ J’avais faux",
+                        RED,
+                        22
+                );
+
+
+        success.setTextColor(
+                Color.WHITE
+        );
+
+        failure.setTextColor(
+                Color.WHITE
+        );
+
+
+        success.setBackground(
+                roundedStroke(
+                        GREEN,
+                        16,
+                        Color.WHITE,
+                        1
+                )
+        );
+
+        failure.setBackground(
+                roundedStroke(
+                        RED,
+                        16,
+                        Color.WHITE,
+                        1
+                )
+        );
+
+
+        LinearLayout.LayoutParams successLp =
+                new LinearLayout.LayoutParams(
+                        0,
+                        dp(86),
+                        1f
+                );
+
+        successLp.setMargins(
+                0,
+                0,
+                dp(10),
+                0
+        );
+
+
+        LinearLayout.LayoutParams failureLp =
+                new LinearLayout.LayoutParams(
+                        0,
+                        dp(86),
+                        1f
+                );
+
+        failureLp.setMargins(
+                dp(10),
+                0,
+                0,
+                0
+        );
+
+
+        evaluationRow.addView(
+                success,
+                successLp
+        );
+
+        evaluationRow.addView(
+                failure,
+                failureLp
+        );
+
+
+        LinearLayout.LayoutParams rowLp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                );
+
+        rowLp.setMargins(
+                dp(50),
+                0,
+                dp(50),
+                0
+        );
+
+        center.addView(
+                evaluationRow,
+                rowLp
+        );
+
+
+        /*
+         * Vert :
+         * la réponse mentalement formulée était correcte.
+         *
+         * On transmet l'index réellement correct afin de
+         * conserver la compatibilité du moteur historique.
+         */
+        success.setOnClickListener(v -> {
+
+            if (answering) {
+                return;
+            }
+
+            success.setEnabled(false);
+            failure.setEnabled(false);
+
+            answer(
+                    q,
+                    q.correctIndex
+            );
+        });
+
+
+        /*
+         * Rouge :
+         * la réponse mentalement formulée était incorrecte.
+         *
+         * choice = 0 est le nouveau marqueur interne
+         * "aucune proposition QCM sélectionnée".
+         */
+        failure.setOnClickListener(v -> {
+
+            if (answering) {
+                return;
+            }
+
+            success.setEnabled(false);
+            failure.setEnabled(false);
+
+            answer(
+                    q,
+                    0
+            );
+        });
     }
 
     private LinearLayout.LayoutParams footerLp(float weight) {
@@ -791,8 +1050,36 @@ public class TabletMainActivity extends Activity {
             // CGANDROID_HISTORY_SNAPSHOT_TRUTH001
             x.put("selected_index", choice);
             x.put("correct_index", q.correctIndex);
-            x.put("selected_answer", q.options[Math.max(0, Math.min(3, choice - 1))]);
-            x.put("correct_answer", q.options[Math.max(0, Math.min(3, q.correctIndex - 1))]);
+
+            // CGANDROID003 · SELF_ASSESSMENT_HISTORY001
+            //
+            // choice == 0 signifie :
+            // "J'avais faux", sans fabriquer une fausse proposition
+            // A/B/C/D que l'utilisateur n'a jamais sélectionnée.
+            x.put(
+                    "selected_answer",
+                    choice >= 1 && choice <= 4
+                            ? q.options[choice - 1]
+                            : ""
+            );
+
+            x.put(
+                    "correct_answer",
+                    q.options[
+                            Math.max(
+                                    0,
+                                    Math.min(
+                                            3,
+                                            q.correctIndex - 1
+                                    )
+                            )
+                    ]
+            );
+
+            x.put(
+                    "interaction_mode",
+                    "self_assessment_qr"
+            );
             x.put("source", BuildConfig.CG_CHANNEL);
             x.put("session_id", game.sessionId());
 
