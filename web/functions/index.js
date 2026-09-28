@@ -6377,7 +6377,8 @@ exports.cgweb123AiQuestionFactory =
   console.log(FIX6_MARK + " : fallback vignette Quizypedia + normalisation image activés");
 })();
 // ===== CGWEB124 · RAW_TEXT_EXTRACTOR001 · START =====
-const functionsCGWEB124 = require("firebase-functions");
+// CGWEB125 FIX1 · CGWEB124_V2_RUNTIME001
+// CGWEB124 réutilise onRequest déjà importé depuis firebase-functions/v2/https.
 const dnsCGWEB124 = require("node:dns").promises;
 const netCGWEB124 = require("node:net");
 const { JSDOM: JSDOMCGWEB124 } = require("jsdom");
@@ -6664,10 +6665,13 @@ async function cg124BuildXlsx(texts) {
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
-exports.cgweb124RawTextExtract = functionsCGWEB124
-  .region("europe-west1")
-  .runWith({ timeoutSeconds: 540, memory: "1GB" })
-  .https.onRequest(async (req, res) => {
+exports.cgweb124RawTextExtract = onRequest(
+  {
+    region: "europe-west1",
+    timeoutSeconds: 540,
+    memory: "1GiB",
+  },
+  async (req, res) => {
     cg124Cors(res);
     if (req.method === "OPTIONS") return res.status(204).send("");
     if (req.method !== "POST") return res.status(405).json({ ok: false, error: "POST requis" });
