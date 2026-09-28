@@ -1052,6 +1052,7 @@ public class TabletMainActivity extends Activity {
     }
 
 
+    // CGANDROID004 FIX1 · JAVA_STRING_ESCAPE001
     private void showHistoryDetail(
             CgHistoryItem selected
     ) {
@@ -1106,9 +1107,7 @@ public class TabletMainActivity extends Activity {
 
         TextView answer =
                 cardText(
-                        "Réponse
-
-"
+                        "Réponse\n\n"
                                 + safeHistoryText(
                                         selected.correctAnswer,
                                         "—"
@@ -1413,9 +1412,7 @@ public class TabletMainActivity extends Activity {
 
         TextView error =
                 cardText(
-                        "Historique indisponible.
-
-"
+                        "Historique indisponible.\n\n"
                                 + safeHistoryText(
                                         message,
                                         "Erreur inconnue"
