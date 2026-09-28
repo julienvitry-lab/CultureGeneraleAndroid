@@ -17,7 +17,22 @@ const DOMAINS=[
 const CACHE=new Map();
 const X_POLICY_TTL_MS=15*1000;
 const X_POLICY_CACHE=new Map();
-const LEARNING_MODEL_VERSION='CGPLAY003_X_ONLY001_LEARNING_MODEL002';
+// CGPLAY004 · LEARNING_MODEL003
+const LEARNING_MODEL_VERSION='CGPLAY004_LEARNING_MODEL003';
+
+// Une réussite suffit pour sortir définitivement
+// une question du vivier jusqu'au hard reset.
+const CGPLAY004_MODEL003_SUCCESS_EXCLUSION=true;
+
+// Un thème utilisé reste temporairement indisponible
+// pendant les N questions suivantes.
+const CGPLAY004_MODEL003_THEME_COOLDOWN=8;
+
+// Cache catalogue : le catalogue ne dépend PAS
+// des réponses de l'utilisateur.
+// Les réussites sont filtrées séparément à chaque lot.
+const CGPLAY004_MODEL003_CATALOG_TTL_MS=15*60*1000;
+const CGPLAY004_MODEL003_CATALOG_CACHE=new Map();
 const X_TRUTH_VERSION='CGPLAY003_FIX3_X_TRUTH001_REPAIR001';
 const X_AUDIT_VERSION='CGPLAY003_FIX4_X_SEMANTIC_AUDIT001';
 const X_DUPLICATE_TRUTH_VERSION='CGPLAY003_FIX5_X_DUPLICATE_TRUTH002';
@@ -466,7 +481,25 @@ function learningModelMeta(xPolicy){
     ],
 
     targetPlayMode:
-      'qcm',
+      'self_assessment_qr',
+
+    /*
+     * CGPLAY004 · LEARNING_MODEL003
+     */
+    selectionPolicy:
+      'random_remaining',
+
+    successPolicy:
+      'exclude_after_first_success_until_hard_reset',
+
+    failurePolicy:
+      'remain_eligible',
+
+    sessionDuplicatePolicy:
+      'no_repeat_inside_current_session',
+
+    themeCooldownQuestions:
+      CGPLAY004_MODEL003_THEME_COOLDOWN,
 
     legacyHistoryPreserved:
       true,
@@ -621,12 +654,29 @@ function buildAnalysis(events){
     questions.push(q);
   }
 
+  /*
+   * CGPLAY004 · THEME_COOLDOWN_08Q001
+   *
+   * On garde la séquence réelle des derniers thèmes joués.
+   * Elle sert de graine au prochain tirage afin que
+   * l'anti-répétition survive aussi aux changements de lot.
+   */
+  const recentThemes=
+    chronological
+      .filter(isEvaluable)
+      .map(e=>one(e.theme))
+      .filter(Boolean)
+      .slice(
+        -CGPLAY004_MODEL003_THEME_COOLDOWN
+      );
+
   return {
     questions,totalAttempts,totalPositive,
     globalSuccessPercent:pct(totalPositive,totalAttempts),
     globalMedianResponseMs:globalMedian,
     globalAverageResponseMs:avg(allTimes),
-    eventsCount:events.length
+    eventsCount:events.length,
+    recentThemes
   };
 }
 function compactQuestion(q){
@@ -936,336 +986,157 @@ async function smartUnseenCandidates(uid,analysis,wanted,domain,xPolicy){
   return cg35Shuffle(out);
 }
 
-async function smartSession(uid,analysis,body,xPolicy){
+/*
+ * CGPLAY004 · LEARNING_MODEL003
+ *
+ * Ancien mode SMART court conservé pour compatibilité
+ * CGWEB, mais il applique exactement la même règle
+ * pédagogique que la tablette.
+ */
+async function smartSession(
+  uid,
+  analysis,
+  body,
+  xPolicy
+){
 
-  const count=clamp(
-    Math.floor(num(body.count)||20),
-    5,
-    50
-  );
-
-  const duePct=clamp(num(body.duePct??40),0,100);
-  const weakPct=clamp(num(body.weakPct??35),0,100);
-  const unseenPct=clamp(num(body.unseenPct??25),0,100);
-  const domain=one(body.domain);
-
-  const quota=smartQuota(
-    count,
-    duePct,
-    weakPct,
-    unseenPct
-  );
-
-  const eligible=q=>
-    !domain || one(q.domain)===domain;
-
-  const idOf=q=>
-    one(q.questionId)||String(q.row||'');
-
-  const unique=(rows,getId)=>{
-    const seen=new Set();
-    const out=[];
-
-    for(const x of rows){
-      const id=getId(x);
-      if(!id || seen.has(id)) continue;
-      seen.add(id);
-      out.push(x);
-    }
-
-    return out;
-  };
-
-
-  /*
-   * Priorité de classement :
-   * une question échue appartient d'abord à "À réviser".
-   */
-  const dueSource=unique(
-    analysis.questions
-      .filter(q=>q.due&&eligible(q))
-      .sort((a,b)=>
-        b.overdueMs-a.overdueMs ||
-        a.successPercent-b.successPercent
+  const count=
+    clamp(
+      Math.floor(
+        num(body.count)||20
       ),
-    idOf
-  );
-
-  const dueIds=
-    new Set(dueSource.map(idOf));
+      5,
+      50
+    );
 
 
-  /*
-   * Les points faibles déjà classés "À réviser"
-   * sont retirés de ce second stock.
-   */
-  const weakSource=unique(
-    analysis.questions
-      .filter(q=>
-        q.priority &&
-        eligible(q) &&
-        !dueIds.has(idOf(q))
-      )
-      .sort((a,b)=>
-        b.weakness-a.weakness ||
-        b.failures-a.failures
-      ),
-    idOf
-  );
+  const domain=
+    one(body.domain);
 
 
-  /*
-   * Réserve Jamais vues suffisamment grande pour
-   * absorber une redistribution.
-   */
-  const unseenWanted=
-    Math.max(100,count*4);
-
-  const unseenSource=
-    await smartUnseenCandidates(
+  const pool=
+    await cgplay004Model003RemainingPool(
       uid,
       analysis,
-      unseenWanted,
       domain,
-      xPolicy
+      xPolicy,
+      new Set()
     );
 
 
-  const pools={
-
-    due:
-      dueSource.map(
-        q=>smartHistoricalRow(q,'due')
-      ),
-
-    weakness:
-      weakSource.map(
-        q=>smartHistoricalRow(q,'weakness')
-      ),
-
-    unseen:
-      unique(
-        unseenSource,
-        q=>one(q.id)
-      )
-  };
-
-
-  const available={
-    due:pools.due.length,
-    weakness:pools.weakness.length,
-    unseen:pools.unseen.length
-  };
-
-
-  /*
-   * Si le moteur récupère exactement unseenWanted éléments,
-   * on sait seulement qu'il y en a AU MOINS ce nombre.
-   */
-  const availableCapped={
-    due:false,
-    weakness:false,
-    unseen:pools.unseen.length>=unseenWanted
-  };
-
-
-  const actual={
-    due:0,
-    weakness:0,
-    unseen:0
-  };
-
-  const primaryActual={
-    due:0,
-    weakness:0,
-    unseen:0
-  };
-
-  const redistributed={
-    due:0,
-    weakness:0,
-    unseen:0
-  };
-
-  const selected=[];
-
-
-  const take=(key,n,phase)=>{
-
-    let done=0;
-
-    while(
-      done<n &&
-      selected.length<count &&
-      pools[key].length
-    ){
-      selected.push(
-        pools[key].shift()
-      );
-
-      actual[key]++;
-
-      if(phase==='primary')
-        primaryActual[key]++;
-      else
-        redistributed[key]++;
-
-      done++;
-    }
-
-    return done;
-  };
-
-
-  /*
-   * Allocation primaire.
-   */
-  take('due',quota.due,'primary');
-  take('weakness',quota.weakness,'primary');
-  take('unseen',quota.unseen,'primary');
-
-
-  const shortage={
-
-    due:
-      Math.max(
-        0,
-        quota.due-primaryActual.due
-      ),
-
-    weakness:
-      Math.max(
-        0,
-        quota.weakness-primaryActual.weakness
-      ),
-
-    unseen:
-      Math.max(
-        0,
-        quota.unseen-primaryActual.unseen
-      )
-  };
-
-
-  /*
-   * Redistribue les places vacantes uniquement entre
-   * les catégories disposant encore d'un stock.
-   */
-  const weights={
-    due:Math.max(0,duePct),
-    weakness:Math.max(0,weakPct),
-    unseen:Math.max(0,unseenPct)
-  };
-
-  const tieOrder={
-    due:0,
-    weakness:1,
-    unseen:2
-  };
-
-
-  while(selected.length<count){
-
-    const availableKeys=
-      ['due','weakness','unseen']
-        .filter(k=>pools[k].length);
-
-    if(!availableKeys.length)
-      break;
-
-
-    const weighted=
-      availableKeys.filter(
-        k=>weights[k]>0
-      );
-
-    const candidates=
-      weighted.length
-        ? weighted
-        : availableKeys;
-
-
-    /*
-     * Round-robin pondéré sur les places redistribuées.
-     */
-    candidates.sort((a,b)=>{
-
-      const scoreA=
-        weights[a]>0
-          ? weights[a]/(redistributed[a]+1)
-          : 0;
-
-      const scoreB=
-        weights[b]>0
-          ? weights[b]/(redistributed[b]+1)
-          : 0;
-
-      return (
-        scoreB-scoreA ||
-        tieOrder[a]-tieOrder[b]
-      );
-    });
-
-
-    take(
-      candidates[0],
-      1,
-      'redistributed'
+  const rows=
+    cg35ThemeDiverse(
+      pool.rows,
+      analysis?.recentThemes||[],
+      CGPLAY004_MODEL003_THEME_COOLDOWN
+    )
+    .slice(
+      0,
+      count
     );
-  }
 
 
-  const shortageTotal=
-    shortage.due+
-    shortage.weakness+
-    shortage.unseen;
+  const retryCount=
+    rows.filter(
+      row=>
+        row.source==='retry'
+    ).length;
 
 
-  const redistributedTotal=
-    redistributed.due+
-    redistributed.weakness+
-    redistributed.unseen;
+  const unseenCount=
+    rows.length-
+    retryCount;
 
 
   return {
 
     balanceVersion:
-      'CGPLAY002_SMART_BALANCE002',
+      LEARNING_MODEL_VERSION,
 
     generatedAtMs:
       Date.now(),
 
+    selectionPolicy:
+      'random_remaining',
+
+    successPolicy:
+      'exclude_after_first_success_until_hard_reset',
+
+    themeCooldownQuestions:
+      CGPLAY004_MODEL003_THEME_COOLDOWN,
+
     requested:{
       count,
-      duePct,
-      weakPct,
-      unseenPct,
       domain
     },
 
-    quota,
+    quota:{
+      due:0,
+      weakness:0,
+      unseen:count
+    },
 
-    available,
-    availableCapped,
+    available:{
+      due:0,
+      weakness:
+        pool.retryEligible,
+      unseen:
+        pool.unseenEligible
+    },
 
-    primaryActual,
+    availableCapped:{
+      due:false,
+      weakness:false,
+      unseen:false
+    },
 
-    shortage,
-    shortageTotal,
+    primaryActual:{
+      due:0,
+      weakness:
+        retryCount,
+      unseen:
+        unseenCount
+    },
 
-    redistributed,
-    redistributedTotal,
+    shortage:{
+      due:0,
+      weakness:0,
+      unseen:
+        Math.max(
+          0,
+          count-rows.length
+        )
+    },
 
-    actual,
+    shortageTotal:
+      Math.max(
+        0,
+        count-rows.length
+      ),
+
+    redistributed:{
+      due:0,
+      weakness:0,
+      unseen:0
+    },
+
+    redistributedTotal:0,
+
+    actual:{
+      due:0,
+      weakness:
+        retryCount,
+      unseen:
+        unseenCount
+    },
 
     count:
-      selected.length,
+      rows.length,
 
     complete:
-      selected.length===count,
+      rows.length===count,
 
-    rows:
-      selected.slice(0,count)
+    rows
   };
 }
 
@@ -4513,22 +4384,145 @@ function smartLongRowId(row){
   );
 }
 
-function cg35ThemeDiverse(rows){
-  const remaining=cg35Shuffle(rows||[]);
-  const out=[];
-  let lastTheme='';
+/*
+ * CGPLAY004 · THEME_COOLDOWN_08Q001
+ *
+ * Principe :
+ * - ordre de départ aléatoire ;
+ * - un thème présent dans les N dernières questions
+ *   n'est normalement pas sélectionnable ;
+ * - si le catalogue rend la règle impossible,
+ *   on prend le thème utilisé LE MOINS RÉCEMMENT.
+ *
+ * Il n'y a donc jamais de blocage de séance.
+ */
+function cg35ThemeDiverse(
+  rows,
+  seedThemes=[],
+  windowSize=CGPLAY004_MODEL003_THEME_COOLDOWN
+){
 
-  while(remaining.length){
-    let index=remaining.findIndex(
-      row=>one(row?.theme)!==lastTheme
+  const remaining=
+    cg35Shuffle(
+      rows||[]
     );
 
-    if(index<0)index=0;
+  const out=[];
 
-    const [row]=remaining.splice(index,1);
+  const recent=
+    (Array.isArray(seedThemes)
+      ? seedThemes
+      : []
+    )
+    .map(one)
+    .filter(Boolean)
+    .slice(
+      -Math.max(
+        0,
+        windowSize
+      )
+    );
+
+
+  while(remaining.length){
+
+    /*
+     * Cas normal :
+     * premier candidat aléatoire dont le thème
+     * n'est pas dans la fenêtre de cooldown.
+     */
+    let index=
+      remaining.findIndex(
+        row=>{
+
+          const theme=
+            one(row?.theme);
+
+          return (
+            !theme ||
+            !recent.includes(theme)
+          );
+        }
+      );
+
+
+    /*
+     * Cas de pénurie de thèmes :
+     *
+     * tous les thèmes disponibles sont encore
+     * dans la fenêtre. On choisit alors celui
+     * qui a été vu le moins récemment.
+     */
+    if(index<0){
+
+      let bestIndex=0;
+      let bestAge=-1;
+
+      for(
+        let i=0;
+        i<remaining.length;
+        i++
+      ){
+
+        const theme=
+          one(
+            remaining[i]?.theme
+          );
+
+        if(!theme){
+          bestIndex=i;
+          break;
+        }
+
+        const last=
+          recent.lastIndexOf(
+            theme
+          );
+
+        const age=
+          last<0
+            ? Number.MAX_SAFE_INTEGER
+            : (
+                recent.length-
+                1-
+                last
+              );
+
+        if(age>bestAge){
+          bestAge=age;
+          bestIndex=i;
+        }
+      }
+
+      index=bestIndex;
+    }
+
+
+    const [row]=
+      remaining.splice(
+        index,
+        1
+      );
+
     out.push(row);
-    lastTheme=one(row?.theme);
+
+
+    const theme=
+      one(row?.theme);
+
+    if(theme){
+
+      recent.push(theme);
+
+      while(
+        recent.length>
+        windowSize
+      ){
+        recent.shift();
+      }
+    }
   }
+
 
   return out;
 }
@@ -4704,81 +4698,605 @@ async function smartLongUnseenPool(
   };
 }
 
+/*
+ * ================================================================
+ * CGPLAY004 · LEARNING_MODEL003
+ * ================================================================
+ *
+ * Le catalogue est indépendant de l'apprentissage :
+ * on peut donc le garder brièvement en mémoire.
+ *
+ * Ce cache contient uniquement les questions.
+ * Il ne mémorise AUCUN résultat utilisateur.
+ */
+async function cgplay004Model003Catalog(uid){
+
+  const cached=
+    CGPLAY004_MODEL003_CATALOG_CACHE
+      .get(uid);
+
+  if(
+    cached &&
+    Date.now()-cached.at<
+      CGPLAY004_MODEL003_CATALOG_TTL_MS
+  ){
+    return cached.rows;
+  }
+
+
+  const col=
+    getFirestore()
+      .collection('users')
+      .doc(uid)
+      .collection('questions');
+
+
+  const rows=[];
+
+  let last=null;
+
+
+  for(;;){
+
+    let q=
+      col
+        .orderBy(
+          FieldPath.documentId()
+        )
+        .select(
+          'question',
+          'detail',
+          'megatheme',
+          'theme'
+        )
+        .limit(500);
+
+
+    if(last){
+      q=q.startAfter(last);
+    }
+
+
+    const snap=
+      await q.get();
+
+
+    if(snap.empty){
+      break;
+    }
+
+
+    for(const d of snap.docs){
+
+      const x=
+        d.data()||{};
+
+      rows.push({
+
+        id:d.id,
+
+        row:
+          num(d.id),
+
+        domain:
+          one(x.megatheme),
+
+        theme:
+          one(x.theme),
+
+        question:
+          one(x.question),
+
+        detail:
+          one(x.detail)
+      });
+    }
+
+
+    last=
+      snap.docs[
+        snap.docs.length-1
+      ];
+
+
+    if(snap.size<500){
+      break;
+    }
+  }
+
+
+  CGPLAY004_MODEL003_CATALOG_CACHE
+    .set(
+      uid,
+      {
+        at:Date.now(),
+        rows
+      }
+    );
+
+
+  return rows;
+}
+
+
+/*
+ * Une question devient maîtrisée dès qu'elle possède
+ * AU MOINS UNE réussite dans play_history.
+ *
+ * Peu importe :
+ * - le nombre d'échecs précédents ;
+ * - le temps de réponse ;
+ * - son ancien classement Fragile / Due / etc.
+ */
+function cgplay004Model003MasteredIds(
+  analysis
+){
+
+  return new Set(
+
+    (analysis?.questions||[])
+
+      .filter(
+        q=>
+          Number(q?.positive||0)>0
+      )
+
+      .map(
+        q=>
+          one(q?.questionId)||
+          (
+            q?.row
+              ? String(q.row)
+              : ''
+          )
+      )
+
+      .filter(Boolean)
+  );
+}
+
+
+/*
+ * Construit LE vivier pédagogique :
+ *
+ * catalogue
+ * - X
+ * - questions déjà réussies
+ * - questions temporairement bloquées
+ *   dans la session courante
+ *
+ * Aucune pondération.
+ * Aucune priorité faiblesse.
+ * Aucune priorité ancienneté.
+ */
+async function cgplay004Model003RemainingPool(
+  uid,
+  analysis,
+  domain,
+  xPolicy,
+  blocked
+){
+
+  const catalog=
+    await cgplay004Model003Catalog(
+      uid
+    );
+
+
+  const mastered=
+    cgplay004Model003MasteredIds(
+      analysis
+    );
+
+
+  const historyById=
+    new Map();
+
+
+  for(
+    const q
+    of analysis?.questions||[]
+  ){
+
+    const id=
+      one(q?.questionId)||
+      (
+        q?.row
+          ? String(q.row)
+          : ''
+      );
+
+    if(id){
+      historyById.set(
+        id,
+        q
+      );
+    }
+  }
+
+
+  const available=[];
+
+  let retryEligible=0;
+  let unseenEligible=0;
+
+
+  for(const row of catalog){
+
+    const id=
+      one(row.id);
+
+
+    if(!id){
+      continue;
+    }
+
+
+    if(
+      xPolicy?.ids?.has(id)
+    ){
+      continue;
+    }
+
+
+    if(
+      mastered.has(id)
+    ){
+      continue;
+    }
+
+
+    if(
+      blocked?.has(id)
+    ){
+      continue;
+    }
+
+
+    if(
+      domain &&
+      one(row.domain)!==domain
+    ){
+      continue;
+    }
+
+
+    const historical=
+      historyById.get(id);
+
+
+    const isRetry=
+      Boolean(
+        historical &&
+        Number(
+          historical.attempts||0
+        )>0
+      );
+
+
+    if(isRetry){
+      retryEligible++;
+    }else{
+      unseenEligible++;
+    }
+
+
+    available.push({
+
+      ...row,
+
+      source:
+        isRetry
+          ? 'retry'
+          : 'unseen',
+
+      reason:
+        isRetry
+          ? 'Réponse précédente incorrecte'
+          : 'Jamais vue',
+
+      attempts:
+        Number(
+          historical?.attempts||0
+        )||0,
+
+      failures:
+        Number(
+          historical?.failures||0
+        )||0,
+
+      successPercent:
+        historical
+          ? Number(
+              historical.successPercent||0
+            )
+          : null,
+
+      /*
+       * Une ligne présente ici ne possède
+       * nécessairement aucune réussite.
+       */
+      mastered:
+        false
+    });
+  }
+
+
+  /*
+   * Fisher-Yates sur L'ENSEMBLE du vivier restant :
+   * chaque question restante part donc avec
+   * la même logique de tirage.
+   */
+  const rows=
+    cg35Shuffle(
+      available
+    );
+
+
+  return {
+
+    rows,
+
+    catalogSize:
+      catalog.length,
+
+    remainingEligible:
+      rows.length,
+
+    masteredExcluded:
+      mastered.size,
+
+    retryEligible,
+
+    unseenEligible
+  };
+}
+
+
 async function smartLongComposeBatch(
   uid,
   analysis,
   body,
   xPolicy
 ){
-  const config=smartLongConfig(body);
-  const blocked=new Set(
-    (Array.isArray(body?.excludeIds)?body.excludeIds:[])
-      .map(one).filter(Boolean).slice(0,1000)
-  );
 
-  const remainingTotal=Math.max(0,config.count-blocked.size);
-  const batchCount=Math.min(config.batchSize,remainingTotal);
+  const config=
+    smartLongConfig(body);
+
+
+  /*
+   * SESSION_NO_DUPLICATE001
+   *
+   * Toute question déjà insérée dans cette session
+   * est temporairement bloquée.
+   *
+   * Cela évite qu'un échec soit reproposé quelques
+   * dizaines de secondes plus tard dans la même
+   * session de 500.
+   *
+   * À la session suivante, une question échouée
+   * redevient pleinement éligible.
+   */
+  const blocked=
+    new Set(
+      (
+        Array.isArray(body?.excludeIds)
+          ? body.excludeIds
+          : []
+      )
+      .map(one)
+      .filter(Boolean)
+      .slice(0,1000)
+    );
+
+
+  const remainingPresentations=
+    Math.max(
+      0,
+      config.count-
+      blocked.size
+    );
+
+
+  const batchCount=
+    Math.min(
+      config.batchSize,
+      remainingPresentations
+    );
+
 
   if(batchCount<=0){
-    return {rows:[],requestedBatch:0,mode:'done',unseenAvailable:0,historicalAvailable:0,scannedUnseen:0};
-  }
 
-  /* UNSEEN_FIRST001 */
-  const unseenResult=await smartLongUnseenPool(
-    uid,
-    analysis,
-    Math.max(batchCount*4,batchCount),
-    config.domain,
-    xPolicy,
-    blocked
-  );
-
-  if(unseenResult.eligibleSeen>0){
-    const rows=cg35ThemeDiverse(unseenResult.rows).slice(0,batchCount);
     return {
-      rows,
-      requestedBatch:batchCount,
-      mode:'unseen_first',
-      unseenAvailable:unseenResult.eligibleSeen,
+
+      rows:[],
+
+      requestedBatch:0,
+
+      mode:
+        'learning_model003_done',
+
+      remainingEligible:0,
+
+      masteredExcluded:0,
+
+      retryEligible:0,
+
+      unseenAvailable:0,
+
       historicalAvailable:0,
-      scannedUnseen:unseenResult.scanned,
-      desired:{due:0,weakness:0,unseen:rows.length},
-      actual:{due:0,weakness:0,unseen:rows.length},
-      targetQuota:{due:0,weakness:0,unseen:config.count},
-      servedCountsAfter:{due:0,weakness:0,unseen:rows.length},
+
+      scannedUnseen:0,
+
+      desired:{
+        due:0,
+        weakness:0,
+        unseen:0
+      },
+
+      actual:{
+        due:0,
+        weakness:0,
+        unseen:0
+      },
+
+      targetQuota:{
+        due:0,
+        weakness:0,
+        unseen:config.count
+      },
+
+      servedCountsAfter:
+        smartLongCounts(
+          body?.servedCounts
+        ),
+
       redistributed:0
     };
   }
 
-  /* OLDEST_PLAYED_FIRST001 */
-  const historical=analysis.questions
-    .filter(q=>{
-      const id=one(q.questionId)||String(q.row||'');
-      if(!id||blocked.has(id)||xPolicy?.ids?.has(id))return false;
-      if(config.domain&&one(q.domain)!==config.domain)return false;
-      return q.lastPlayedAtMs>0;
-    })
-    .sort((a,b)=>
-      a.lastPlayedAtMs-b.lastPlayedAtMs ||
-      one(a.questionId).localeCompare(one(b.questionId))
+
+  const pool=
+    await cgplay004Model003RemainingPool(
+      uid,
+      analysis,
+      config.domain,
+      xPolicy,
+      blocked
     );
 
-  const rows=historical
-    .slice(0,batchCount)
-    .map(q=>smartHistoricalRow(q,'oldest'));
+
+  const seedThemes=
+
+    Array.isArray(
+      body?.recentThemes
+    ) &&
+    body.recentThemes.length
+
+      ? body.recentThemes
+
+      : (
+          Array.isArray(
+            analysis?.recentThemes
+          )
+            ? analysis.recentThemes
+            : []
+        );
+
+
+  const rows=
+    cg35ThemeDiverse(
+      pool.rows,
+      seedThemes,
+      CGPLAY004_MODEL003_THEME_COOLDOWN
+    )
+    .slice(
+      0,
+      batchCount
+    );
+
+
+  const actual={
+
+    due:0,
+
+    weakness:
+      rows.filter(
+        row=>
+          row.source==='retry'
+      ).length,
+
+    unseen:
+      rows.filter(
+        row=>
+          row.source==='unseen'
+      ).length
+  };
+
+
+  const before=
+    smartLongCounts(
+      body?.servedCounts
+    );
+
+
+  const servedCountsAfter={
+
+    due:
+      before.due,
+
+    weakness:
+      before.weakness+
+      actual.weakness,
+
+    unseen:
+      before.unseen+
+      actual.unseen
+  };
+
 
   return {
+
     rows,
-    requestedBatch:batchCount,
-    mode:'oldest_played_first',
-    unseenAvailable:0,
-    historicalAvailable:historical.length,
-    scannedUnseen:unseenResult.scanned,
-    desired:{due:rows.length,weakness:0,unseen:0},
-    actual:{due:rows.length,weakness:0,unseen:0},
-    targetQuota:{due:config.count,weakness:0,unseen:0},
-    servedCountsAfter:{due:rows.length,weakness:0,unseen:0},
-    redistributed:0
+
+    requestedBatch:
+      batchCount,
+
+    mode:
+      'learning_model003_random_remaining',
+
+    remainingEligible:
+      pool.remainingEligible,
+
+    masteredExcluded:
+      pool.masteredExcluded,
+
+    retryEligible:
+      pool.retryEligible,
+
+    unseenAvailable:
+      pool.unseenEligible,
+
+    historicalAvailable:
+      pool.retryEligible,
+
+    scannedUnseen:
+      pool.catalogSize,
+
+    desired:{
+      ...actual
+    },
+
+    actual,
+
+    /*
+     * Les anciens quotas due / weakness / unseen
+     * n'influencent plus le choix.
+     *
+     * Champ conservé uniquement pour compatibilité
+     * avec les anciennes interfaces.
+     */
+    targetQuota:{
+      due:0,
+      weakness:0,
+      unseen:config.count
+    },
+
+    servedCountsAfter,
+
+    redistributed:0,
+
+    modelVersion:
+      LEARNING_MODEL_VERSION,
+
+    selectionPolicy:
+      'random_remaining',
+
+    successExclusion:
+      true,
+
+    themeCooldownQuestions:
+      CGPLAY004_MODEL003_THEME_COOLDOWN
   };
 }
 
@@ -4811,6 +5329,18 @@ function smartLongPublicState(
 
     themeDiversityVersion:
       CGPLAY004_THEME_DIVERSITY_VERSION,
+
+    learningModelVersion:
+      LEARNING_MODEL_VERSION,
+
+    selectionPolicy:
+      'random_remaining',
+
+    successExclusion:
+      true,
+
+    themeCooldownQuestions:
+      CGPLAY004_MODEL003_THEME_COOLDOWN,
 
     unseenFirstVersion:
       CGPLAY004_UNSEEN_FIRST_VERSION,
@@ -5093,6 +5623,33 @@ async function smartLongNext(
       : [];
 
 
+  /*
+   * CGPLAY004 · BATCH_THEME_BRIDGE001
+   *
+   * Le lot suivant est préchargé avant que les
+   * dernières questions du lot courant soient jouées.
+   *
+   * On utilise donc les 8 derniers thèmes PLANIFIÉS
+   * du lot courant comme graine du lot suivant.
+   */
+  const recentThemes=
+    (
+      Array.isArray(
+        state.currentBatch
+      )
+        ? state.currentBatch
+        : []
+    )
+    .slice(
+      -CGPLAY004_MODEL003_THEME_COOLDOWN
+    )
+    .map(
+      row=>
+        one(row?.theme)
+    )
+    .filter(Boolean);
+
+
   const batch=
     await smartLongComposeBatch(
       uid,
@@ -5100,6 +5657,7 @@ async function smartLongNext(
       {
         ...config,
         excludeIds,
+        recentThemes,
         servedCounts:
           state.servedCounts||{}
       },
