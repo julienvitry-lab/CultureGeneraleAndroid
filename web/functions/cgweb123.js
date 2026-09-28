@@ -1,14 +1,20 @@
 /*
- * CGWEB123 FIX2
+ * CGWEB123 FIX3
  *
+ * STANDALONE_QUESTION001
+ * MIXED_DOMAIN_CONTEXT001
+ * CONTEXT_ANCHOR001
+ * AMBIGUITY_REWRITE001
+ *
+ * Hérite de FIX2 :
  * FULL_FICHE_COVERAGE001
  * PER_FICHE_AI_GENERATION001
  * PER_FICHE_QUOTA001
  * GLOBAL_AI_REVIEW001
  * COVERAGE_REPORT001
  * SOURCE_GROUNDING002
- * QR_GAME_SEPARATION003
- * NO_FIRESTORE_WRITE003
+ * QR_GAME_SEPARATION004
+ * NO_FIRESTORE_WRITE004
  */
 
 const {
@@ -45,7 +51,7 @@ const MODEL =
 
 
 const VERSION =
-  'CGWEB123_FIX2_FULL_FICHE_COVERAGE001_PER_FICHE_AI_GENERATION001_PER_FICHE_QUOTA001_GLOBAL_AI_REVIEW001_COVERAGE_REPORT001';
+  'CGWEB123_FIX3_STANDALONE_QUESTION001_MIXED_DOMAIN_CONTEXT001_CONTEXT_ANCHOR001_AMBIGUITY_REWRITE001';
 
 
 const GENERATION_BATCH_SIZE =
@@ -755,6 +761,15 @@ function buildUnits(
 
         fiche,
 
+        /*
+         * MIXED_DOMAIN_CONTEXT001
+         *
+         * Le thème général peut servir d'ancrage documentaire
+         * lorsqu'une question isolée en a besoin.
+         */
+        theme_context:
+          corpus.theme,
+
         annexQuestions:
           relevantAnnex(
             fiche,
@@ -896,6 +911,39 @@ function duplicateKey(
     norm(question) +
     '|' +
     norm(answer)
+  );
+}
+
+
+
+/* ============================================================
+   CGWEB123 FIX3 · CONTEXT_ANCHOR001
+   ============================================================ */
+
+function contextAnchorPresent(
+  question,
+  contextAnchor
+){
+
+  const anchor=
+    norm(
+      contextAnchor
+    );
+
+
+  /*
+   * Aucun ancrage particulier nécessaire :
+   * la question peut déjà être autonome.
+   */
+  if(!anchor){
+    return true;
+  }
+
+
+  return norm(
+    question
+  ).includes(
+    anchor
   );
 }
 
@@ -1199,6 +1247,21 @@ const PER_FICHE_SCHEMA={
                     'string'
                 },
 
+                standalone_ok:{
+                  type:
+                    'boolean'
+                },
+
+                context_anchor:{
+                  type:
+                    'string'
+                },
+
+                ambiguity_note:{
+                  type:
+                    'string'
+                },
+
                 evidence:{
 
                   type:
@@ -1219,6 +1282,9 @@ const PER_FICHE_SCHEMA={
               required:[
                 'question',
                 'answer',
+                'standalone_ok',
+                'context_anchor',
+                'ambiguity_note',
                 'evidence',
                 'editorial_reason'
               ]
@@ -1288,6 +1354,21 @@ const GLOBAL_REVIEW_SCHEMA={
               'string'
           },
 
+          standalone_ok:{
+            type:
+              'boolean'
+          },
+
+          context_anchor:{
+            type:
+              'string'
+          },
+
+          ambiguity_note:{
+            type:
+              'string'
+          },
+
           source_fiches:{
 
             type:
@@ -1321,6 +1402,9 @@ const GLOBAL_REVIEW_SCHEMA={
           'primary_fiche_name',
           'question',
           'answer',
+          'standalone_ok',
+          'context_anchor',
+          'ambiguity_note',
           'source_fiches',
           'evidence',
           'review_note'
@@ -1414,7 +1498,89 @@ Ne copie pas leur mécanique QCM.
 16. Une fiche médiocre peut donner zéro question.
 Une fiche riche peut donner plusieurs questions jusqu'au maximum demandé.
 
-17. Le quota est un MAXIMUM, jamais une obligation.`;
+17. Le quota est un MAXIMUM, jamais une obligation.
+
+18. STANDALONE_QUESTION001.
+Chaque question sera ensuite présentée TOUTE SEULE.
+Le joueur ne verra ni le nom du thème Quizypedia,
+ni le nom de la fiche, ni une catégorie générale.
+
+19. MIXED_DOMAIN_CONTEXT001.
+Imagine systématiquement que la question précédente concernait
+un sport et que la suivante concernera un animal.
+La question actuelle doit malgré cela être parfaitement
+compréhensible sans transition thématique.
+
+20. Une question grammaticalement correcte peut être éditorialement
+mauvaise si son univers n'est pas identifiable.
+
+Exemple insuffisant :
+"Quel personnage facétieux et cynique prend la forme
+d'un cochon-tirelire ?"
+
+Si les sources établissent qu'il s'agit de Toy Story,
+la forme autonome appropriée serait :
+"Dans la saga Toy Story, quel personnage facétieux et cynique
+prend la forme d'un cochon-tirelire ?"
+
+Cet exemple illustre le PRINCIPE uniquement.
+
+21. CONTEXT_ANCHOR001.
+Ajoute lorsque nécessaire le contexte MINIMAL permettant
+de comprendre immédiatement le cadre de la question.
+
+Cela peut être notamment :
+- une œuvre ;
+- une saga ;
+- une série ;
+- une compétition ;
+- un sport ;
+- un pays ;
+- une époque ;
+- une institution ;
+- une discipline ;
+- un univers fictionnel.
+
+22. L'ancrage doit être concis.
+N'alourdis jamais artificiellement la question.
+
+"Dans la saga Toy Story" est préférable à un long préambule
+sur le cinéma d'animation américain.
+
+23. L'ancrage doit être EXPLICITEMENT soutenu
+par fiche, annexQuestions ou theme_context.
+Aucune connaissance externe n'est autorisée.
+
+24. L'ancrage ne doit pas révéler la réponse.
+
+25. AMBIGUITY_REWRITE001.
+Avant de rendre une question, demande-toi :
+"Si elle est tirée au hasard parmi 100 questions
+de domaines différents, reste-t-elle claire et univoque ?"
+
+Si NON :
+- ajoute le contexte sourcé nécessaire ;
+- reformule ;
+- ou supprime la question si le corpus ne permet pas
+  de lever l'ambiguïté.
+
+26. standalone_ok vaut true UNIQUEMENT lorsque
+la question passe ce test hors contexte.
+
+27. context_anchor contient un court segment contextuel
+présent LITTÉRALEMENT dans la question finale.
+
+Exemples :
+"Toy Story"
+"Coupe du monde de football 1998"
+"mythologie grecque"
+
+Il peut être vide si aucun ancrage spécifique
+n'est réellement nécessaire.
+
+28. ambiguity_note fournit une très courte note éditoriale
+sur le contrôle hors contexte.
+Elle ne doit pas exposer de raisonnement interne détaillé.`;
 
 
 async function generateUnits(
@@ -1435,6 +1601,9 @@ async function generateUnits(
 
         fiche:
           unit.fiche,
+
+        theme_context:
+          unit.theme_context,
 
         annexQuestions:
           unit.annexQuestions
@@ -1553,6 +1722,45 @@ function normalizeGenerationResult(
       );
 
 
+    const contextAnchor=
+      clean(
+        item?.context_anchor
+      );
+
+
+    const ambiguityNote=
+      cut(
+        clean(
+          item?.ambiguity_note
+        ),
+        600
+      );
+
+
+    /*
+     * STANDALONE_QUESTION001
+     */
+    if(
+      item?.standalone_ok !== true
+    ){
+      continue;
+    }
+
+
+    /*
+     * CONTEXT_ANCHOR001
+     */
+    if(
+      contextAnchor &&
+      !contextAnchorPresent(
+        question,
+        contextAnchor
+      )
+    ){
+      continue;
+    }
+
+
     if(
       !question ||
       !answer
@@ -1639,6 +1847,15 @@ function normalizeGenerationResult(
               )
           )
           .filter(Boolean),
+
+      standalone_ok:
+        true,
+
+      context_anchor:
+        contextAnchor,
+
+      ambiguity_note:
+        ambiguityNote,
 
       editorial_reason:
         cut(
@@ -1745,7 +1962,67 @@ RÈGLES
 
 14. "review_note" est une note éditoriale courte.
 
-15. Ne réduis jamais artificiellement le lot à un nombre global prédéfini.`;
+15. Ne réduis jamais artificiellement le lot à un nombre global prédéfini.
+
+16. STANDALONE_QUESTION001.
+Chaque question finale sera utilisée sans titre de thème,
+sans catégorie et sans contexte précédent.
+
+17. MIXED_DOMAIN_CONTEXT001.
+Pour CHAQUE question, simule un quiz généraliste totalement mélangé :
+- question précédente : potentiellement sport ;
+- question actuelle : potentiellement cinéma, histoire, science, etc. ;
+- question suivante : potentiellement animaux.
+
+Le joueur doit comprendre immédiatement dans quel cadre
+il doit chercher la réponse.
+
+18. Une question bien écrite n'est pas nécessairement autonome.
+
+Exemple insuffisant :
+"Quel personnage facétieux et cynique prend la forme
+d'un cochon-tirelire ?"
+
+Si les sources établissent l'univers Toy Story,
+la question doit être réécrite par exemple :
+"Dans la saga Toy Story, quel personnage facétieux et cynique
+prend la forme d'un cochon-tirelire ?"
+
+Cet exemple démontre uniquement le test éditorial.
+
+19. CONTEXT_ANCHOR001.
+Ajoute si nécessaire un ancrage minimal :
+œuvre, saga, série, compétition, sport, époque,
+pays, institution, discipline ou autre cadre sourcé.
+
+20. Le contexte doit être strictement utile :
+pas de préambule inutile.
+
+21. L'ancrage doit être explicitement soutenu
+par theme_context, la fiche ou annexQuestions.
+
+22. Ne crée aucune connaissance externe pour contextualiser.
+
+23. L'ancrage ne doit jamais révéler directement la réponse.
+
+24. AMBIGUITY_REWRITE001.
+Si la question admet plusieurs interprétations raisonnables
+une fois sortie de son thème :
+- réécris-la avec des éléments sourcés ;
+- sinon élimine-la.
+
+25. standalone_ok doit être true uniquement après
+validation explicite de ce test hors contexte.
+
+26. context_anchor doit être un court extrait
+LITTÉRALEMENT présent dans la question finale.
+
+Il peut être vide seulement si la question est naturellement
+autonome sans information contextuelle supplémentaire.
+
+27. ambiguity_note est une courte note éditoriale indiquant
+que le contrôle hors contexte a été effectué.
+Aucun raisonnement interne détaillé.`;
 
 
 async function reviewCandidates(
@@ -1783,6 +2060,9 @@ async function reviewCandidates(
 
           fiche:
             unit.fiche,
+
+          theme_context:
+            unit.theme_context,
 
           annexQuestions:
             unit.annexQuestions
@@ -2318,6 +2598,45 @@ exports.cgweb123AiQuestionFactory =
             );
 
 
+          const contextAnchor=
+            clean(
+              item?.context_anchor
+            );
+
+
+          const ambiguityNote=
+            cut(
+              clean(
+                item?.ambiguity_note
+              ),
+              600
+            );
+
+
+          /*
+           * STANDALONE_QUESTION001
+           */
+          if(
+            item?.standalone_ok !== true
+          ){
+            continue;
+          }
+
+
+          /*
+           * CONTEXT_ANCHOR001
+           */
+          if(
+            contextAnchor &&
+            !contextAnchorPresent(
+              question,
+              contextAnchor
+            )
+          ){
+            continue;
+          }
+
+
           if(
             !question ||
             !answer
@@ -2445,7 +2764,7 @@ exports.cgweb123AiQuestionFactory =
               'QR',
 
             schema:
-              'cgweb123.qr.ai.v2',
+              'cgweb123.qr.ai.v3',
 
             primary_fiche_id:
               primaryId,
@@ -2461,6 +2780,15 @@ exports.cgweb123AiQuestionFactory =
               sources,
 
             evidence,
+
+            standalone_ok:
+              true,
+
+            context_anchor:
+              contextAnchor,
+
+            ambiguity_note:
+              ambiguityNote,
 
             review_note:
               cut(

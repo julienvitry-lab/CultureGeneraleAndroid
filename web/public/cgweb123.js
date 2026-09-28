@@ -1,4 +1,8 @@
-// CGWEB123 FIX2
+// CGWEB123 FIX3
+// STANDALONE_QUESTION001
+// MIXED_DOMAIN_CONTEXT001
+// CONTEXT_ANCHOR001
+// AMBIGUITY_REWRITE001
 // FULL_FICHE_COVERAGE001
 // PER_FICHE_AI_GENERATION001
 // PER_FICHE_QUOTA001
@@ -13,7 +17,7 @@
 
 
   const VERSION =
-    "CGWEB123_FIX2_FULL_FICHE_COVERAGE001_PER_FICHE_AI_GENERATION001_PER_FICHE_QUOTA001_GLOBAL_AI_REVIEW001_COVERAGE_REPORT001";
+    "CGWEB123_FIX3_STANDALONE_QUESTION001_MIXED_DOMAIN_CONTEXT001_CONTEXT_ANCHOR001_AMBIGUITY_REWRITE001";
 
 
   const ENDPOINT =
@@ -596,6 +600,15 @@
               · relecture globale
             </div>
 
+            <div class="cg123-standalone-badge">
+              ✓ Contexte autonome
+              ${
+                draft.context_anchor
+                  ? ` · ancrage : ${esc(draft.context_anchor)}`
+                  : " · aucun ancrage supplémentaire nécessaire"
+              }
+            </div>
+
           </div>
 
         </header>
@@ -720,6 +733,25 @@
                       `
                     ).join("")}
                   </ul>
+
+                </div>
+              `
+              : ""
+          }
+
+
+          ${
+            draft.ambiguity_note
+              ? `
+                <div class="cg123-context-control">
+
+                  <strong>
+                    Contrôle hors contexte
+                  </strong>
+
+                  <p>
+                    ${esc(draft.ambiguity_note)}
+                  </p>
 
                 </div>
               `
@@ -1074,7 +1106,7 @@
     const payload={
 
       schema:
-        "cgweb123.qr.ai.export.v2",
+        "cgweb123.qr.ai.export.v3",
 
       game:
         "QR",
@@ -1239,6 +1271,8 @@
             Chaque fiche est désormais analysée individuellement.
             Une fiche riche peut fournir plusieurs questions ;
             une fiche pauvre peut n’en fournir aucune.
+            Chaque question est contrôlée comme si elle apparaissait
+            seule parmi des domaines totalement différents.
           </p>
 
           <p class="cg123-separation">
@@ -1306,6 +1340,10 @@
 
         <span>
           Relecture : globale
+        </span>
+
+        <span>
+          Questions : autonomes hors thème
         </span>
 
         <span>
