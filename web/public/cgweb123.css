@@ -2837,3 +2837,83 @@ cat >> "$CSS" <<'CSS'
       repeat(2,minmax(0,1fr));
   }
 }
+
+/* ============================================================
+   CGWEB123 FIX5
+   REJECTION_DIAGNOSTICS001
+   ============================================================ */
+
+.cg123-coverage-head,
+.cg123-coverage-row{
+  grid-template-columns:
+    minmax(150px,1.6fr)
+    52px
+    85px
+    90px
+    75px
+    minmax(260px,2.4fr);
+}
+
+.cg123-coverage-row > span{
+  min-width:0;
+}
+
+.cg123-coverage-row small{
+  display:block;
+  margin-top:2px;
+  font-size:9px;
+  opacity:.62;
+}
+
+.cg123-diagnostic-cell{
+  overflow-wrap:anywhere;
+}
+
+.cg123-diagnostic-cell > strong{
+  font-weight:700;
+}
+
+.cg123-rejection-details{
+  margin-top:4px;
+  font-size:9px;
+  opacity:.82;
+}
+
+.cg123-rejection-details summary{
+  cursor:pointer;
+}
+
+.cg123-rejection-details ul{
+  margin:5px 0 0;
+  padding-left:17px;
+}
+
+.cg123-rejection-details li{
+  margin:3px 0;
+}
+
+@media(max-width:1050px){
+
+  .cg123-coverage-head,
+  .cg123-coverage-row{
+    grid-template-columns:
+      minmax(130px,1.5fr)
+      45px
+      70px
+      75px
+      60px
+      minmax(190px,2fr);
+  }
+}
+
+@media(max-width:700px){
+
+  .cg123-coverage-head{
+    display:none;
+  }
+
+  .cg123-coverage-row{
+    grid-template-columns:1fr;
+    gap:3px;
+  }
+}

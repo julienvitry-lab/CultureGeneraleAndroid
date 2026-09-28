@@ -1,4 +1,8 @@
-// CGWEB123 FIX4
+// CGWEB123 FIX5
+// REVIEW_BEFORE_REJECT001
+// SOFT_GENERATION_GUARD001
+// THEME_GROUNDING001
+// REJECTION_DIAGNOSTICS001
 // TOKEN_COST_METER001
 // OPENAI_USAGE_CAPTURE001
 // STANDARD_COST_CALC001
@@ -24,7 +28,7 @@
 
 
   const VERSION =
-    "CGWEB123_FIX4_TOKEN_COST_METER001_OPENAI_USAGE_CAPTURE001_STANDARD_COST_CALC001_BATCH_COST_PROJECTION001";
+    "CGWEB123_FIX5_REVIEW_BEFORE_REJECT001_SOFT_GENERATION_GUARD001_THEME_GROUNDING001_REJECTION_DIAGNOSTICS001";
 
 
   const ENDPOINT =
@@ -1304,7 +1308,8 @@
 
       cg123CountGenerated:
         Number(
-          lastMeta?.candidateCount ||
+          lastMeta?.preReviewCount ??
+          lastMeta?.candidateCount ??
           0
         ),
 
@@ -1401,48 +1406,159 @@
           <div class="cg123-coverage-head">
             <span>Fiche</span>
             <span>IA</span>
-            <span>Après filtres</span>
+            <span>Pré-review</span>
+            <span>Relecture</span>
             <span>Finales</span>
-            <span>État</span>
+            <span>État / diagnostic</span>
           </div>
 
 
           ${coverage.map(
-            row=>`
+            row=>{
 
-              <div
-                class="cg123-coverage-row"
-                data-status="${esc(row.status || "")}"
-              >
+              const diagnostics=
+                Array.isArray(
+                  row.diagnostics
+                )
+                  ? row.diagnostics
+                  : [];
 
-                <span>
-                  ${esc(row.fiche_name || row.fiche_id || "")}
-                </span>
 
-                <span>
-                  ${Number(row.generatedCount || 0)}
-                </span>
+              const preReview=
+                Number(
+                  row.preReviewCount ??
+                  row.candidateCount ??
+                  0
+                );
 
-                <span>
-                  ${Number(row.candidateCount || 0)}
-                </span>
 
-                <span>
-                  ${Number(row.reviewedCount || 0)}
-                </span>
+              const reviewQuestions=
+                Number(
+                  row.reviewQuestionCount ||
+                  0
+                );
 
-                <span>
-                  ${
-                    row.status==="error"
-                      ? `⚠ ${esc(row.reason || "Erreur")}`
-                      : Number(row.reviewedCount || 0)>0
-                        ? "✓ exploitée"
-                        : `— ${esc(row.reason || "aucune question retenue")}`
-                  }
-                </span>
 
-              </div>
-            `
+              const reviewRejects=
+                Number(
+                  row.reviewRejectedCount ||
+                  0
+                );
+
+
+              const finalRejects=
+                Number(
+                  row.finalFilterRejectedCount ||
+                  0
+                );
+
+
+              const finalCount=
+                Number(
+                  row.reviewedCount ||
+                  0
+                );
+
+
+              return `
+
+                <div
+                  class="cg123-coverage-row"
+                  data-status="${esc(row.status || "")}"
+                >
+
+                  <span>
+                    ${esc(row.fiche_name || row.fiche_id || "")}
+                  </span>
+
+                  <span>
+                    ${Number(row.generatedCount || 0)}
+                  </span>
+
+                  <span>
+                    ${preReview}
+                    ${
+                      Number(row.softFlaggedCount || 0)>0
+                        ? `<small>
+                             ${Number(row.softFlaggedCount)}
+                             à réparer
+                           </small>`
+                        : ""
+                    }
+                  </span>
+
+                  <span>
+                    ${reviewQuestions}
+                    ${
+                      reviewRejects>0
+                        ? `<small>
+                             ${reviewRejects}
+                             rejet IA
+                           </small>`
+                        : ""
+                    }
+                  </span>
+
+                  <span>
+                    ${finalCount}
+                    ${
+                      finalRejects>0
+                        ? `<small>
+                             ${finalRejects}
+                             rejet final
+                           </small>`
+                        : ""
+                    }
+                  </span>
+
+                  <span class="cg123-diagnostic-cell">
+
+                    <strong>
+                      ${
+                        row.status==="error"
+                          ? `⚠ ${esc(row.reason || "Erreur")}`
+                          : finalCount>0
+                            ? `✓ ${esc(row.reason || "exploitée")}`
+                            : `— ${esc(row.reason || "aucune question retenue")}`
+                      }
+                    </strong>
+
+                    ${
+                      diagnostics.length
+                        ? `
+                          <details class="cg123-rejection-details">
+
+                            <summary>
+                              ${diagnostics.length}
+                              diagnostic(s)
+                            </summary>
+
+                            <ul>
+                              ${diagnostics.map(
+                                diagnostic=>`
+                                  <li>
+                                    <strong>
+                                      ${esc(diagnostic.stage || "")}
+                                    </strong>
+                                    ·
+                                    ${esc(diagnostic.code || "")}
+                                    —
+                                    ${esc(diagnostic.reason || "")}
+                                  </li>
+                                `
+                              ).join("")}
+                            </ul>
+
+                          </details>
+                        `
+                        : ""
+                    }
+
+                  </span>
+
+                </div>
+              `;
+            }
           ).join("")}
 
         </div>
@@ -2254,7 +2370,11 @@
         </span>
 
         <span>
-          Relecture : globale
+          Relecture : avant rejet
+        </span>
+
+        <span>
+          Pré-filtres : souples
         </span>
 
         <span>
@@ -2325,7 +2445,7 @@
             0
           </strong>
           <span>
-            candidats
+            candidats pré-review
           </span>
         </div>
 

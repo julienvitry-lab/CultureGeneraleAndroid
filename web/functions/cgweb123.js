@@ -1,6 +1,12 @@
 /*
- * CGWEB123 FIX4
+ * CGWEB123 FIX5
  *
+ * REVIEW_BEFORE_REJECT001
+ * SOFT_GENERATION_GUARD001
+ * THEME_GROUNDING001
+ * REJECTION_DIAGNOSTICS001
+ *
+ * Hérite de CGWEB123 FIX4 :
  * TOKEN_COST_METER001
  * OPENAI_USAGE_CAPTURE001
  * STANDARD_COST_CALC001
@@ -60,7 +66,7 @@ const MODEL =
 
 
 const VERSION =
-  'CGWEB123_FIX4_TOKEN_COST_METER001_OPENAI_USAGE_CAPTURE001_STANDARD_COST_CALC001_BATCH_COST_PROJECTION001';
+  'CGWEB123_FIX5_REVIEW_BEFORE_REJECT001_SOFT_GENERATION_GUARD001_THEME_GROUNDING001_REJECTION_DIAGNOSTICS001';
 
 
 const GENERATION_BATCH_SIZE =
@@ -857,10 +863,25 @@ function unitGroundText(
   unit
 ){
 
+  /*
+   * THEME_GROUNDING001
+   *
+   * Les trois couches autorisées sont maintenant reconnues
+   * par le contrôle déterministe :
+   *
+   * - fiche principale ;
+   * - contexte du thème ;
+   * - questionnaires annexes pertinents.
+   */
   return norm(
     JSON.stringify({
+
       fiche:
         unit.fiche,
+
+      theme_context:
+        unit.theme_context,
+
       annexQuestions:
         unit.annexQuestions
     })
@@ -2020,6 +2041,11 @@ const GLOBAL_REVIEW_SCHEMA={
 
         properties:{
 
+          candidate_id:{
+            type:
+              'string'
+          },
+
           primary_fiche_id:{
             type:
               'string'
@@ -2084,6 +2110,7 @@ const GLOBAL_REVIEW_SCHEMA={
         },
 
         required:[
+          'candidate_id',
           'primary_fiche_id',
           'primary_fiche_name',
           'question',
@@ -2098,6 +2125,59 @@ const GLOBAL_REVIEW_SCHEMA={
       }
     },
 
+
+    rejections:{
+
+      type:
+        'array',
+
+      items:{
+
+        type:
+          'object',
+
+        additionalProperties:
+          false,
+
+        properties:{
+
+          candidate_id:{
+            type:
+              'string'
+          },
+
+          primary_fiche_id:{
+            type:
+              'string'
+          },
+
+          primary_fiche_name:{
+            type:
+              'string'
+          },
+
+          reason_code:{
+            type:
+              'string'
+          },
+
+          reason:{
+            type:
+              'string'
+          }
+        },
+
+        required:[
+          'candidate_id',
+          'primary_fiche_id',
+          'primary_fiche_name',
+          'reason_code',
+          'reason'
+        ]
+      }
+    },
+
+
     rejected_count:{
       type:
         'integer'
@@ -2106,9 +2186,14 @@ const GLOBAL_REVIEW_SCHEMA={
 
   required:[
     'questions',
+    'rejections',
     'rejected_count'
   ]
 };
+
+
+/* ============================================================
+   PER_FICHE_AI_GENERATION001
 
 
 /* ============================================================
@@ -2360,6 +2445,17 @@ function normalizeGenerationResult(
       candidateCount:
         0,
 
+      preReviewCount:
+        0,
+
+      preReviewRejectedCount:
+        0,
+
+      softFlaggedCount:
+        0,
+
+      preReviewDiagnostics:[],
+
       candidates:[]
     };
   }
@@ -2380,27 +2476,30 @@ function normalizeGenerationResult(
 
 
   const candidates=[];
+
+  const diagnostics=[];
+
   const seen=
     new Set();
 
 
   for(
-    const item of
-    rawQuestions
+    let rawIndex=0;
+    rawIndex<rawQuestions.length;
+    rawIndex++
   ){
 
-    if(
-      candidates.length>=
-      maxPerFiche
-    ){
-      break;
-    }
+    const item=
+      rawQuestions[
+        rawIndex
+      ];
 
 
     const question=
       clean(
         item?.question
       );
+
 
     const answer=
       clean(
@@ -2424,18 +2523,25 @@ function normalizeGenerationResult(
 
 
     /*
-     * STANDALONE_QUESTION001
+     * SOFT_GENERATION_GUARD001
+     *
+     * Ces problèmes ne provoquent PLUS de rejet immédiat.
+     * Ils deviennent des instructions de réparation
+     * pour GLOBAL_AI_REVIEW001.
      */
+    const preReviewFlags=[];
+
+
     if(
       item?.standalone_ok !== true
     ){
-      continue;
+
+      preReviewFlags.push(
+        'standalone_rewrite_needed'
+      );
     }
 
 
-    /*
-     * CONTEXT_ANCHOR001
-     */
     if(
       contextAnchor &&
       !contextAnchorPresent(
@@ -2443,43 +2549,81 @@ function normalizeGenerationResult(
         contextAnchor
       )
     ){
-      continue;
+
+      preReviewFlags.push(
+        'context_anchor_rewrite_needed'
+      );
     }
 
 
     if(
-      !question ||
-      !answer
-    ){
-      continue;
-    }
-
-
-    if(
+      question &&
+      answer &&
       questionContainsAnswer(
         question,
         answer
       )
     ){
-      continue;
+
+      preReviewFlags.push(
+        'answer_visible_in_question'
+      );
     }
 
 
     if(
+      question &&
       genericQuestion(
         question
       )
     ){
-      continue;
+
+      preReviewFlags.push(
+        'mechanical_wording'
+      );
     }
 
 
     if(
+      answer &&
       !answerGrounded(
         answer,
         sourceText
       )
     ){
+
+      preReviewFlags.push(
+        'answer_grounding_to_recheck'
+      );
+    }
+
+
+    /*
+     * HARD GUARDS AVANT RELECTURE
+     *
+     * Seulement ce que la relecture ne peut pas
+     * raisonnablement réparer sans matière.
+     */
+    if(
+      !question ||
+      !answer
+    ){
+
+      diagnostics.push({
+
+        stage:
+          'pre_review',
+
+        code:
+          'missing_question_or_answer',
+
+        raw_index:
+          rawIndex+1,
+
+        reason:
+          'Question ou réponse vide : impossible à soumettre à la relecture.'
+      });
+
       continue;
     }
 
@@ -2494,14 +2638,73 @@ function normalizeGenerationResult(
     if(
       seen.has(key)
     ){
+
+      diagnostics.push({
+
+        stage:
+          'pre_review',
+
+        code:
+          'exact_duplicate',
+
+        raw_index:
+          rawIndex+1,
+
+        reason:
+          'Doublon strict de question/réponse dans la même fiche.'
+      });
+
       continue;
     }
 
 
-    seen.add(key);
+    if(
+      candidates.length>=
+      maxPerFiche
+    ){
+
+      diagnostics.push({
+
+        stage:
+          'pre_review',
+
+        code:
+          'per_fiche_quota_exceeded',
+
+        raw_index:
+          rawIndex+1,
+
+        reason:
+          `Quota maximal de ${maxPerFiche} question(s) par fiche dépassé.`
+      });
+
+      continue;
+    }
+
+
+    seen.add(
+      key
+    );
+
+
+    const candidateId=
+      (
+        'CAND-' +
+        hash(
+          [
+            unit.fiche_id,
+            rawIndex+1,
+            question,
+            answer
+          ].join('||')
+        )
+      );
 
 
     candidates.push({
+
+      candidate_id:
+        candidateId,
 
       primary_fiche_id:
         unit.fiche_id,
@@ -2534,14 +2737,21 @@ function normalizeGenerationResult(
           )
           .filter(Boolean),
 
-      standalone_ok:
-        true,
+      /*
+       * Valeurs de génération conservées comme diagnostics,
+       * pas comme verdicts.
+       */
+      generation_standalone_ok:
+        item?.standalone_ok === true,
 
-      context_anchor:
+      generation_context_anchor:
         contextAnchor,
 
-      ambiguity_note:
+      generation_ambiguity_note:
         ambiguityNote,
+
+      pre_review_flags:
+        preReviewFlags,
 
       editorial_reason:
         cut(
@@ -2552,6 +2762,16 @@ function normalizeGenerationResult(
         )
     });
   }
+
+
+  const softFlaggedCount=
+    candidates.filter(
+      candidate=>
+        Array.isArray(
+          candidate.pre_review_flags
+        ) &&
+        candidate.pre_review_flags.length>0
+    ).length;
 
 
   return {
@@ -2574,8 +2794,8 @@ function normalizeGenerationResult(
             result.reason_if_empty ||
             (
               rawQuestions.length
-                ? 'Les propositions IA ont été éliminées par les contrôles de qualité.'
-                : 'Aucune question suffisamment solide trouvée.'
+                ? 'Aucun candidat techniquement exploitable avant relecture.'
+                : 'Aucune question proposée par l’IA.'
             )
           ),
 
@@ -2585,9 +2805,28 @@ function normalizeGenerationResult(
     candidateCount:
       candidates.length,
 
+    preReviewCount:
+      candidates.length,
+
+    preReviewRejectedCount:
+      Math.max(
+        0,
+        rawQuestions.length -
+        candidates.length
+      ),
+
+    softFlaggedCount,
+
+    preReviewDiagnostics:
+      diagnostics,
+
     candidates
   };
 }
+
+
+/* ============================================================
+   GLOBAL_AI_REVIEW001
 
 
 /* ============================================================
@@ -2597,117 +2836,137 @@ function normalizeGenerationResult(
 const REVIEW_INSTRUCTIONS =
 `Tu es le rédacteur en chef d'un concours français de culture générale.
 
-Tu reçois des questions déjà produites fiche par fiche.
+Tu reçois des questions produites fiche par fiche.
 
-Ta mission est une RELECTURE GLOBALE.
+MISSION CENTRALE — REVIEW_BEFORE_REJECT001
 
-Tu dois :
+Tu dois d'abord tenter de RÉPARER une proposition avant de la rejeter.
 
-- conserver toutes les questions réellement publiables ;
-- éliminer les questions faibles ou redondantes ;
-- réécrire si nécessaire ;
-- détecter les doublons entre fiches ;
-- préserver l'identité primary_fiche_id de la question ;
-- ne jamais imposer un quota global.
+Les contrôles de première passe sont volontairement souples.
+Certaines candidates peuvent donc contenir "pre_review_flags".
 
-IMPORTANT :
-il n'existe PLUS de limite globale du type "5 questions au total".
+Exemples :
+- standalone_rewrite_needed ;
+- context_anchor_rewrite_needed ;
+- answer_visible_in_question ;
+- mechanical_wording ;
+- answer_grounding_to_recheck.
 
-Chaque fiche a déjà son quota propre.
+Ces flags ne signifient PAS que la question doit être rejetée.
+Ils indiquent ce que tu dois examiner et, si possible, corriger.
 
-RÈGLES
+RÈGLE DE COMPTABILITÉ ABSOLUE
+
+Chaque candidate_id reçu doit apparaître EXACTEMENT UNE FOIS :
+
+- soit dans questions[] après validation/réécriture ;
+- soit dans rejections[] si aucune réparation sourcée satisfaisante n'est possible.
+
+Ne laisse JAMAIS silencieusement disparaître un candidat.
+
+PRIORITÉ
+
+1. Réparer ;
+2. améliorer ;
+3. contextualiser ;
+4. valider ;
+5. rejeter seulement en dernier recours.
+
+RÈGLES ÉDITORIALES
 
 1. Tous les faits doivent être soutenus par les sources fournies.
 
 2. Aucune connaissance externe.
 
-3. La réponse ne doit pas apparaître dans l'énoncé.
+3. Tu peux utiliser :
+   - fiche ;
+   - theme_context ;
+   - annexQuestions.
 
-4. Aucune tautologie.
+4. La réponse ne doit pas apparaître dans la question finale.
 
-5. Aucun langage mécanique ou informatique :
-   "associé à", "information indiquée", "selon la fiche",
-   "d'après Quizypedia", etc.
+5. Aucune tautologie.
 
-6. Français naturel, fluide et élégant.
+6. Aucun langage mécanique ou informatique :
+   "associé à",
+   "information indiquée",
+   "selon la fiche",
+   "d'après Quizypedia",
+   etc.
 
-7. Intérêt réel de culture générale.
+7. Français naturel, fluide et élégant.
 
-8. Réponse courte et raisonnablement univoque.
+8. Intérêt réel de culture générale.
 
-9. Lorsque plusieurs indices peuvent enrichir la question,
-   privilégie une formulation de concours plutôt qu'une définition triviale.
+9. Réponse courte et raisonnablement univoque.
 
-10. Tu peux supprimer une question médiocre sans la remplacer.
+10. Lorsque plusieurs indices sourcés peuvent enrichir une question,
+combine-les si cela améliore réellement sa qualité.
 
-11. Tu peux réécrire une question, mais uniquement avec des faits déjà présents dans les sources.
+11. primary_fiche_id doit être conservé EXACTEMENT.
 
-12. primary_fiche_id doit être conservé EXACTEMENT.
+12. primary_fiche_name doit correspondre à cette fiche.
 
-13. primary_fiche_name doit correspondre à cette fiche.
+13. candidate_id doit être conservé EXACTEMENT.
 
-14. "review_note" est une note éditoriale courte.
+14. Ne réduis jamais artificiellement le lot à un nombre global prédéfini.
 
-15. Ne réduis jamais artificiellement le lot à un nombre global prédéfini.
+STANDALONE_QUESTION001
 
-16. STANDALONE_QUESTION001.
-Chaque question finale sera utilisée sans titre de thème,
+15. Chaque question finale sera utilisée sans titre de thème,
 sans catégorie et sans contexte précédent.
 
-17. MIXED_DOMAIN_CONTEXT001.
-Pour CHAQUE question, simule un quiz généraliste totalement mélangé :
-- question précédente : potentiellement sport ;
-- question actuelle : potentiellement cinéma, histoire, science, etc. ;
-- question suivante : potentiellement animaux.
+16. Simule un quiz généraliste totalement mélangé :
+la question précédente peut parler de sport
+et la suivante d'animaux.
 
-Le joueur doit comprendre immédiatement dans quel cadre
-il doit chercher la réponse.
+17. Le joueur doit comprendre immédiatement le cadre de la question.
 
-18. Une question bien écrite n'est pas nécessairement autonome.
+18. Si une question manque de contexte mais que fiche,
+theme_context ou annexQuestions permettent de l'ajouter,
+RÉÉCRIS la question au lieu de la rejeter.
 
-Exemple insuffisant :
-"Quel personnage facétieux et cynique prend la forme
-d'un cochon-tirelire ?"
+19. Un context_anchor mal formulé ou non littéral
+n'est PAS en soi une raison de rejet :
+corrige la question ET context_anchor.
 
-Si les sources établissent l'univers Toy Story,
-la question doit être réécrite par exemple :
-"Dans la saga Toy Story, quel personnage facétieux et cynique
-prend la forme d'un cochon-tirelire ?"
+20. context_anchor doit être un court extrait
+effectivement présent dans la question finale.
+Il peut rester vide si aucun ancrage particulier
+n'est nécessaire.
 
-Cet exemple démontre uniquement le test éditorial.
+21. standalone_ok vaut true uniquement pour une question
+réellement autonome après ta réécriture.
 
-19. CONTEXT_ANCHOR001.
-Ajoute si nécessaire un ancrage minimal :
-œuvre, saga, série, compétition, sport, époque,
-pays, institution, discipline ou autre cadre sourcé.
+GROUNDING
 
-20. Le contexte doit être strictement utile :
-pas de préambule inutile.
+22. Si la réponse initiale semble mal groundée,
+cherche d'abord si une réponse correcte et courte
+peut être obtenue à partir des sources autorisées.
 
-21. L'ancrage doit être explicitement soutenu
-par theme_context, la fiche ou annexQuestions.
+23. Tu peux corriger la réponse si les sources le permettent.
 
-22. Ne crée aucune connaissance externe pour contextualiser.
+24. Si aucune question/réponse fiable ne peut être construite
+sans connaissance externe, rejette le candidat.
 
-23. L'ancrage ne doit jamais révéler directement la réponse.
+REJECTIONS
 
-24. AMBIGUITY_REWRITE001.
-Si la question admet plusieurs interprétations raisonnables
-une fois sortie de son thème :
-- réécris-la avec des éléments sourcés ;
-- sinon élimine-la.
+25. rejections[].reason_code doit utiliser si possible
+l'une des valeurs suivantes :
 
-25. standalone_ok doit être true uniquement après
-validation explicite de ce test hors contexte.
+- insufficient_source
+- ambiguous_unrepairable
+- no_general_knowledge_interest
+- duplicate
+- answer_unrecoverable
+- context_unrecoverable
+- other
 
-26. context_anchor doit être un court extrait
-LITTÉRALEMENT présent dans la question finale.
+26. rejections[].reason doit être court, concret et intelligible.
 
-Il peut être vide seulement si la question est naturellement
-autonome sans information contextuelle supplémentaire.
+27. rejected_count doit être égal à rejections.length.
 
-27. ambiguity_note est une courte note éditoriale indiquant
-que le contrôle hors contexte a été effectué.
+28. review_note et ambiguity_note sont des notes éditoriales courtes.
 Aucun raisonnement interne détaillé.`;
 
 
@@ -3149,6 +3408,17 @@ exports.cgweb123AiQuestionFactory =
             );
 
 
+        const candidateById=
+          new Map(
+            candidates.map(
+              candidate=>[
+                candidate.candidate_id,
+                candidate
+              ]
+            )
+          );
+
+
         /*
          * =====================================================
          * 2. RELECTURE GLOBALE
@@ -3156,6 +3426,7 @@ exports.cgweb123AiQuestionFactory =
          */
 
         let reviewedRaw=[];
+        let reviewRejectedRaw=[];
         let reviewUsage=[];
 
 
@@ -3212,6 +3483,101 @@ exports.cgweb123AiQuestionFactory =
             reviewedRaw.push(
               ...rows
             );
+
+
+            const rejectedRows=
+              Array.isArray(
+                call
+                  ?.parsed
+                  ?.rejections
+              )
+                ? call
+                    .parsed
+                    .rejections
+                : [];
+
+
+            reviewRejectedRaw.push(
+              ...rejectedRows
+            );
+          }
+        }
+
+
+        /*
+         * REJECTION_DIAGNOSTICS001
+         *
+         * Un candidat ne doit jamais disparaître silencieusement
+         * entre l'entrée et la sortie du relecteur.
+         */
+        const accountedCandidateIds=
+          new Set();
+
+
+        for(
+          const item of
+          reviewedRaw
+        ){
+
+          const id=
+            clean(
+              item?.candidate_id
+            );
+
+          if(id){
+            accountedCandidateIds.add(
+              id
+            );
+          }
+        }
+
+
+        for(
+          const item of
+          reviewRejectedRaw
+        ){
+
+          const id=
+            clean(
+              item?.candidate_id
+            );
+
+          if(id){
+            accountedCandidateIds.add(
+              id
+            );
+          }
+        }
+
+
+        for(
+          const candidate of
+          candidates
+        ){
+
+          if(
+            !accountedCandidateIds.has(
+              candidate.candidate_id
+            )
+          ){
+
+            reviewRejectedRaw.push({
+
+              candidate_id:
+                candidate.candidate_id,
+
+              primary_fiche_id:
+                candidate.primary_fiche_id,
+
+              primary_fiche_name:
+                candidate.primary_fiche_name,
+
+              reason_code:
+                'review_omission',
+
+              reason:
+                'Le relecteur IA n’a pas restitué ce candidat.'
+            });
           }
         }
 
@@ -3229,6 +3595,9 @@ exports.cgweb123AiQuestionFactory =
 
 
         const finalQuestions=[];
+
+        const finalFilterRejections=[];
+
         const globalSeen=
           new Set();
 
@@ -3236,15 +3605,51 @@ exports.cgweb123AiQuestionFactory =
           new Map();
 
 
+        const rejectFinal=(
+          item,
+          code,
+          reason
+        )=>{
+
+          finalFilterRejections.push({
+
+            candidate_id:
+              clean(
+                item?.candidate_id
+              ),
+
+            primary_fiche_id:
+              clean(
+                item?.primary_fiche_id
+              ),
+
+            primary_fiche_name:
+              clean(
+                item?.primary_fiche_name
+              ),
+
+            reason_code:
+              code,
+
+            reason
+          });
+        };
+
+
         for(
           const item of
           reviewedRaw
         ){
 
+          const candidateId=
+            clean(
+              item?.candidate_id
+            );
+
+
           const primaryId=
             clean(
-              item
-                ?.primary_fiche_id
+              item?.primary_fiche_id
             );
 
 
@@ -3255,6 +3660,13 @@ exports.cgweb123AiQuestionFactory =
 
 
           if(!unit){
+
+            rejectFinal(
+              item,
+              'unknown_primary_fiche',
+              'La fiche principale retournée par la relecture est inconnue.'
+            );
+
             continue;
           }
 
@@ -3269,6 +3681,13 @@ exports.cgweb123AiQuestionFactory =
             alreadyForFiche>=
             maxPerFiche
           ){
+
+            rejectFinal(
+              item,
+              'per_fiche_quota_exceeded',
+              `Quota maximal de ${maxPerFiche} question(s) finales pour cette fiche.`
+            );
+
             continue;
           }
 
@@ -3277,6 +3696,7 @@ exports.cgweb123AiQuestionFactory =
             clean(
               item?.question
             );
+
 
           const answer=
             clean(
@@ -3300,18 +3720,39 @@ exports.cgweb123AiQuestionFactory =
 
 
           /*
-           * STANDALONE_QUESTION001
+           * À CE STADE, les contrôles redeviennent stricts.
+           * La question a déjà eu sa chance d'être réparée.
            */
+
           if(
-            item?.standalone_ok !== true
+            !question ||
+            !answer
           ){
+
+            rejectFinal(
+              item,
+              'missing_question_or_answer',
+              'Question ou réponse vide après relecture.'
+            );
+
             continue;
           }
 
 
-          /*
-           * CONTEXT_ANCHOR001
-           */
+          if(
+            item?.standalone_ok !== true
+          ){
+
+            rejectFinal(
+              item,
+              'not_standalone',
+              'La question reste dépendante de son contexte d’origine après relecture.'
+            );
+
+            continue;
+          }
+
+
           if(
             contextAnchor &&
             !contextAnchorPresent(
@@ -3319,14 +3760,13 @@ exports.cgweb123AiQuestionFactory =
               contextAnchor
             )
           ){
-            continue;
-          }
 
+            rejectFinal(
+              item,
+              'context_anchor_mismatch',
+              'L’ancrage déclaré n’apparaît pas dans la question finale.'
+            );
 
-          if(
-            !question ||
-            !answer
-          ){
             continue;
           }
 
@@ -3337,6 +3777,13 @@ exports.cgweb123AiQuestionFactory =
               answer
             )
           ){
+
+            rejectFinal(
+              item,
+              'answer_visible_in_question',
+              'La réponse apparaît encore dans l’énoncé après relecture.'
+            );
+
             continue;
           }
 
@@ -3346,14 +3793,24 @@ exports.cgweb123AiQuestionFactory =
               question
             )
           ){
+
+            rejectFinal(
+              item,
+              'mechanical_wording',
+              'La formulation reste mécanique après relecture.'
+            );
+
             continue;
           }
 
 
           /*
-           * Double grounding :
-           * - la réponse doit exister dans le corpus global ;
-           * - et dans les sources de la fiche principale.
+           * THEME_GROUNDING001
+           *
+           * unitGroundText() contient désormais :
+           * - fiche ;
+           * - theme_context ;
+           * - annexQuestions.
            */
           if(
             !answerGrounded(
@@ -3367,6 +3824,13 @@ exports.cgweb123AiQuestionFactory =
               )
             )
           ){
+
+            rejectFinal(
+              item,
+              'answer_not_grounded',
+              'La réponse finale n’est pas retrouvée dans les sources autorisées.'
+            );
+
             continue;
           }
 
@@ -3381,6 +3845,13 @@ exports.cgweb123AiQuestionFactory =
           if(
             globalSeen.has(key)
           ){
+
+            rejectFinal(
+              item,
+              'global_duplicate',
+              'Doublon global après relecture.'
+            );
+
             continue;
           }
 
@@ -3411,6 +3882,7 @@ exports.cgweb123AiQuestionFactory =
           if(
             !sources.length
           ){
+
             sources.push(
               unit.fiche_name
             );
@@ -3435,6 +3907,12 @@ exports.cgweb123AiQuestionFactory =
               .filter(Boolean);
 
 
+          const originalCandidate=
+            candidateById.get(
+              candidateId
+            );
+
+
           finalQuestions.push({
 
             id:
@@ -3446,11 +3924,14 @@ exports.cgweb123AiQuestionFactory =
                 ].join('||')
               )}`,
 
+            candidate_id:
+              candidateId,
+
             game:
               'QR',
 
             schema:
-              'cgweb123.qr.ai.v3',
+              'cgweb123.qr.ai.v5',
 
             primary_fiche_id:
               primaryId,
@@ -3475,6 +3956,17 @@ exports.cgweb123AiQuestionFactory =
 
             ambiguity_note:
               ambiguityNote,
+
+            pre_review_flags:
+              (
+                Array.isArray(
+                  originalCandidate
+                    ?.pre_review_flags
+                )
+                  ? originalCandidate
+                      .pre_review_flags
+                  : []
+              ),
 
             review_note:
               cut(
@@ -3512,6 +4004,18 @@ exports.cgweb123AiQuestionFactory =
           new Map();
 
 
+        const reviewQuestionCountByFiche=
+          new Map();
+
+
+        const reviewRejectedByFiche=
+          new Map();
+
+
+        const finalRejectedByFiche=
+          new Map();
+
+
         for(
           const item of
           finalQuestions
@@ -3528,33 +4032,282 @@ exports.cgweb123AiQuestionFactory =
         }
 
 
+        for(
+          const item of
+          reviewedRaw
+        ){
+
+          const id=
+            clean(
+              item?.primary_fiche_id
+            );
+
+          if(!id){
+            continue;
+          }
+
+          reviewQuestionCountByFiche.set(
+            id,
+            (
+              reviewQuestionCountByFiche.get(
+                id
+              ) || 0
+            ) + 1
+          );
+        }
+
+
+        for(
+          const item of
+          reviewRejectedRaw
+        ){
+
+          const id=
+            clean(
+              item?.primary_fiche_id
+            );
+
+          if(!id){
+            continue;
+          }
+
+          if(
+            !reviewRejectedByFiche.has(
+              id
+            )
+          ){
+
+            reviewRejectedByFiche.set(
+              id,
+              []
+            );
+          }
+
+          reviewRejectedByFiche
+            .get(id)
+            .push(item);
+        }
+
+
+        for(
+          const item of
+          finalFilterRejections
+        ){
+
+          const id=
+            clean(
+              item?.primary_fiche_id
+            );
+
+          if(!id){
+            continue;
+          }
+
+          if(
+            !finalRejectedByFiche.has(
+              id
+            )
+          ){
+
+            finalRejectedByFiche.set(
+              id,
+              []
+            );
+          }
+
+          finalRejectedByFiche
+            .get(id)
+            .push(item);
+        }
+
+
         const coverage=
           generationCoverage.map(
-            row=>({
+            row=>{
 
-              fiche_id:
-                row.fiche_id,
+              const reviewRejects=
+                reviewRejectedByFiche.get(
+                  row.fiche_id
+                ) || [];
 
-              fiche_name:
-                row.fiche_name,
 
-              status:
-                row.status,
+              const finalRejects=
+                finalRejectedByFiche.get(
+                  row.fiche_id
+                ) || [];
 
-              generatedCount:
-                row.generatedCount,
 
-              candidateCount:
-                row.candidateCount,
+              const diagnostics=[
 
-              reviewedCount:
+                ...(
+                  Array.isArray(
+                    row.preReviewDiagnostics
+                  )
+                    ? row.preReviewDiagnostics
+                    : []
+                ),
+
+                ...reviewRejects.map(
+                  item=>({
+
+                    stage:
+                      'ai_review',
+
+                    code:
+                      clean(
+                        item?.reason_code
+                      ) ||
+                      'review_rejection',
+
+                    reason:
+                      clean(
+                        item?.reason
+                      ) ||
+                      'Rejet par la relecture IA.'
+                  })
+                ),
+
+                ...finalRejects.map(
+                  item=>({
+
+                    stage:
+                      'final_filter',
+
+                    code:
+                      clean(
+                        item?.reason_code
+                      ) ||
+                      'final_rejection',
+
+                    reason:
+                      clean(
+                        item?.reason
+                      ) ||
+                      'Rejet par le filtre final.'
+                  })
+                )
+              ];
+
+
+              const finalCount=
                 finalCountByFiche.get(
                   row.fiche_id
-                ) || 0,
+                ) || 0;
 
-              reason:
-                row.reason || ''
-            })
+
+              const preReviewCount=
+                Number(
+                  row.preReviewCount ||
+                  row.candidateCount ||
+                  0
+                );
+
+
+              let reason='';
+
+
+              if(
+                row.status==='error'
+              ){
+
+                reason=
+                  row.reason ||
+                  'Erreur de génération.';
+
+              }else if(
+                finalCount>0
+              ){
+
+                reason=
+                  `${finalCount} question(s) finale(s)`;
+
+                if(
+                  Number(
+                    row.softFlaggedCount ||
+                    0
+                  )>0
+                ){
+
+                  reason +=
+                    ` · ${Number(
+                      row.softFlaggedCount
+                    )} candidat(s) à réparer`;
+                }
+
+              }else if(
+                preReviewCount===0
+              ){
+
+                reason=
+                  row.reason ||
+                  'Aucun candidat transmis à la relecture.';
+
+              }else if(
+                diagnostics.length
+              ){
+
+                reason=
+                  diagnostics[
+                    diagnostics.length-1
+                  ].reason;
+
+              }else{
+
+                reason=
+                  'Aucune question finale retenue.';
+              }
+
+
+              return {
+
+                fiche_id:
+                  row.fiche_id,
+
+                fiche_name:
+                  row.fiche_name,
+
+                status:
+                  row.status,
+
+                generatedCount:
+                  row.generatedCount,
+
+                preReviewCount,
+
+                candidateCount:
+                  preReviewCount,
+
+                preReviewRejectedCount:
+                  Number(
+                    row.preReviewRejectedCount ||
+                    0
+                  ),
+
+                softFlaggedCount:
+                  Number(
+                    row.softFlaggedCount ||
+                    0
+                  ),
+
+                reviewQuestionCount:
+                  reviewQuestionCountByFiche.get(
+                    row.fiche_id
+                  ) || 0,
+
+                reviewRejectedCount:
+                  reviewRejects.length,
+
+                finalFilterRejectedCount:
+                  finalRejects.length,
+
+                reviewedCount:
+                  finalCount,
+
+                reason,
+
+                diagnostics
+              };
+            }
           );
 
 
@@ -3575,7 +4328,7 @@ exports.cgweb123AiQuestionFactory =
         const ficheWithCandidatesCount=
           coverage.filter(
             row=>
-              row.candidateCount>0
+              row.preReviewCount>0
           ).length;
 
 
@@ -3604,6 +4357,22 @@ exports.cgweb123AiQuestionFactory =
               ),
             0
           );
+
+
+        const preReviewCount=
+          candidates.length;
+
+
+        const reviewRejectedCount=
+          reviewRejectedRaw.length;
+
+
+        const finalFilterRejectedCount=
+          finalFilterRejections.length;
+
+
+        /*
+         * TOKEN_COST_METER001
 
 
         /*
@@ -3653,13 +4422,22 @@ exports.cgweb123AiQuestionFactory =
             candidateCount:
               candidates.length,
 
+            preReviewCount,
+
+            reviewQuestionCount:
+              reviewedRaw.length,
+
+            reviewRejectedCount,
+
+            finalFilterRejectedCount,
+
             reviewedCount:
               finalQuestions.length,
 
             rejectedCount:
               Math.max(
                 0,
-                candidates.length -
+                generatedCount -
                 finalQuestions.length
               ),
 
@@ -3688,7 +4466,7 @@ exports.cgweb123AiQuestionFactory =
       }catch(error){
 
         console.error(
-          'CGWEB123 FIX2',
+          'CGWEB123 FIX5',
           error
         );
 
