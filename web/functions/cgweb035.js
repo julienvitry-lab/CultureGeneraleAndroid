@@ -18,7 +18,14 @@ const CACHE=new Map();
 const X_POLICY_TTL_MS=15*1000;
 const X_POLICY_CACHE=new Map();
 // CGPLAY004 · LEARNING_MODEL003
-const LEARNING_MODEL_VERSION='CGPLAY004_LEARNING_MODEL003';
+const LEARNING_MODEL_VERSION='CGPLAY004_LEARNING_MODEL003_FIX1';
+
+// CGPLAY004 · LEARNING_MODEL003 FIX1
+// UNSEEN_ABSOLUTE_PRIORITY001
+// RETRY_ROUNDS001
+// ONE_ATTEMPT_PER_ROUND001
+const CGPLAY004_MODEL003_FIX1_VERSION=
+  'CGPLAY004_LEARNING_MODEL003_FIX1_RETRY_ROUNDS001';
 
 // Une réussite suffit pour sortir définitivement
 // une question du vivier jusqu'au hard reset.
@@ -487,13 +494,19 @@ function learningModelMeta(xPolicy){
      * CGPLAY004 · LEARNING_MODEL003
      */
     selectionPolicy:
-      'random_remaining',
+      'random_within_current_round',
 
     successPolicy:
       'exclude_after_first_success_until_hard_reset',
 
     failurePolicy:
-      'remain_eligible',
+      'defer_until_current_round_exhausted',
+
+    roundPolicy:
+      'lowest_attempt_count_first',
+
+    unseenPriority:
+      'absolute_until_exhausted',
 
     sessionDuplicatePolicy:
       'no_repeat_inside_current_session',
@@ -993,6 +1006,14 @@ async function smartUnseenCandidates(uid,analysis,wanted,domain,xPolicy){
  * CGWEB, mais il applique exactement la même règle
  * pédagogique que la tablette.
  */
+/*
+ * CGPLAY004 · LEARNING_MODEL003 FIX1
+ *
+ * Le mode court utilise exactement la même hiérarchie :
+ *
+ * passe la plus basse d'abord,
+ * tirage aléatoire à l'intérieur de cette passe.
+ */
 async function smartSession(
   uid,
   analysis,
@@ -1036,16 +1057,20 @@ async function smartSession(
     );
 
 
+  const unseenRound=
+    pool.currentRoundAttempt===0;
+
+
   const retryCount=
-    rows.filter(
-      row=>
-        row.source==='retry'
-    ).length;
+    unseenRound
+      ? 0
+      : rows.length;
 
 
   const unseenCount=
-    rows.length-
-    retryCount;
+    unseenRound
+      ? rows.length
+      : 0;
 
 
   return {
@@ -1053,14 +1078,38 @@ async function smartSession(
     balanceVersion:
       LEARNING_MODEL_VERSION,
 
+    roundVersion:
+      CGPLAY004_MODEL003_FIX1_VERSION,
+
     generatedAtMs:
       Date.now(),
 
     selectionPolicy:
-      'random_remaining',
+      'random_within_current_round',
 
     successPolicy:
       'exclude_after_first_success_until_hard_reset',
+
+    failurePolicy:
+      'defer_until_current_round_exhausted',
+
+    unseenAbsolutePriority:
+      true,
+
+    learningRound:
+      pool.currentRound,
+
+    currentRoundAttempt:
+      pool.currentRoundAttempt,
+
+    currentRoundTotal:
+      pool.currentRoundTotal,
+
+    totalRemaining:
+      pool.totalRemaining,
+
+    waitingForFutureRound:
+      pool.waitingForFutureRound,
 
     themeCooldownQuestions:
       CGPLAY004_MODEL003_THEME_COOLDOWN,
@@ -1079,9 +1128,9 @@ async function smartSession(
     available:{
       due:0,
       weakness:
-        pool.retryEligible,
+        retryCount,
       unseen:
-        pool.unseenEligible
+        unseenCount
     },
 
     availableCapped:{
@@ -4869,6 +4918,33 @@ function cgplay004Model003MasteredIds(
  * Aucune priorité faiblesse.
  * Aucune priorité ancienneté.
  */
+/*
+ * ================================================================
+ * CGPLAY004 · LEARNING_MODEL003 FIX1
+ * UNSEEN_ABSOLUTE_PRIORITY001
+ * RETRY_ROUNDS001
+ * ONE_ATTEMPT_PER_ROUND001
+ * ================================================================
+ *
+ * Une question correctement répondue est exclue définitivement.
+ *
+ * Parmi les questions non maîtrisées :
+ *
+ *   attempts = 0  → passe 1
+ *   attempts = 1  → passe 2
+ *   attempts = 2  → passe 3
+ *   ...
+ *
+ * Le moteur détermine le PLUS PETIT nombre d'échecs
+ * encore présent dans le catalogue.
+ *
+ * Seules les questions de ce niveau peuvent être proposées.
+ *
+ * Conséquence :
+ *
+ * tant qu'une seule question jamais vue subsiste,
+ * aucune question déjà ratée ne peut revenir.
+ */
 async function cgplay004Model003RemainingPool(
   uid,
   analysis,
@@ -4889,6 +4965,12 @@ async function cgplay004Model003RemainingPool(
     );
 
 
+  const blockedIds=
+    blocked instanceof Set
+      ? blocked
+      : new Set();
+
+
   const historyById=
     new Map();
 
@@ -4906,7 +4988,9 @@ async function cgplay004Model003RemainingPool(
           : ''
       );
 
+
     if(id){
+
       historyById.set(
         id,
         q
@@ -4915,10 +4999,19 @@ async function cgplay004Model003RemainingPool(
   }
 
 
-  const available=[];
-
-  let retryEligible=0;
-  let unseenEligible=0;
+  /*
+   * IMPORTANT :
+   *
+   * on construit d'abord TOUS les non-maîtrisés.
+   *
+   * Les IDs déjà servis dans la session ne sont
+   * volontairement PAS retirés à ce stade.
+   *
+   * Sinon ils pourraient artificiellement faire croire
+   * qu'une passe est terminée et autoriser trop tôt
+   * une question de la passe suivante.
+   */
+  const unresolved=[];
 
 
   for(const row of catalog){
@@ -4947,13 +5040,6 @@ async function cgplay004Model003RemainingPool(
 
 
     if(
-      blocked?.has(id)
-    ){
-      continue;
-    }
-
-
-    if(
       domain &&
       one(row.domain)!==domain
     ){
@@ -4965,45 +5051,25 @@ async function cgplay004Model003RemainingPool(
       historyById.get(id);
 
 
-    const isRetry=
-      Boolean(
-        historical &&
-        Number(
-          historical.attempts||0
-        )>0
+    const attempts=
+      Math.max(
+        0,
+        Math.floor(
+          Number(
+            historical?.attempts||0
+          )||0
+        )
       );
 
 
-    if(isRetry){
-      retryEligible++;
-    }else{
-      unseenEligible++;
-    }
-
-
-    available.push({
+    unresolved.push({
 
       ...row,
 
-      source:
-        isRetry
-          ? 'retry'
-          : 'unseen',
-
-      reason:
-        isRetry
-          ? 'Réponse précédente incorrecte'
-          : 'Jamais vue',
-
-      attempts:
-        Number(
-          historical?.attempts||0
-        )||0,
+      attempts,
 
       failures:
-        Number(
-          historical?.failures||0
-        )||0,
+        attempts,
 
       successPercent:
         historical
@@ -5012,24 +5078,149 @@ async function cgplay004Model003RemainingPool(
             )
           : null,
 
-      /*
-       * Une ligne présente ici ne possède
-       * nécessairement aucune réussite.
-       */
-      mastered:
-        false
+      mastered:false
     });
   }
 
 
   /*
-   * Fisher-Yates sur L'ENSEMBLE du vivier restant :
-   * chaque question restante part donc avec
-   * la même logique de tirage.
+   * Plus aucune question non maîtrisée :
+   * apprentissage terminé dans ce périmètre.
    */
+  if(!unresolved.length){
+
+    return {
+
+      rows:[],
+
+      totalRemaining:0,
+
+      remainingEligible:0,
+
+      currentRound:0,
+
+      currentRoundAttempt:0,
+
+      currentRoundTotal:0,
+
+      blockedInCurrentRound:0,
+
+      waitingForFutureRound:0,
+
+      masteredExcluded:
+        mastered.size,
+
+      retryEligible:0,
+
+      unseenEligible:0,
+
+      catalogSize:
+        catalog.length
+    };
+  }
+
+
+  /*
+   * Le plus petit nombre d'échecs encore présent
+   * définit LA passe courante.
+   *
+   * Exemple :
+   *
+   * Q1 : 0 échec
+   * Q2 : 0 échec
+   * Q3 : 1 échec
+   *
+   * => passe courante = 1
+   * => seules Q1 et Q2 sont éligibles.
+   */
+  let currentRoundAttempt=
+    Number.MAX_SAFE_INTEGER;
+
+
+  for(const row of unresolved){
+
+    currentRoundAttempt=
+      Math.min(
+        currentRoundAttempt,
+        row.attempts
+      );
+  }
+
+
+  const currentRound=
+    currentRoundAttempt+1;
+
+
+  /*
+   * Ensemble COMPLET de la passe courante.
+   */
+  const currentRoundRows=
+    unresolved.filter(
+      row=>
+        row.attempts===
+        currentRoundAttempt
+    );
+
+
+  /*
+   * Les questions déjà servies dans la session
+   * sont ensuite temporairement retirées.
+   *
+   * Cela ne fait PAS avancer la passe.
+   */
+  const eligibleRows=
+    currentRoundRows.filter(
+      row=>
+        !blockedIds.has(
+          one(row.id)
+        )
+    );
+
+
+  const blockedInCurrentRound=
+    currentRoundRows.length-
+    eligibleRows.length;
+
+
+  const waitingForFutureRound=
+    unresolved.length-
+    currentRoundRows.length;
+
+
+  const source=
+    currentRoundAttempt===0
+      ? 'unseen'
+      : 'retry';
+
+
+  const reason=
+    currentRoundAttempt===0
+      ? 'Jamais vue'
+      : (
+          'Échec lors de la passe '
+          +currentRoundAttempt
+      );
+
+
   const rows=
     cg35Shuffle(
-      available
+
+      eligibleRows.map(
+        row=>({
+
+          ...row,
+
+          source,
+
+          reason,
+
+          learningRound:
+            currentRound,
+
+          previousFailures:
+            currentRoundAttempt
+        })
+      )
     );
 
 
@@ -5037,18 +5228,38 @@ async function cgplay004Model003RemainingPool(
 
     rows,
 
-    catalogSize:
-      catalog.length,
+    totalRemaining:
+      unresolved.length,
 
     remainingEligible:
       rows.length,
 
+    currentRound,
+
+    currentRoundAttempt,
+
+    currentRoundTotal:
+      currentRoundRows.length,
+
+    blockedInCurrentRound,
+
+    waitingForFutureRound,
+
     masteredExcluded:
       mastered.size,
 
-    retryEligible,
+    retryEligible:
+      currentRoundAttempt>0
+        ? rows.length
+        : 0,
 
-    unseenEligible
+    unseenEligible:
+      currentRoundAttempt===0
+        ? rows.length
+        : 0,
+
+    catalogSize:
+      catalog.length
   };
 }
 
@@ -5065,17 +5276,11 @@ async function smartLongComposeBatch(
 
 
   /*
-   * SESSION_NO_DUPLICATE001
+   * Aucune question deux fois dans la même session.
    *
-   * Toute question déjà insérée dans cette session
-   * est temporairement bloquée.
-   *
-   * Cela évite qu'un échec soit reproposé quelques
-   * dizaines de secondes plus tard dans la même
-   * session de 500.
-   *
-   * À la session suivante, une question échouée
-   * redevient pleinement éligible.
+   * MAIS :
+   * ces IDs n'influencent jamais le calcul
+   * de la passe courante.
    */
   const blocked=
     new Set(
@@ -5114,13 +5319,23 @@ async function smartLongComposeBatch(
       requestedBatch:0,
 
       mode:
-        'learning_model003_done',
+        'learning_model003_fix1_session_done',
+
+      learningRound:0,
+
+      currentRoundAttempt:0,
+
+      totalRemaining:0,
 
       remainingEligible:0,
 
-      masteredExcluded:0,
+      currentRoundTotal:0,
 
-      retryEligible:0,
+      blockedInCurrentRound:0,
+
+      waitingForFutureRound:0,
+
+      masteredExcluded:0,
 
       unseenAvailable:0,
 
@@ -5184,6 +5399,10 @@ async function smartLongComposeBatch(
         );
 
 
+  /*
+   * Le caractère aléatoire est conservé,
+   * mais uniquement DANS la passe courante.
+   */
   const rows=
     cg35ThemeDiverse(
       pool.rows,
@@ -5196,21 +5415,23 @@ async function smartLongComposeBatch(
     );
 
 
+  const isUnseenRound=
+    pool.currentRoundAttempt===0;
+
+
   const actual={
 
     due:0,
 
     weakness:
-      rows.filter(
-        row=>
-          row.source==='retry'
-      ).length,
+      isUnseenRound
+        ? 0
+        : rows.length,
 
     unseen:
-      rows.filter(
-        row=>
-          row.source==='unseen'
-      ).length
+      isUnseenRound
+        ? rows.length
+        : 0
   };
 
 
@@ -5235,6 +5456,38 @@ async function smartLongComposeBatch(
   };
 
 
+  let mode=
+    'learning_model003_fix1_round_'
+    +pool.currentRound;
+
+
+  if(
+    pool.currentRound===1
+  ){
+    mode=
+      'learning_model003_fix1_unseen_only';
+  }
+
+
+  /*
+   * Si toutes les questions restantes de cette passe
+   * ont déjà été servies dans la session courante,
+   * on ne saute surtout PAS à la passe suivante.
+   *
+   * Le lot revient vide.
+   * Une nouvelle session pourra reprendre proprement
+   * après synchronisation des réponses.
+   */
+  if(
+    !rows.length &&
+    pool.totalRemaining>0 &&
+    pool.blockedInCurrentRound>0
+  ){
+    mode=
+      'learning_model003_fix1_round_waiting_next_session';
+  }
+
+
   return {
 
     rows,
@@ -5242,11 +5495,34 @@ async function smartLongComposeBatch(
     requestedBatch:
       batchCount,
 
-    mode:
-      'learning_model003_random_remaining',
+    mode,
+
+    modelVersion:
+      LEARNING_MODEL_VERSION,
+
+    roundVersion:
+      CGPLAY004_MODEL003_FIX1_VERSION,
+
+    learningRound:
+      pool.currentRound,
+
+    currentRoundAttempt:
+      pool.currentRoundAttempt,
+
+    totalRemaining:
+      pool.totalRemaining,
 
     remainingEligible:
       pool.remainingEligible,
+
+    currentRoundTotal:
+      pool.currentRoundTotal,
+
+    blockedInCurrentRound:
+      pool.blockedInCurrentRound,
+
+    waitingForFutureRound:
+      pool.waitingForFutureRound,
 
     masteredExcluded:
       pool.masteredExcluded,
@@ -5269,13 +5545,6 @@ async function smartLongComposeBatch(
 
     actual,
 
-    /*
-     * Les anciens quotas due / weakness / unseen
-     * n'influencent plus le choix.
-     *
-     * Champ conservé uniquement pour compatibilité
-     * avec les anciennes interfaces.
-     */
     targetQuota:{
       due:0,
       weakness:0,
@@ -5286,13 +5555,16 @@ async function smartLongComposeBatch(
 
     redistributed:0,
 
-    modelVersion:
-      LEARNING_MODEL_VERSION,
-
     selectionPolicy:
-      'random_remaining',
+      'random_within_current_round',
 
     successExclusion:
+      true,
+
+    unseenAbsolutePriority:
+      true,
+
+    oneAttemptPerRound:
       true,
 
     themeCooldownQuestions:
@@ -5334,9 +5606,18 @@ function smartLongPublicState(
       LEARNING_MODEL_VERSION,
 
     selectionPolicy:
-      'random_remaining',
+      'random_within_current_round',
+
+    roundVersion:
+      CGPLAY004_MODEL003_FIX1_VERSION,
 
     successExclusion:
+      true,
+
+    unseenAbsolutePriority:
+      true,
+
+    oneAttemptPerRound:
       true,
 
     themeCooldownQuestions:
