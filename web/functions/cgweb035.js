@@ -5345,6 +5345,77 @@ async function smartLongStop(
   );
 }
 
+// CGANDROID005 · HARD_LEARNING_RESET001
+//
+// Suppression PHYSIQUE.
+// Aucun marqueur historique n'est conservé.
+async function cgandroid005DeleteCollection(collectionRef){
+
+  let deleted=0;
+
+  for(;;){
+
+    const snap=
+      await collectionRef
+        .limit(400)
+        .get();
+
+    if(snap.empty)break;
+
+    const batch=
+      getFirestore().batch();
+
+    for(const doc of snap.docs){
+      batch.delete(doc.ref);
+    }
+
+    await batch.commit();
+
+    deleted+=snap.size;
+
+    if(snap.size<400)break;
+  }
+
+  return deleted;
+}
+
+
+async function cgandroid005HardResetLearning(uid){
+
+  const db=getFirestore();
+
+  const userRef=
+    db
+      .collection('users')
+      .doc(uid);
+
+  /*
+   * 1. Sessions SMART anciennes.
+   * 2. Historique pédagogique complet.
+   */
+  const sessionsDeleted=
+    await cgandroid005DeleteCollection(
+      userRef.collection('smart_sessions')
+    );
+
+  const historyDeleted=
+    await cgandroid005DeleteCollection(
+      userRef.collection('play_history')
+    );
+
+  /*
+   * Empêche le backend de réutiliser une analyse
+   * mémorisée avant la suppression.
+   */
+  CACHE.delete(uid);
+
+  return {
+    historyDeleted,
+    sessionsDeleted
+  };
+}
+
+
 // CGWEB113_FIX1B_DETAIL_SINGLE_REQUEST001_DETAIL_FETCH_STABILITY002
 async function handleLearningHub(req,res){
   if(cors(req,res))return;
@@ -5355,6 +5426,26 @@ async function handleLearningHub(req,res){
     const user=await requireUser(req);
     const body=req.body&&typeof req.body==='object'?req.body:{};
     const mode=one(body.mode)||'overview';
+
+    // CGANDROID005 · HARD_LEARNING_RESET001
+    if(mode==='hardResetLearning'){
+
+      const result=
+        await cgandroid005HardResetLearning(
+          user.uid
+        );
+
+      return json(
+        res,
+        200,
+        {
+          ok:true,
+          hardReset:true,
+          version:'CGANDROID005_HARD_LEARNING_RESET001',
+          ...result
+        }
+      );
+    }
 
     if(mode==='history'){
       const limit=clamp(Math.floor(num(body.limit)||100),1,200);

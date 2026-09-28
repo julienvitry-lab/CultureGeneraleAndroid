@@ -644,6 +644,38 @@ public class TabletMainActivity extends Activity {
         }
 
 
+        // CGANDROID005 · HARD_RESET_UI001
+        Button reset =
+                button(
+                        "Effacer définitivement mon historique",
+                        RED,
+                        17
+                );
+
+        reset.setBackground(
+                roundedStroke(
+                        DARK,
+                        14,
+                        RED,
+                        2
+                )
+        );
+
+        add(
+                reset,
+                -1,
+                dp(60),
+                dp(120),
+                dp(16),
+                dp(120),
+                dp(8)
+        );
+
+        reset.setOnClickListener(
+                v -> confirmHardLearningReset()
+        );
+
+
         Button back =
                 button(
                         "Retour",
@@ -664,6 +696,194 @@ public class TabletMainActivity extends Activity {
         back.setOnClickListener(
                 v -> showHome()
         );
+    }
+
+
+    /*
+     * ================================================================
+     * CGANDROID005 · HARD_LEARNING_RESET001
+     * ================================================================
+     */
+
+    private void confirmHardLearningReset() {
+
+        new AlertDialog.Builder(this)
+                .setTitle(
+                        "Tout effacer ?"
+                )
+                .setMessage(
+                        "Cette opération supprimera définitivement "
+                                + "toutes les réponses déjà enregistrées, "
+                                + "toutes les statistiques d’apprentissage "
+                                + "et les anciennes sessions SMART.\n\n"
+                                + "Cette opération est irréversible."
+                )
+                .setNegativeButton(
+                        "Annuler",
+                        null
+                )
+                .setPositiveButton(
+                        "Continuer",
+                        (dialog, which) ->
+                                confirmHardLearningResetFinal()
+                )
+                .show();
+    }
+
+
+    private void confirmHardLearningResetFinal() {
+
+        new AlertDialog.Builder(this)
+                .setTitle(
+                        "Confirmation définitive"
+                )
+                .setMessage(
+                        "Après validation, l’ancien historique "
+                                + "n’existera plus.\n\n"
+                                + "L’apprentissage repartira réellement "
+                                + "de zéro."
+                )
+                .setNegativeButton(
+                        "Annuler",
+                        null
+                )
+                .setPositiveButton(
+                        "EFFACER DÉFINITIVEMENT",
+                        (dialog, which) ->
+                                performHardLearningReset()
+                )
+                .show();
+    }
+
+
+    private void performHardLearningReset() {
+
+        screen =
+                "hard_learning_reset";
+
+        baseScreen();
+
+        addTitle(
+                "Remise à zéro",
+                30,
+                Color.WHITE
+        );
+
+        addSub(
+                "Suppression définitive de l’ancien apprentissage…",
+                16,
+                YELLOW
+        );
+
+
+        io.submit(() -> {
+
+            try {
+
+                /*
+                 * Toute ancienne réponse encore en attente locale
+                 * est supprimée AVANT le reset serveur.
+                 */
+                flags.purgeHistoryOutbox();
+
+
+                String token =
+                        auth.tokenSync();
+
+
+                JSONObject result =
+                        smart.hardResetLearningSync(
+                                token
+                        );
+
+
+                /*
+                 * Aucune ancienne session locale ne doit pouvoir
+                 * reprendre après le hard reset.
+                 */
+                game.clear();
+
+                historyItems.clear();
+
+                current = null;
+                answering = false;
+
+                selectedDomain = "";
+
+                nextBatchPrefetching = false;
+
+                synchronized (questionCache) {
+                    questionCache.clear();
+                }
+
+                synchronized (questionPreloadInFlight) {
+                    questionPreloadInFlight.clear();
+                }
+
+                synchronized (imageCache) {
+                    imageCache.clear();
+                }
+
+                synchronized (imagePreloadInFlight) {
+                    imagePreloadInFlight.clear();
+                }
+
+
+                int deletedHistory =
+                        result.optInt(
+                                "historyDeleted",
+                                0
+                        );
+
+                int deletedSessions =
+                        result.optInt(
+                                "sessionsDeleted",
+                                0
+                        );
+
+
+                main.post(() -> {
+
+                    Toast.makeText(
+                            this,
+                            "Historique supprimé : "
+                                    + deletedHistory
+                                    + " réponse(s), "
+                                    + deletedSessions
+                                    + " session(s).",
+                            Toast.LENGTH_LONG
+                    ).show();
+
+
+                    showHome();
+                });
+
+
+            } catch (Exception ex) {
+
+                main.post(() -> {
+
+                    new AlertDialog.Builder(this)
+                            .setTitle(
+                                    "Suppression incomplète"
+                            )
+                            .setMessage(
+                                    "Le serveur n’a pas confirmé "
+                                            + "l’effacement complet.\n\n"
+                                            + safeHistoryText(
+                                            ex.getMessage(),
+                                            "Erreur inconnue."
+                                    )
+                            )
+                            .setPositiveButton(
+                                    "OK",
+                                    (dialog, which) ->
+                                            showHistory()
+                            )
+                            .show();
+                });
+            }
+        });
     }
 
 
@@ -2721,6 +2941,55 @@ final class CgAuth {
 }
 
 final class CgSmartClient {
+
+    // CGANDROID005 · HARD_LEARNING_RESET001
+    JSONObject hardResetLearningSync(
+            String token
+    ) throws Exception {
+
+        JSONObject body =
+                new JSONObject();
+
+        body.put(
+                "cgweb035",
+                true
+        );
+
+        body.put(
+                "mode",
+                "hardResetLearning"
+        );
+
+
+        JSONObject response =
+                CgHttp.json(
+                        "POST",
+                        BuildConfig.SMART_API_URL,
+                        token,
+                        body
+                );
+
+
+        if (
+                !response.optBoolean(
+                        "ok",
+                        false
+                )
+        ) {
+
+            throw new Exception(
+                    response.optString(
+                            "error",
+                            "Réinitialisation refusée."
+                    )
+            );
+        }
+
+
+        return response;
+    }
+
+
     CgSmartSession startSync(String token, int count, String domain) throws Exception {
         JSONObject body = new JSONObject();
         body.put("cgweb035", true);
@@ -3315,6 +3584,79 @@ final class CgFlags {
             prefs.edit().putString(K_OUTBOX, a.toString()).apply();
         } catch (Exception ignored) { }
     }
+
+    /*
+     * CGANDROID005 · OUTBOX_HISTORY_PURGE001
+     *
+     * Supprime uniquement les événements play_history
+     * encore en attente.
+     *
+     * Les signalements / exclusions P/T sont conservés.
+     */
+    synchronized int purgeHistoryOutbox() {
+
+        int removed = 0;
+
+        try {
+
+            JSONArray source =
+                    new JSONArray(
+                            prefs.getString(
+                                    K_OUTBOX,
+                                    "[]"
+                            )
+                    );
+
+            JSONArray remaining =
+                    new JSONArray();
+
+
+            for (
+                    int i = 0;
+                    i < source.length();
+                    i++
+            ) {
+
+                JSONObject item =
+                        source.optJSONObject(i);
+
+                if (item == null) {
+                    continue;
+                }
+
+
+                if (
+                        "play_history".equals(
+                                item.optString(
+                                        "collection",
+                                        ""
+                                )
+                        )
+                ) {
+
+                    removed++;
+                    continue;
+                }
+
+
+                remaining.put(item);
+            }
+
+
+            prefs.edit()
+                    .putString(
+                            K_OUTBOX,
+                            remaining.toString()
+                    )
+                    .apply();
+
+
+        } catch (Exception ignored) { }
+
+
+        return removed;
+    }
+
 
     int pendingCount() {
         try { return new JSONArray(prefs.getString(K_OUTBOX, "[]")).length(); }
