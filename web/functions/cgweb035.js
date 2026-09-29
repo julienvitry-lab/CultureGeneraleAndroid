@@ -18,7 +18,7 @@ const CACHE=new Map();
 const X_POLICY_TTL_MS=15*1000;
 const X_POLICY_CACHE=new Map();
 // CGPLAY004 · LEARNING_MODEL003
-const LEARNING_MODEL_VERSION='CGPLAY004_LEARNING_MODEL003_FIX1';
+const LEARNING_MODEL_VERSION='CGPLAY004_LEARNING_MODEL003_FIX2';
 
 // CGPLAY004 · LEARNING_MODEL003 FIX1
 // UNSEEN_ABSOLUTE_PRIORITY001
@@ -27,8 +27,9 @@ const LEARNING_MODEL_VERSION='CGPLAY004_LEARNING_MODEL003_FIX1';
 const CGPLAY004_MODEL003_FIX1_VERSION=
   'CGPLAY004_LEARNING_MODEL003_FIX1_RETRY_ROUNDS001';
 
-// Une réussite suffit pour sortir définitivement
-// une question du vivier jusqu'au hard reset.
+// Une réussite suffit pour écarter la question
+// du vivier actif jusqu'au hard reset.
+// Le document question reste intact dans le catalogue.
 const CGPLAY004_MODEL003_SUCCESS_EXCLUSION=true;
 
 // Un thème utilisé reste temporairement indisponible
@@ -46,6 +47,8 @@ const X_DUPLICATE_TRUTH_VERSION='CGPLAY003_FIX5_X_DUPLICATE_TRUTH002';
 const X_ORIGIN_VERSION='CGPLAY003_FIX6_X_ORIGIN_AUDIT001';
 const X_REHABILITATION_PREVIEW_VERSION='CGPLAY003_FIX6_REHABILITATION_PREVIEW001';
 const CGPLAY004_LONG_SESSION_VERSION='CGPLAY004_LONG_SESSION001';
+// CGPLAY004 FIX2 · ENDLESS_BATCH001
+const CGPLAY004_ENDLESS_BATCH_VERSION='CGPLAY004_FIX2_ENDLESS_BATCH001';
 const CGPLAY004_ADAPTIVE_BATCH_VERSION='CGPLAY004_ADAPTIVE_BATCH001';
 const CGPLAY004_SESSION_RESUME_VERSION='CGPLAY004_SESSION_RESUME001';
 const CGPLAY004_RANDOMIZE_VERSION='CGPLAY004_FIX1_LONG_SESSION_RANDOMIZE001';
@@ -4798,7 +4801,7 @@ async function cgplay004Model003Catalog(uid){
           'megatheme',
           'theme'
         )
-        .limit(500);
+        .limit(1000);
 
 
     if(last){
@@ -4848,7 +4851,7 @@ async function cgplay004Model003Catalog(uid){
       ];
 
 
-    if(snap.size<500){
+    if(snap.size<1000){
       break;
     }
   }
@@ -5571,6 +5574,127 @@ async function smartLongComposeBatch(
       CGPLAY004_MODEL003_THEME_COOLDOWN
   };
 }
+
+/*
+ * CGPLAY004 FIX2 · ENDLESS_BATCH001
+ *
+ * Prochain lot du parcours continu.
+ * Aucun total de session.
+ */
+async function cgplay004EndlessBatch(
+  uid,
+  analysis,
+  body,
+  xPolicy
+){
+
+  const batchSize=
+    clamp(
+      Math.floor(num(body?.batchSize)||100),
+      1,
+      100
+    );
+
+  const domain=
+    one(body?.domain);
+
+  const excludeIds=
+    (
+      Array.isArray(body?.excludeIds)
+        ? body.excludeIds
+        : []
+    )
+    .map(one)
+    .filter(Boolean)
+    .slice(0,200);
+
+  const blocked=
+    new Set(excludeIds);
+
+  const pool=
+    await cgplay004Model003RemainingPool(
+      uid,
+      analysis,
+      domain,
+      xPolicy,
+      blocked
+    );
+
+  let seedThemes=
+    Array.isArray(analysis?.recentThemes)
+      ? analysis.recentThemes
+      : [];
+
+  if(excludeIds.length){
+
+    const catalog=
+      await cgplay004Model003Catalog(uid);
+
+    const themeById=
+      new Map(
+        catalog.map(
+          row=>[
+            one(row?.id),
+            one(row?.theme)
+          ]
+        )
+      );
+
+    const plannedTail=
+      excludeIds
+        .slice(
+          -CGPLAY004_MODEL003_THEME_COOLDOWN
+        )
+        .map(
+          id=>one(themeById.get(id))
+        )
+        .filter(Boolean);
+
+    if(plannedTail.length){
+      seedThemes=plannedTail;
+    }
+  }
+
+  const rows=
+    cg35ThemeDiverse(
+      pool.rows,
+      seedThemes,
+      CGPLAY004_MODEL003_THEME_COOLDOWN
+    )
+    .slice(0,batchSize);
+
+  const status=
+    rows.length
+      ? 'active'
+      : (
+          pool.totalRemaining>0
+            ? 'waiting'
+            : 'complete'
+        );
+
+  return {
+    version:CGPLAY004_ENDLESS_BATCH_VERSION,
+    modelVersion:LEARNING_MODEL_VERSION,
+    status,
+    domain,
+    batchSize,
+    count:rows.length,
+    rows,
+    learningRound:pool.currentRound,
+    currentRoundAttempt:pool.currentRoundAttempt,
+    totalRemaining:pool.totalRemaining,
+    currentRoundTotal:pool.currentRoundTotal,
+    remainingEligible:pool.remainingEligible,
+    blockedInCurrentRound:pool.blockedInCurrentRound,
+    waitingForFutureRound:pool.waitingForFutureRound,
+    masteredExcluded:pool.masteredExcluded,
+    unseenAbsolutePriority:true,
+    selectionPolicy:'random_within_current_round',
+    successPolicy:'exclude_from_active_pool_until_reset',
+    themeCooldownQuestions:CGPLAY004_MODEL003_THEME_COOLDOWN
+  };
+}
+
 
 function smartLongPublicState(
   id,
@@ -6324,6 +6448,7 @@ async function handleLearningHub(req,res){
                 mode==='xSemanticAudit'||
                 mode==='xDuplicateTruth'||
                 mode==='xOriginAudit'||
+                mode==='learningBatch'||
                 mode==='smartLongStart'||
                 mode==='smartLongNext'||
                 mode==='smartLongResume'||
@@ -6446,7 +6571,26 @@ async function handleLearningHub(req,res){
 
               // CGANDROID001 FIX2 · ANALYSIS_TDZ_FIX001
               // LONG_SESSION001 nécessite analysis initialisé.
-if(mode==='smartLongStart'){
+if(mode==='learningBatch'){
+
+                return json(
+                  res,
+                  200,
+                  {
+                    ok:true,
+                    batch:
+                      await cgplay004EndlessBatch(
+                        user.uid,
+                        analysis,
+                        body,
+                        xPolicy
+                      )
+                  }
+                );
+              }
+
+
+              if(mode==='smartLongStart'){
 
                 return json(
                   res,

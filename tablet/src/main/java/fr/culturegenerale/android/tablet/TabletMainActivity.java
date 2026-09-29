@@ -59,7 +59,7 @@ import java.util.concurrent.Executors;
 /**
  * CGANDROID001
  * - nouvelle APK indépendante de l'ancien module app/ ;
- * - Session intelligente comme unique mode de jeu ;
+ * - CGANDROID007 : apprentissage continu sans limite de session ;
  * - CGANDROID003 : Q/R en deux étapes avec auto-évaluation binaire ;
  * - Comfortaa systématique ;
  * - P = signalement éditorial ;
@@ -81,9 +81,9 @@ public class TabletMainActivity extends Activity {
             "Toutes les questions"
     };
 
-    // CGANDROID003 · FIXED_500_SESSION001
-    private static final int FIXED_SESSION_SIZE = 500;
-    private static final int SMART_BATCH_SIZE = 100;
+    // CGANDROID007 · ENDLESS_PLAY001
+    // Le lot de 100 est purement technique.
+    private static final int ENDLESS_BATCH_SIZE = 100;
     private static final int NEXT_BATCH_PREFETCH_AT = 70;
     private static final int QUESTION_PREFETCH_AHEAD = 10;
 
@@ -118,7 +118,6 @@ public class TabletMainActivity extends Activity {
     private CgGameState game;
 
     private String selectedDomain = "";
-    private int selectedCount = FIXED_SESSION_SIZE;
 
     private CgQuestion current;
     private long currentShownAtMs = 0L;
@@ -209,7 +208,7 @@ public class TabletMainActivity extends Activity {
         screen = "login";
         baseScreen();
         addTitle("Culture Générale", 34, Color.WHITE);
-        addSub("Nouvelle version tablette · Session intelligente", 18, LIGHT_GREY);
+        addSub("Apprentissage continu · question / réponse", 18, LIGHT_GREY);
         gap(20);
 
         TextView intro = cardText(
@@ -263,14 +262,14 @@ public class TabletMainActivity extends Activity {
 
         gap(54);
         addTitle("Culture Générale", 38, Color.WHITE);
-        addSub("Session intelligente", 20, LIGHT_GREY);
+        addSub("Apprentissage continu", 20, LIGHT_GREY);
         gap(48);
 
         Button start = button("Démarrer", BLUE, 28);
         add(start, -1, dp(88), dp(180), 0, dp(180), dp(18));
         start.setOnClickListener(v -> showMegathemes());
 
-        TextView helper = text("Créer une nouvelle session", 15, LIGHT_GREY, Gravity.CENTER);
+        TextView helper = text("Jouer sans limite de nombre de questions", 15, LIGHT_GREY, Gravity.CENTER);
         add(helper, -1, -2, dp(40), 0, dp(40), dp(30));
 
         // CGANDROID004 · HISTORY_HOME_ENTRY001
@@ -850,7 +849,7 @@ public class TabletMainActivity extends Activity {
                                     + deletedHistory
                                     + " réponse(s), "
                                     + deletedSessions
-                                    + " session(s).",
+                                    + " ancien(s) lot(s) technique(s).",
                             Toast.LENGTH_LONG
                     ).show();
 
@@ -1754,49 +1753,88 @@ public class TabletMainActivity extends Activity {
         b.setBackground(roundedStroke(bg, 14, Color.WHITE, 1));
         b.setOnClickListener(v -> {
             selectedDomain = domain;
-            selectedCount = FIXED_SESSION_SIZE;
-            startSmartSession();
+            startEndlessPlay();
         });
         return b;
     }
 
     private void showSizeSelection() {
-        selectedCount = FIXED_SESSION_SIZE;
-        startSmartSession();
+        startEndlessPlay();
     }
 
-    private void startSmartSession() {
-        showLoading("Création de la session intelligente…");
-        selectedCount = FIXED_SESSION_SIZE;
-        final int target = FIXED_SESSION_SIZE;
+    private void startEndlessPlay() {
+
+        showLoading("Préparation des questions…");
         final String domain = selectedDomain;
 
         io.submit(() -> {
             try {
                 String token = auth.tokenSync();
-                flags.flushOutboxSync(firestore, token, auth.uid());
-                CgSmartSession session = smart.startSync(token, target, domain);
-                if (session.ids.isEmpty()) throw new Exception("Aucune question reçue du moteur SMART.");
-                game.start(session.sessionId, target, domain, session.status, session.ids);
+
+                flags.flushOutboxSync(
+                        firestore,
+                        token,
+                        auth.uid()
+                );
+
+                if (flags.pendingHistoryCount() > 0) {
+                    throw new Exception(
+                            "Certaines réponses attendent encore leur synchronisation."
+                    );
+                }
+
+                CgSmartBatch batch =
+                        smart.batchSync(
+                                token,
+                                domain,
+                                new ArrayList<>(),
+                                ENDLESS_BATCH_SIZE
+                        );
+
+                if (batch.ids.isEmpty()) {
+                    game.clear();
+                    main.post(this::showEnd);
+                    return;
+                }
+
+                String streamId =
+                        "endless_" + System.currentTimeMillis();
+
+                game.start(
+                        streamId,
+                        Integer.MAX_VALUE,
+                        domain,
+                        "active",
+                        batch.ids
+                );
+
+                nextBatchPrefetching = false;
+                preloadQuestionIds(
+                        batch.ids,
+                        QUESTION_PREFETCH_AHEAD
+                );
                 main.post(this::loadNextPlayable);
+
             } catch (Exception ex) {
-                main.post(() -> showFatal("Session impossible", ex.getMessage()));
+                main.post(() ->
+                        showFatal(
+                                "Démarrage impossible",
+                                friendlyNetworkMessage(ex)
+                        )
+                );
             }
         });
     }
 
     private void loadNextPlayable() {
+
         if (!game.hasActive()) {
             showHome();
             return;
         }
 
-        if (game.consumed() >= game.target()) {
-            showEnd();
-            return;
-        }
-
         if (game.position() >= game.batchIds().size()) {
+
             if (game.promoteStagedBatch()) {
                 nextBatchPrefetching = false;
                 preloadUpcomingQuestions();
@@ -1804,18 +1842,17 @@ public class TabletMainActivity extends Activity {
                 return;
             }
 
-            if (!"active".equals(game.serverStatus())) {
-                showEnd();
-                return;
-            }
-
+            showLoading(
+                    "Préparation des prochaines questions…"
+            );
             requestNextBatch();
             return;
         }
 
         maybePrefetchNextBatch();
 
-        final String id = game.batchIds().get(game.position());
+        final String id =
+                game.batchIds().get(game.position());
 
         CgQuestion cached;
         synchronized (questionCache) {
@@ -1836,14 +1873,22 @@ public class TabletMainActivity extends Activity {
         io.submit(() -> {
             try {
                 String token = auth.tokenSync();
-                CgQuestion q = firestore.getQuestionSync(token, auth.uid(), id);
+                CgQuestion q =
+                        firestore.getQuestionSync(
+                                token,
+                                auth.uid(),
+                                id
+                        );
+
                 if (flags.isTExcluded(q)) {
                     game.advanceFiltered();
                     main.post(this::loadNextPlayable);
                     return;
                 }
+
                 current = q;
                 main.post(() -> showQuestion(q));
+
             } catch (Exception ex) {
                 game.advanceFiltered();
                 main.post(this::loadNextPlayable);
@@ -1852,52 +1897,139 @@ public class TabletMainActivity extends Activity {
     }
 
     private void requestNextBatch() {
+
         if (nextBatchPrefetching) return;
         nextBatchPrefetching = true;
+
+        ArrayList<String> currentIds = game.batchIds();
+
+        int position =
+                Math.max(
+                        0,
+                        Math.min(
+                                game.position(),
+                                currentIds.size()
+                        )
+                );
+
+        ArrayList<String> pendingIds = new ArrayList<>();
+        for (int i = position; i < currentIds.size(); i++) {
+            pendingIds.add(currentIds.get(i));
+        }
+
+        final String domain = selectedDomain;
 
         io.submit(() -> {
             try {
                 String token = auth.tokenSync();
-                flags.flushOutboxSync(firestore, token, auth.uid());
-                CgSmartSession next = smart.nextSync(token, game.sessionId());
+
+                flags.flushOutboxSync(
+                        firestore,
+                        token,
+                        auth.uid()
+                );
+
+                if (flags.pendingHistoryCount() > 0) {
+                    throw new Exception(
+                            "Synchronisation des réponses en attente."
+                    );
+                }
+
+                CgSmartBatch next =
+                        smart.batchSync(
+                                token,
+                                domain,
+                                pendingIds,
+                                ENDLESS_BATCH_SIZE
+                        );
 
                 if (next.ids.isEmpty()) {
-                    game.setServerStatus(next.status);
                     nextBatchPrefetching = false;
+
                     main.post(() -> {
-                        if (game.position() >= game.batchIds().size()) showEnd();
+                        if (
+                                game.position()
+                                        < game.batchIds().size()
+                        ) {
+                            return;
+                        }
+
+                        if ("complete".equals(next.status)) {
+                            showEnd();
+                            return;
+                        }
+
+                        showLoading(
+                                "Préparation des prochaines questions…"
+                        );
+
+                        main.postDelayed(
+                                this::requestNextBatch,
+                                650L
+                        );
                     });
+
                     return;
                 }
 
-                game.stageBatch(next.status, next.ids);
-                preloadQuestionIds(next.ids, QUESTION_PREFETCH_AHEAD);
+                game.stageBatch(
+                        "active",
+                        next.ids
+                );
+
+                preloadQuestionIds(
+                        next.ids,
+                        QUESTION_PREFETCH_AHEAD
+                );
+
                 nextBatchPrefetching = false;
 
                 main.post(() -> {
-                    if (game.position() >= game.batchIds().size()) {
+                    if (
+                            game.position()
+                                    >= game.batchIds().size()
+                    ) {
                         if (game.promoteStagedBatch()) {
                             loadNextPlayable();
                         }
                     }
                 });
+
             } catch (Exception ex) {
                 nextBatchPrefetching = false;
+
+                main.post(() -> {
+                    if (
+                            game.position()
+                                    >= game.batchIds().size()
+                    ) {
+                        showFatal(
+                                "Connexion interrompue",
+                                friendlyNetworkMessage(ex)
+                        );
+                    }
+                });
             }
         });
     }
 
     private void maybePrefetchNextBatch() {
         if (!game.hasActive()) return;
-        if (!"active".equals(game.serverStatus())) return;
         if (game.hasStagedBatch()) return;
         if (nextBatchPrefetching) return;
 
         int pos = game.position();
         int size = game.batchIds().size();
-        if (size <= 0) return;
 
-        if (pos >= Math.min(NEXT_BATCH_PREFETCH_AT, Math.max(1, size - 20))) {
+        if (size < 40) return;
+
+        int threshold =
+                Math.min(
+                        NEXT_BATCH_PREFETCH_AT,
+                        Math.max(20, size - 20)
+                );
+
+        if (pos >= threshold) {
             requestNextBatch();
         }
     }
@@ -1907,25 +2039,68 @@ public class TabletMainActivity extends Activity {
         band.setOrientation(LinearLayout.HORIZONTAL);
         band.setGravity(Gravity.CENTER);
         band.setPadding(dp(5), dp(5), dp(5), dp(5));
-        band.setBackground(roundedStroke(Color.rgb(16, 16, 16), 14, Color.WHITE, 1));
+        band.setBackground(
+                roundedStroke(
+                        Color.rgb(16, 16, 16),
+                        14,
+                        Color.WHITE,
+                        1
+                )
+        );
 
         int played = game.played();
-        int consumed = game.consumed();
         int good = game.correct();
         int errors = Math.max(0, played - good);
-        double scorePct = played <= 0 ? 0.0 : (good * 100.0) / played;
+        double scorePct =
+                played <= 0
+                        ? 0.0
+                        : (good * 100.0) / played;
 
-        band.addView(statCell("Mégathème",
-                        selectedDomain.isEmpty() ? "Toutes" : selectedDomain),
-                statLp(1.35f));
-        band.addView(statCell("Progression",
-                        Math.min(game.target(), consumed + 1) + " / " + game.target()),
-                statLp(1f));
-        band.addView(statCell("Score",
-                        String.format(Locale.FRANCE, "%.2f %%", scorePct)),
-                statLp(.9f));
-        band.addView(statCell("Bonnes réponses", String.valueOf(good)), statLp(1.15f));
-        band.addView(statCell("Erreurs", String.valueOf(errors)), statLp(.9f));
+        band.addView(
+                statCell(
+                        "Mégathème",
+                        selectedDomain.isEmpty()
+                                ? "Toutes"
+                                : selectedDomain
+                ),
+                statLp(1.35f)
+        );
+
+        band.addView(
+                statCell(
+                        "Question",
+                        String.valueOf(played + 1)
+                ),
+                statLp(.8f)
+        );
+
+        band.addView(
+                statCell(
+                        "Score",
+                        String.format(
+                                Locale.FRANCE,
+                                "%.2f %%",
+                                scorePct
+                        )
+                ),
+                statLp(.9f)
+        );
+
+        band.addView(
+                statCell(
+                        "Bonnes réponses",
+                        String.valueOf(good)
+                ),
+                statLp(1.15f)
+        );
+
+        band.addView(
+                statCell(
+                        "Erreurs",
+                        String.valueOf(errors)
+                ),
+                statLp(.9f)
+        );
 
         add(band, -1, dp(70), 0, 0, 0, dp(8));
     }
@@ -2448,37 +2623,38 @@ public class TabletMainActivity extends Activity {
     private void answer(CgQuestion q, int choice) {
         if (answering) return;
         answering = true;
+
         for (Button b : answerButtons) b.setEnabled(false);
 
         boolean correct = choice == q.correctIndex;
+
         for (int i = 0; i < answerButtons.size(); i++) {
             Button b = answerButtons.get(i);
             int idx = i + 1;
-            if (idx == q.correctIndex) b.setBackground(roundedStroke(GREEN, 14, Color.WHITE, 1));
-            else if (idx == choice) b.setBackground(roundedStroke(RED, 14, Color.WHITE, 1));
-            else b.setBackground(roundedStroke(DARK, 14, Color.WHITE, 1));
+            if (idx == q.correctIndex) {
+                b.setBackground(roundedStroke(GREEN, 14, Color.WHITE, 1));
+            } else if (idx == choice) {
+                b.setBackground(roundedStroke(RED, 14, Color.WHITE, 1));
+            } else {
+                b.setBackground(roundedStroke(DARK, 14, Color.WHITE, 1));
+            }
         }
 
-        long responseMs = Math.max(0L, System.currentTimeMillis() - currentShownAtMs);
-        JSONObject event = historyPayload(q, choice, correct, responseMs);
+        long responseMs =
+                Math.max(
+                        0L,
+                        System.currentTimeMillis() - currentShownAtMs
+                );
+
+        JSONObject event =
+                historyPayload(q, choice, correct, responseMs);
+
         game.recordAnswer(correct);
 
-        // CGANDROID003 FIX1 · ANSWER_FEEDBACK500001
-        // Les couleurs sont déjà appliquées ci-dessus :
-        // - bonne réponse = vert ;
-        // - réponse choisie incorrecte = rouge.
-        // On laisse exactement 500 ms pour lire le résultat avant la suite.
-        main.postDelayed(this::loadNextPlayable, 500L);
+        flags.enqueue("play_history", event);
+        flushOutboxAsync();
 
-        // ASYNC_HISTORY001 reste totalement asynchrone pendant ces 500 ms.
-        io.submit(() -> {
-            try {
-                String token = auth.tokenSync();
-                firestore.createDocumentSync(token, auth.uid(), "play_history", event);
-            } catch (Exception ex) {
-                flags.enqueue("play_history", event);
-            }
-        });
+        main.postDelayed(this::loadNextPlayable, 500L);
     }
 
     private JSONObject historyPayload(CgQuestion q, int choice, boolean correct, long responseMs) {
@@ -2487,8 +2663,8 @@ public class TabletMainActivity extends Activity {
             x.put("question_id", q.id);
             try { x.put("question_row_number", Long.parseLong(q.id)); } catch (Exception ignored) { }
             x.put("client_played_at_ms", System.currentTimeMillis());
-            x.put("play_type", "challenge_choice");
-            x.put("game_mode", "qcm");
+            x.put("play_type", "challenge_mental");
+            x.put("game_mode", "qr");
             x.put("result", correct ? "correct" : "wrong");
             x.put("is_correct", correct);
             x.put("response_time_ms", responseMs);
@@ -2525,7 +2701,7 @@ public class TabletMainActivity extends Activity {
 
             x.put(
                     "interaction_mode",
-                    "self_assessment_qr"
+                    "endless_self_assessment_qr"
             );
             x.put("source", BuildConfig.CG_CHANNEL);
             x.put("session_id", game.sessionId());
@@ -2606,14 +2782,32 @@ public class TabletMainActivity extends Activity {
         game.finish();
         baseScreen();
         gap(30);
-        addTitle("Session terminée", 32, Color.WHITE);
+
+        addTitle("Parcours terminé", 32, Color.WHITE);
         gap(18);
 
-        TextView score = cardText(
-                game.correct() + " bonne(s) réponse(s) sur " + game.played() + " question(s).",
-                24, DARK, Color.WHITE);
-        score.setGravity(Gravity.CENTER);
-        add(score, -1, dp(100), dp(80), 0, dp(80), dp(22));
+        String domainLabel =
+                selectedDomain.isEmpty()
+                        ? "tous les mégathèmes"
+                        : selectedDomain;
+
+        TextView message =
+                cardText(
+                        "Toutes les questions actuellement à proposer "
+                                + "pour "
+                                + domainLabel
+                                + " ont été réussies.\n\n"
+                                + game.correct()
+                                + " bonne(s) réponse(s) sur "
+                                + game.played()
+                                + " passage(s) dans ce parcours.",
+                        22,
+                        DARK,
+                        Color.WHITE
+                );
+
+        message.setGravity(Gravity.CENTER);
+        add(message, -1, -2, dp(70), 0, dp(70), dp(22));
 
         Button home = button("Accueil", BLUE, 22);
         add(home, -1, dp(62), dp(120), 0, dp(120), 0);
@@ -2646,6 +2840,29 @@ public class TabletMainActivity extends Activity {
         add(back, -1, dp(56), dp(100), 0, dp(100), 0);
         back.setOnClickListener(v -> showHome());
     }
+
+    private String friendlyNetworkMessage(Exception ex) {
+        String message =
+                ex == null || ex.getMessage() == null
+                        ? ""
+                        : ex.getMessage().trim();
+
+        String lower =
+                message.toLowerCase(Locale.ROOT);
+
+        if (
+                lower.contains("timeout") ||
+                lower.contains("timed out")
+        ) {
+            return "Le serveur met trop de temps à répondre. "
+                    + "Une nouvelle tentative automatique a déjà été effectuée.";
+        }
+
+        return message.isEmpty()
+                ? "Erreur réseau inconnue."
+                : message;
+    }
+
 
     private void baseScreen() {
         ScrollView scroll = new ScrollView(this);
@@ -2837,8 +3054,9 @@ final class CgHttp {
     private static HttpURLConnection open(String method, String url, String token, String authPrefix) throws Exception {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         c.setRequestMethod(method);
-        c.setConnectTimeout(20000);
-        c.setReadTimeout(45000);
+        // CGANDROID007 · COLD_START_GUARD001
+        c.setConnectTimeout(25000);
+        c.setReadTimeout(90000);
         c.setUseCaches(false);
         if (token != null && !token.isEmpty()) c.setRequestProperty("Authorization", authPrefix + token);
         return c;
@@ -2990,6 +3208,119 @@ final class CgSmartClient {
     }
 
 
+    CgSmartBatch batchSync(
+            String token,
+            String domain,
+            List<String> excludeIds,
+            int batchSize
+    ) throws Exception {
+
+        JSONObject body = new JSONObject();
+        body.put("cgweb035", true);
+        body.put("mode", "learningBatch");
+        body.put("batchSize", Math.max(1, Math.min(100, batchSize)));
+        body.put("domain", domain == null ? "" : domain);
+        body.put("forceRefresh", true);
+
+        JSONArray excluded = new JSONArray();
+        if (excludeIds != null) {
+            for (String id : excludeIds) {
+                if (id != null && !id.trim().isEmpty()) {
+                    excluded.put(id.trim());
+                }
+            }
+        }
+        body.put("excludeIds", excluded);
+
+        Exception last = null;
+
+        for (int attempt = 0; attempt < 2; attempt++) {
+            try {
+                JSONObject response =
+                        CgHttp.json(
+                                "POST",
+                                BuildConfig.SMART_API_URL,
+                                token,
+                                body
+                        );
+                return parseBatch(response);
+            } catch (Exception ex) {
+                last = ex;
+                if (attempt == 0 && isTransientNetworkError(ex)) {
+                    try {
+                        Thread.sleep(900L);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw ex;
+                    }
+                    continue;
+                }
+                throw ex;
+            }
+        }
+
+        throw last == null
+                ? new Exception("Réponse serveur indisponible.")
+                : last;
+    }
+
+    private static boolean isTransientNetworkError(Exception ex) {
+        String message =
+                ex == null || ex.getMessage() == null
+                        ? ""
+                        : ex.getMessage().toLowerCase(Locale.ROOT);
+
+        return (
+                message.contains("timeout") ||
+                message.contains("timed out") ||
+                message.contains("http 429") ||
+                message.contains("http 500") ||
+                message.contains("http 502") ||
+                message.contains("http 503") ||
+                message.contains("http 504")
+        );
+    }
+
+    private CgSmartBatch parseBatch(JSONObject response) throws Exception {
+        if (!response.optBoolean("ok", false)) {
+            throw new Exception(
+                    response.optString(
+                            "error",
+                            "Réponse d’apprentissage invalide."
+                    )
+            );
+        }
+
+        JSONObject batch = response.optJSONObject("batch");
+        if (batch == null) throw new Exception("Objet batch absent.");
+
+        CgSmartBatch out = new CgSmartBatch();
+        out.status = batch.optString("status", "active");
+        out.learningRound = batch.optInt("learningRound", 0);
+
+        JSONArray rows = batch.optJSONArray("rows");
+        if (rows != null) {
+            for (int i = 0; i < rows.length(); i++) {
+                JSONObject q = rows.optJSONObject(i);
+                if (q == null) continue;
+
+                String id = q.optString("id", "");
+                if (id.isEmpty()) id = q.optString("questionId", "");
+                if (id.isEmpty()) {
+                    long row = q.optLong("row", 0L);
+                    if (row > 0L) id = String.valueOf(row);
+                }
+
+                if (!id.isEmpty() && !out.ids.contains(id)) {
+                    out.ids.add(id);
+                }
+            }
+        }
+
+        return out;
+    }
+
+
     CgSmartSession startSync(String token, int count, String domain) throws Exception {
         JSONObject body = new JSONObject();
         body.put("cgweb035", true);
@@ -3037,6 +3368,13 @@ final class CgSmartClient {
         return out;
     }
 }
+
+final class CgSmartBatch {
+    String status = "active";
+    int learningRound = 0;
+    final ArrayList<String> ids = new ArrayList<>();
+}
+
 
 final class CgSmartSession {
     String sessionId = "";
@@ -3662,6 +4000,31 @@ final class CgFlags {
         try { return new JSONArray(prefs.getString(K_OUTBOX, "[]")).length(); }
         catch (Exception ignored) { return 0; }
     }
+
+    int pendingHistoryCount() {
+        int count = 0;
+        try {
+            JSONArray a =
+                    new JSONArray(
+                            prefs.getString(K_OUTBOX, "[]")
+                    );
+
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject item = a.optJSONObject(i);
+                if (item == null) continue;
+
+                if (
+                        "play_history".equals(
+                                item.optString("collection", "")
+                        )
+                ) {
+                    count++;
+                }
+            }
+        } catch (Exception ignored) { }
+        return count;
+    }
+
 
     synchronized void flushOutboxSync(CgFirestore firestore, String token, String uid) {
         try {
