@@ -136,6 +136,9 @@ function eventFromDoc(doc){
 
   return {
     id:doc.id,
+    attemptId:one(x.attempt_id),
+    attemptRevision:num(x.attempt_revision)||1,
+    isCorrection:x.is_correction===true,
     questionId,
     row:num(x.question_row_number||questionId),
     playedAtMs:num(x.client_played_at_ms)||tsMs(x.played_at),
@@ -159,6 +162,46 @@ function eventFromDoc(doc){
     historyBindingVersion:CGWEB_HISTORY_BINDING_VERSION
   };
 }
+/*
+ * CGANDROID011 · ANSWER_REVISION001
+ */
+function applyAttemptRevisions(events){
+
+  const ordered=
+    [...(events||[])]
+      .sort(
+        (a,b)=>
+          num(b?.playedAtMs)
+          -num(a?.playedAtMs)
+      );
+
+  const seen=
+    new Set();
+
+  const out=[];
+
+  for(const e of ordered){
+
+    const attemptId=
+      one(e?.attemptId);
+
+    if(!attemptId){
+      out.push(e);
+      continue;
+    }
+
+    if(seen.has(attemptId)){
+      continue;
+    }
+
+    seen.add(attemptId);
+    out.push(e);
+  }
+
+  return out;
+}
+
+
 async function loadHistory(uid,force=false){
   const hit=CACHE.get(uid);
   if(!force&&hit&&Date.now()-hit.at<HISTORY_TTL_MS)return hit.events;
@@ -5696,6 +5739,82 @@ async function cgplay004EndlessBatch(
 }
 
 
+/*
+ * CGANDROID011 · NEXT_GAME_ALL_DOMAIN_WARMUP001
+ */
+async function cgplay004WarmNextGame(
+  uid,
+  analysis,
+  body,
+  xPolicy
+){
+
+  const requested=
+    (
+      Array.isArray(body?.domains)
+        ?body.domains
+        :[]
+    )
+    .map(one)
+    .filter(Boolean);
+
+  const domains=
+    [...new Set(requested)]
+      .slice(0,20);
+
+  const batchSize=
+    clamp(
+      Math.floor(
+        num(body?.batchSize)||100
+      ),
+      1,
+      100
+    );
+
+  await cgplay004Model003Catalog(uid);
+
+  const batches=[];
+
+  for(const domain of domains){
+
+    const batch=
+      await cgplay004EndlessBatch(
+        uid,
+        analysis,
+        {
+          domain,
+          batchSize,
+          excludeIds:[]
+        },
+        xPolicy
+      );
+
+    batches.push({
+      domain,
+      status:one(batch.status)||'active',
+      learningRound:num(batch.learningRound),
+      ids:
+        (batch.rows||[])
+          .map(
+            row=>
+              one(
+                row?.id
+                ||row?.questionId
+                ||row?.row
+              )
+          )
+          .filter(Boolean)
+    });
+  }
+
+  return {
+    version:'CGANDROID011_NEXT_GAME_WARMUP001',
+    generatedAtMs:Date.now(),
+    batches
+  };
+}
+
+
 function smartLongPublicState(
   id,
   state
@@ -6439,13 +6558,17 @@ async function handleLearningHub(req,res){
     /*
      * CGANDROID010 · LEARNING_BATCH_PARALLEL_PREP001
      */
-    const learningBatchCatalogPromise=
+    const learningPrepMode=
       mode==='learningBatch'
+      ||mode==='learningWarmup';
+
+    const learningBatchCatalogPromise=
+      learningPrepMode
         ?cgplay004Model003Catalog(user.uid)
         :null;
 
     const learningBatchXPromise=
-      mode==='learningBatch'
+      learningPrepMode
         ?loadXPolicy(user.uid,true)
         :null;
 
@@ -6464,6 +6587,7 @@ async function handleLearningHub(req,res){
                 mode==='xSemanticAudit'||
                 mode==='xDuplicateTruth'||
                 mode==='xOriginAudit'||
+                mode==='learningWarmup'||
                 mode==='learningBatch'||
                 mode==='smartLongStart'||
                 mode==='smartLongNext'||
@@ -6589,15 +6713,36 @@ async function handleLearningHub(req,res){
 
     // A/R/P/T ne sont jamais consultés.
     // X est retiré avant buildAnalysis : ni révision, ni faiblesse, ni stats pédagogiques.
-    const learningEvents=events.filter(
-      e=>!xPolicy.ids.has(one(e.questionId))
-    );
+    const learningEvents=
+      applyAttemptRevisions(events)
+        .filter(
+          e=>!xPolicy.ids.has(one(e.questionId))
+        );
 
     const analysis=buildAnalysis(learningEvents);
 
               // CGANDROID001 FIX2 · ANALYSIS_TDZ_FIX001
               // LONG_SESSION001 nécessite analysis initialisé.
-if(mode==='learningBatch'){
+if(mode==='learningWarmup'){
+
+                return json(
+                  res,
+                  200,
+                  {
+                    ok:true,
+                    warmup:
+                      await cgplay004WarmNextGame(
+                        user.uid,
+                        analysis,
+                        body,
+                        xPolicy
+                      )
+                  }
+                );
+              }
+
+
+              if(mode==='learningBatch'){
 
                 return json(
                   res,

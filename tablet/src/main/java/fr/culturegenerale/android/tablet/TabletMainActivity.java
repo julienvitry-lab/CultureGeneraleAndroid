@@ -53,6 +53,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -130,6 +131,20 @@ public class TabletMainActivity extends Activity {
     private volatile boolean nextBatchPrefetching = false;
     private boolean answering = false;
     private String screen = "home";
+
+    // CGANDROID011 · IN_GAME_PREVIOUS_QUESTION001
+    private CgQuestion lastAnsweredQuestion = null;
+    private boolean lastAnswerCorrect = false;
+    private String lastAttemptId = "";
+    private int lastAttemptRevision = 0;
+    private boolean correctingPrevious = false;
+    private CgQuestion correctionResumeQuestion = null;
+
+    // CGANDROID011 · NEXT_GAME_ALL_DOMAIN_WARMUP001
+    private static final long NEXT_GAME_WARM_TTL_MS = 30L * 60L * 1000L;
+    private final Map<String, CgSmartBatch> nextGameWarmBatches =
+            new HashMap<>();
+    private long nextGameWarmAtMs = 0L;
 
     // CGANDROID004 · HISTORY_QR001
     private static final int HISTORY_MAX_EVENTS = 1000;
@@ -1765,12 +1780,43 @@ public class TabletMainActivity extends Activity {
 
     private void startEndlessPlay() {
 
-        showLoading("Préparation des questions…");
-        final String domain = selectedDomain;
+        final String domain =
+                selectedDomain;
+
+        CgSmartBatch warmed =
+                takeNextGameWarmBatch(
+                        domain
+                );
+
+        if (warmed != null) {
+
+            if (
+                    warmed.ids.isEmpty() &&
+                    "complete".equals(
+                            warmed.status
+                    )
+            ) {
+                showEnd();
+                return;
+            }
+
+            if (!warmed.ids.isEmpty()) {
+                activateEndlessBatch(
+                        warmed,
+                        domain
+                );
+                return;
+            }
+        }
+
+        showLoading(
+                "Préparation des questions…"
+        );
 
         io.submit(() -> {
             try {
-                String token = auth.tokenSync();
+                String token =
+                        auth.tokenSync();
 
                 flags.flushOutboxSync(
                         firestore,
@@ -1778,7 +1824,10 @@ public class TabletMainActivity extends Activity {
                         auth.uid()
                 );
 
-                if (flags.pendingHistoryCount() > 0) {
+                if (
+                        flags.pendingHistoryCount()
+                                > 0
+                ) {
                     throw new Exception(
                             "Certaines réponses attendent encore leur synchronisation."
                     );
@@ -1792,31 +1841,22 @@ public class TabletMainActivity extends Activity {
                                 ENDLESS_BATCH_SIZE
                         );
 
-                if (batch.ids.isEmpty()) {
-                    game.clear();
-                    main.post(this::showEnd);
-                    return;
-                }
+                main.post(() -> {
 
-                String streamId =
-                        "endless_" + System.currentTimeMillis();
+                    if (batch.ids.isEmpty()) {
+                        game.clear();
+                        showEnd();
+                        return;
+                    }
 
-                game.start(
-                        streamId,
-                        Integer.MAX_VALUE,
-                        domain,
-                        "active",
-                        batch.ids
-                );
-
-                nextBatchPrefetching = false;
-                preloadQuestionIds(
-                        batch.ids,
-                        QUESTION_PREFETCH_AHEAD
-                );
-                main.post(this::loadNextPlayable);
+                    activateEndlessBatch(
+                            batch,
+                            domain
+                    );
+                });
 
             } catch (Exception ex) {
+
                 main.post(() ->
                         showFatal(
                                 "Démarrage impossible",
@@ -1825,6 +1865,85 @@ public class TabletMainActivity extends Activity {
                 );
             }
         });
+    }
+
+
+    private void activateEndlessBatch(
+            CgSmartBatch batch,
+            String domain
+    ) {
+
+        String streamId =
+                "endless_"
+                        + System.currentTimeMillis();
+
+        game.start(
+                streamId,
+                Integer.MAX_VALUE,
+                domain,
+                "active",
+                batch.ids
+        );
+
+        nextBatchPrefetching =
+                false;
+
+        lastAnsweredQuestion =
+                null;
+
+        lastAnswerCorrect =
+                false;
+
+        lastAttemptId =
+                "";
+
+        lastAttemptRevision =
+                0;
+
+        correctingPrevious =
+                false;
+
+        correctionResumeQuestion =
+                null;
+
+        preloadQuestionIds(
+                batch.ids,
+                QUESTION_PREFETCH_AHEAD
+        );
+
+        loadNextPlayable();
+    }
+
+
+    private CgSmartBatch takeNextGameWarmBatch(
+            String domain
+    ) {
+
+        synchronized (nextGameWarmBatches) {
+
+            long age =
+                    System.currentTimeMillis()
+                            - nextGameWarmAtMs;
+
+            if (
+                    nextGameWarmAtMs <= 0L ||
+                    age > NEXT_GAME_WARM_TTL_MS
+            ) {
+                nextGameWarmBatches.clear();
+                nextGameWarmAtMs = 0L;
+                return null;
+            }
+
+            CgSmartBatch selected =
+                    nextGameWarmBatches.get(
+                            domain
+                    );
+
+            nextGameWarmBatches.clear();
+            nextGameWarmAtMs = 0L;
+
+            return selected;
+        }
     }
 
     private void loadNextPlayable() {
@@ -2141,12 +2260,59 @@ public class TabletMainActivity extends Activity {
         theme.setMinHeight(dp(48));
         add(theme, -1, -2, 0, 0, 0, dp(7));
 
+        // CGANDROID011 · IMAGE_MEGATHEME_RESTORE001
+        if (q.hasImage()) {
+
+            String megaLabel =
+                    safe(q.megatheme);
+
+            if (megaLabel.isEmpty()) {
+                megaLabel =
+                        safe(selectedDomain);
+            }
+
+            if (
+                    !megaLabel.isEmpty() &&
+                    !"Toutes les questions".equals(
+                            megaLabel
+                    )
+            ) {
+
+                TextView mega =
+                        cardText(
+                                megaLabel,
+                                20,
+                                RED,
+                                Color.WHITE
+                        );
+
+                mega.setGravity(
+                        Gravity.CENTER
+                );
+
+                mega.setMinHeight(
+                        dp(44)
+                );
+
+                add(
+                        mega,
+                        -1,
+                        -2,
+                        0,
+                        0,
+                        0,
+                        dp(7)
+                );
+            }
+        }
+
+
         TextView question = cardText(q.question, 23, YELLOW, Color.BLACK);
         question.setGravity(Gravity.CENTER);
         question.setMinHeight(dp(70));
         add(question, -1, -2, 0, 0, 0, dp(7));
 
-        if (!q.detail.isEmpty()) {
+        if (!q.hasImage() && !q.detail.isEmpty()) {
             TextView detail = cardText(q.detail, 23, RED, Color.WHITE);
             detail.setGravity(Gravity.CENTER);
             detail.setMinHeight(dp(54));
@@ -2155,12 +2321,39 @@ public class TabletMainActivity extends Activity {
 
         FrameLayout imageArea = new FrameLayout(this);
         imageArea.setVisibility(View.GONE);
-        imageArea.setBackground(roundedStroke(DARK, 14, Color.WHITE, 1));
-        add(imageArea, -1, dp(270), dp(90), 0, dp(90), dp(8));
-        if (q.hasImage()) loadImageAsync(q, imageArea);
+
+        if (q.hasImage()) {
+
+            // CGANDROID011 · IMAGE_VIEWPORT_FILL001
+            imageArea.setBackgroundColor(
+                    Color.BLACK
+            );
+
+            add(
+                    imageArea,
+                    -1,
+                    dp(270),
+                    0,
+                    0,
+                    0,
+                    0
+            );
+
+            loadImageAsync(
+                    q,
+                    imageArea
+            );
+
+            expandImageAreaToBottom(
+                    imageArea
+            );
+
+        } else {
+
+            addFlexSpacer();
+        }
 
         preloadUpcomingImages();
-        addFlexSpacer();
 
         // CGANDROID009 · QUESTION_SPLIT_TOUCH001
         installQuestionSplitTouch(q);
@@ -2334,6 +2527,60 @@ public class TabletMainActivity extends Activity {
         root.addView(spacer, new LinearLayout.LayoutParams(1, 0, 1f));
     }
 
+    private void expandImageAreaToBottom(
+            FrameLayout imageArea
+    ) {
+
+        imageArea.post(() -> {
+
+            if (
+                    screenFrame == null ||
+                    imageArea.getParent() == null
+            ) {
+                return;
+            }
+
+            int[] frameLocation =
+                    new int[2];
+
+            int[] imageLocation =
+                    new int[2];
+
+            screenFrame.getLocationInWindow(
+                    frameLocation
+            );
+
+            imageArea.getLocationInWindow(
+                    imageLocation
+            );
+
+            int topInsideFrame =
+                    imageLocation[1]
+                            - frameLocation[1];
+
+            int available =
+                    screenFrame.getHeight()
+                            - topInsideFrame;
+
+            available =
+                    Math.max(
+                            dp(220),
+                            available
+                    );
+
+            ViewGroup.LayoutParams lp =
+                    imageArea.getLayoutParams();
+
+            lp.height =
+                    available;
+
+            imageArea.setLayoutParams(
+                    lp
+            );
+        });
+    }
+
+
     private void loadImageAsync(CgQuestion q, FrameLayout area) {
         area.setVisibility(View.VISIBLE);
 
@@ -2440,43 +2687,177 @@ public class TabletMainActivity extends Activity {
         }
     }
 
-    private void answer(CgQuestion q, int choice) {
-        if (answering) return;
-        answering = true;
+    private void answer(
+            CgQuestion q,
+            int choice
+    ) {
 
-        for (Button b : answerButtons) b.setEnabled(false);
-
-        boolean correct = choice == q.correctIndex;
-
-        for (int i = 0; i < answerButtons.size(); i++) {
-            Button b = answerButtons.get(i);
-            int idx = i + 1;
-            if (idx == q.correctIndex) {
-                b.setBackground(roundedStroke(GREEN, 14, Color.WHITE, 1));
-            } else if (idx == choice) {
-                b.setBackground(roundedStroke(RED, 14, Color.WHITE, 1));
-            } else {
-                b.setBackground(roundedStroke(DARK, 14, Color.WHITE, 1));
-            }
+        if (answering) {
+            return;
         }
+
+        answering =
+                true;
+
+        boolean correct =
+                choice == q.correctIndex;
 
         long responseMs =
                 Math.max(
                         0L,
-                        System.currentTimeMillis() - currentShownAtMs
+                        System.currentTimeMillis()
+                                - currentShownAtMs
                 );
 
         JSONObject event =
-                historyPayload(q, choice, correct, responseMs);
+                historyPayload(
+                        q,
+                        choice,
+                        correct,
+                        responseMs
+                );
 
-        game.recordAnswer(correct);
+        boolean revisingPrevious =
+                correctingPrevious &&
+                lastAnsweredQuestion != null &&
+                safe(q.id).equals(
+                        safe(lastAnsweredQuestion.id)
+                ) &&
+                !lastAttemptId.isEmpty();
 
-        flags.enqueue("play_history", event);
+        if (revisingPrevious) {
+
+            lastAttemptRevision =
+                    Math.max(
+                            1,
+                            lastAttemptRevision
+                    ) + 1;
+
+            stampAttemptMetadata(
+                    event,
+                    lastAttemptId,
+                    lastAttemptRevision,
+                    true
+            );
+
+            game.replaceLastAnswer(
+                    lastAnswerCorrect,
+                    correct
+            );
+
+            lastAnswerCorrect =
+                    correct;
+
+            game.clearStagedBatch();
+
+            nextBatchPrefetching =
+                    false;
+
+            flags.enqueue(
+                    "play_history",
+                    event
+            );
+
+            flushOutboxAsync();
+
+            CgQuestion resume =
+                    correctionResumeQuestion;
+
+            correctionResumeQuestion =
+                    null;
+
+            correctingPrevious =
+                    false;
+
+            answering =
+                    false;
+
+            main.post(() -> {
+
+                if (resume != null) {
+
+                    current =
+                            resume;
+
+                    showQuestion(
+                            resume
+                    );
+
+                } else {
+
+                    loadNextPlayable();
+                }
+            });
+
+            return;
+        }
+
+        String attemptId =
+                UUID.randomUUID()
+                        .toString();
+
+        stampAttemptMetadata(
+                event,
+                attemptId,
+                1,
+                false
+        );
+
+        game.recordAnswer(
+                correct
+        );
+
+        lastAnsweredQuestion =
+                q;
+
+        lastAnswerCorrect =
+                correct;
+
+        lastAttemptId =
+                attemptId;
+
+        lastAttemptRevision =
+                1;
+
+        flags.enqueue(
+                "play_history",
+                event
+        );
+
         flushOutboxAsync();
 
-        // CGANDROID010 · INSTANT_ANSWER_ADVANCE001
-        main.post(this::loadNextPlayable);
+        main.post(
+                this::loadNextPlayable
+        );
     }
+
+    private void stampAttemptMetadata(
+            JSONObject event,
+            String attemptId,
+            int revision,
+            boolean correction
+    ) {
+
+        try {
+
+            event.put(
+                    "attempt_id",
+                    attemptId
+            );
+
+            event.put(
+                    "attempt_revision",
+                    revision
+            );
+
+            event.put(
+                    "is_correction",
+                    correction
+            );
+
+        } catch (Exception ignored) { }
+    }
+
 
     private JSONObject historyPayload(CgQuestion q, int choice, boolean correct, long responseMs) {
         JSONObject x = new JSONObject();
@@ -2632,10 +3013,9 @@ public class TabletMainActivity extends Activity {
 
         Button home = button("Accueil", BLUE, 22);
         add(home, -1, dp(62), dp(120), 0, dp(120), 0);
-        home.setOnClickListener(v -> {
-            game.clear();
-            showHome();
-        });
+        home.setOnClickListener(v ->
+                prepareNextGameThenHome()
+        );
     }
 
     private void showLoading(String message) {
@@ -2952,9 +3332,9 @@ public class TabletMainActivity extends Activity {
                 );
 
         addActionBand(panel, problem);
-        addActionBand(panel, exclude);
         addActionBand(panel, menu);
         addActionBand(panel, back);
+        addActionBand(panel, exclude);
         addActionBand(panel, stats);
         addActionBand(panel, end);
 
@@ -2980,7 +3360,7 @@ public class TabletMainActivity extends Activity {
 
         back.setOnClickListener(v -> {
             screenFrame.removeView(overlay);
-            showMegathemes();
+            returnToPreviousQuestion(q);
         });
 
         stats.setOnClickListener(v -> {
@@ -3078,6 +3458,53 @@ public class TabletMainActivity extends Activity {
     }
 
 
+    /*
+     * CGANDROID011 · IN_GAME_PREVIOUS_QUESTION001
+     */
+    private void returnToPreviousQuestion(
+            CgQuestion forwardQuestion
+    ) {
+
+        if (correctingPrevious) {
+
+            Toast.makeText(
+                    this,
+                    "Correction de la question précédente déjà en cours.",
+                    Toast.LENGTH_SHORT
+            ).show();
+
+            return;
+        }
+
+        if (
+                lastAnsweredQuestion == null ||
+                lastAttemptId.isEmpty()
+        ) {
+
+            Toast.makeText(
+                    this,
+                    "Aucune question précédente à rectifier.",
+                    Toast.LENGTH_SHORT
+            ).show();
+
+            return;
+        }
+
+        correctionResumeQuestion =
+                forwardQuestion;
+
+        correctingPrevious =
+                true;
+
+        current =
+                lastAnsweredQuestion;
+
+        showQuestion(
+                lastAnsweredQuestion
+        );
+    }
+
+
     private void showQuickGameStats() {
         int played = game.played();
         int good = game.correct();
@@ -3115,23 +3542,170 @@ public class TabletMainActivity extends Activity {
 
 
     private void confirmEndCurrentGame() {
+
         new AlertDialog.Builder(this)
-                .setTitle("Fin de la partie")
-                .setMessage(
-                        "Terminer la partie en cours et revenir à l’accueil ?"
+                .setTitle(
+                        "Fin de la partie"
                 )
-                .setNegativeButton("Annuler", null)
+                .setMessage(
+                        "Terminer la partie en cours ?\n\n"
+                                + "Les questions de la prochaine partie "
+                                + "seront préparées avant le retour à l’accueil."
+                )
+                .setNegativeButton(
+                        "Annuler",
+                        null
+                )
                 .setPositiveButton(
                         "Terminer",
-                        (dialog, which) -> {
-                            game.clear();
-                            current = null;
-                            answering = false;
-                            nextBatchPrefetching = false;
-                            showHome();
-                        }
+                        (dialog, which) ->
+                                prepareNextGameThenHome()
                 )
                 .show();
+    }
+
+
+    private void prepareNextGameThenHome() {
+
+        game.clear();
+
+        current = null;
+        answering = false;
+        correctingPrevious = false;
+        correctionResumeQuestion = null;
+        nextBatchPrefetching = false;
+
+        showLoading(
+                "Préparation de la prochaine partie…"
+        );
+
+        io.submit(() -> {
+            try {
+                String token =
+                        auth.tokenSync();
+
+                flags.flushOutboxSync(
+                        firestore,
+                        token,
+                        auth.uid()
+                );
+
+                if (
+                        flags.pendingHistoryCount()
+                                > 0
+                ) {
+                    throw new Exception(
+                            "Réponses en attente de synchronisation."
+                    );
+                }
+
+                Map<String, CgSmartBatch> warmed =
+                        smart.warmupSync(
+                                token,
+                                DOMAINS,
+                                ENDLESS_BATCH_SIZE
+                        );
+
+                synchronized (nextGameWarmBatches) {
+
+                    nextGameWarmBatches.clear();
+
+                    nextGameWarmBatches.putAll(
+                            warmed
+                    );
+
+                    nextGameWarmAtMs =
+                            System.currentTimeMillis();
+                }
+
+                /*
+                 * FIRST_QUESTION_WARM001 :
+                 * charge réellement la première fiche + image
+                 * de chacun des 9 choix.
+                 */
+                for (
+                        CgSmartBatch batch
+                                : warmed.values()
+                ) {
+
+                    if (
+                            batch == null ||
+                            batch.ids.isEmpty()
+                    ) {
+                        continue;
+                    }
+
+                    String firstId =
+                            batch.ids.get(0);
+
+                    CgQuestion q =
+                            firestore.getQuestionSync(
+                                    token,
+                                    auth.uid(),
+                                    firstId
+                            );
+
+                    synchronized (questionCache) {
+                        questionCache.put(
+                                firstId,
+                                q
+                        );
+                    }
+
+                    if (
+                            q.hasImage() &&
+                            !imageCache.containsKey(
+                                    q.imageFile
+                            )
+                    ) {
+
+                        try {
+                            Bitmap bitmap =
+                                    firestore.loadImageSync(
+                                            token,
+                                            q.imageFile
+                                    );
+
+                            if (bitmap != null) {
+                                imageCache.put(
+                                        q.imageFile,
+                                        bitmap
+                                );
+                            }
+
+                        } catch (Exception ignored) { }
+                    }
+                }
+
+                main.post(() -> {
+                    showHome();
+
+                    Toast.makeText(
+                            this,
+                            "Prochaine partie préparée.",
+                            Toast.LENGTH_SHORT
+                    ).show();
+                });
+
+            } catch (Exception ex) {
+
+                synchronized (nextGameWarmBatches) {
+                    nextGameWarmBatches.clear();
+                    nextGameWarmAtMs = 0L;
+                }
+
+                main.post(() -> {
+                    showHome();
+
+                    Toast.makeText(
+                            this,
+                            "Préchargement non terminé : "
+                                    + safe(ex.getMessage()),
+                            Toast.LENGTH_LONG
+                    ).show();
+                });
+            }
+        });
     }
 
 
@@ -3494,6 +4068,153 @@ final class CgSmartClient {
     }
 
 
+    Map<String, CgSmartBatch> warmupSync(
+            String token,
+            String[] domains,
+            int batchSize
+    ) throws Exception {
+
+        JSONObject body =
+                new JSONObject();
+
+        body.put("cgweb035", true);
+        body.put("mode", "learningWarmup");
+        body.put(
+                "batchSize",
+                Math.max(
+                        1,
+                        Math.min(
+                                100,
+                                batchSize
+                        )
+                )
+        );
+        body.put("forceRefresh", true);
+
+        JSONArray domainArray =
+                new JSONArray();
+
+        if (domains != null) {
+            for (String domain : domains) {
+                if (
+                        domain != null &&
+                        !domain.trim().isEmpty()
+                ) {
+                    domainArray.put(
+                            domain.trim()
+                    );
+                }
+            }
+        }
+
+        body.put(
+                "domains",
+                domainArray
+        );
+
+        JSONObject response =
+                CgHttp.json(
+                        "POST",
+                        BuildConfig.SMART_API_URL,
+                        token,
+                        body
+                );
+
+        if (!response.optBoolean("ok", false)) {
+            throw new Exception(
+                    response.optString(
+                            "error",
+                            "Warmup indisponible."
+                    )
+            );
+        }
+
+        JSONObject warmup =
+                response.optJSONObject(
+                        "warmup"
+                );
+
+        if (warmup == null) {
+            throw new Exception(
+                    "Objet warmup absent."
+            );
+        }
+
+        JSONArray batches =
+                warmup.optJSONArray(
+                        "batches"
+                );
+
+        Map<String, CgSmartBatch> out =
+                new HashMap<>();
+
+        if (batches == null) {
+            return out;
+        }
+
+        for (int i = 0; i < batches.length(); i++) {
+
+            JSONObject src =
+                    batches.optJSONObject(i);
+
+            if (src == null) {
+                continue;
+            }
+
+            String domain =
+                    src.optString(
+                            "domain",
+                            ""
+                    );
+
+            CgSmartBatch batch =
+                    new CgSmartBatch();
+
+            batch.status =
+                    src.optString(
+                            "status",
+                            "active"
+                    );
+
+            batch.learningRound =
+                    src.optInt(
+                            "learningRound",
+                            0
+                    );
+
+            JSONArray ids =
+                    src.optJSONArray(
+                            "ids"
+                    );
+
+            if (ids != null) {
+                for (int j = 0; j < ids.length(); j++) {
+
+                    String id =
+                            ids.optString(
+                                    j,
+                                    ""
+                            );
+
+                    if (
+                            !id.isEmpty() &&
+                            !batch.ids.contains(id)
+                    ) {
+                        batch.ids.add(id);
+                    }
+                }
+            }
+
+            out.put(
+                    domain,
+                    batch
+            );
+        }
+
+        return out;
+    }
+
+
     CgSmartBatch batchSync(
             String token,
             String domain,
@@ -3714,6 +4435,9 @@ final class CgFirestore {
         List<CgHistoryItem> out =
                 new ArrayList<>();
 
+        Set<String> seenAttemptIds =
+                new HashSet<>();
+
         String pageToken = "";
 
         while (
@@ -3866,6 +4590,12 @@ final class CgFirestore {
                                 "interaction_mode"
                         );
 
+                item.attemptId =
+                        str(
+                                fields,
+                                "attempt_id"
+                        );
+
 
                 JSONObject snapshotValue =
                         fields.optJSONObject(
@@ -3998,6 +4728,21 @@ final class CgFirestore {
                     }
                 }
 
+
+                if (!item.attemptId.isEmpty()) {
+
+                    if (
+                            seenAttemptIds.contains(
+                                    item.attemptId
+                            )
+                    ) {
+                        continue;
+                    }
+
+                    seenAttemptIds.add(
+                            item.attemptId
+                    );
+                }
 
                 out.add(item);
             }
@@ -4143,6 +4888,7 @@ final class CgHistoryItem {
     String question = "";
     String correctAnswer = "";
     String interactionMode = "";
+    String attemptId = "";
 }
 
 
@@ -4441,6 +5187,40 @@ final class CgGameState {
                 .putInt("position", position() + 1)
                 .apply();
     }
+
+    void replaceLastAnswer(
+            boolean oldCorrect,
+            boolean newCorrect
+    ) {
+
+        if (oldCorrect == newCorrect) {
+            return;
+        }
+
+        int delta =
+                (newCorrect ? 1 : 0)
+                        - (oldCorrect ? 1 : 0);
+
+        prefs.edit()
+                .putInt(
+                        "correct",
+                        Math.max(
+                                0,
+                                correct() + delta
+                        )
+                )
+                .apply();
+    }
+
+
+    void clearStagedBatch() {
+
+        prefs.edit()
+                .remove("staged_status")
+                .remove("staged_batch")
+                .apply();
+    }
+
 
     void skipCurrent() {
         prefs.edit()
