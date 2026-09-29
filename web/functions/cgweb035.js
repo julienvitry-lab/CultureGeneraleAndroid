@@ -6436,7 +6436,23 @@ async function handleLearningHub(req,res){
       });
     }
 
-    const events=await loadHistory(user.uid,Boolean(body.forceRefresh));
+    /*
+     * CGANDROID010 · LEARNING_BATCH_PARALLEL_PREP001
+     */
+    const learningBatchCatalogPromise=
+      mode==='learningBatch'
+        ?cgplay004Model003Catalog(user.uid)
+        :null;
+
+    const learningBatchXPromise=
+      mode==='learningBatch'
+        ?loadXPolicy(user.uid,true)
+        :null;
+
+    const events=await loadHistory(
+      user.uid,
+      Boolean(body.forceRefresh)
+    );
 
     // Les modes susceptibles de proposer une question rechargent X immédiatement.
     const forceX=
@@ -6454,7 +6470,17 @@ async function handleLearningHub(req,res){
                 mode==='smartLongResume'||
                 mode==='smartLongStop';
 
-    const xPolicy=await loadXPolicy(user.uid,forceX);
+    const xPolicy=
+      learningBatchXPromise
+        ?await learningBatchXPromise
+        :await loadXPolicy(
+          user.uid,
+          forceX
+        );
+
+    if(learningBatchCatalogPromise){
+      await learningBatchCatalogPromise;
+    }
 
               if(mode==='smartLongResume'){
 

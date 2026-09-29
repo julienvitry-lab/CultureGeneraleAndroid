@@ -85,7 +85,7 @@ public class TabletMainActivity extends Activity {
     // Le lot de 100 est purement technique.
     private static final int ENDLESS_BATCH_SIZE = 100;
     private static final int NEXT_BATCH_PREFETCH_AT = 70;
-    private static final int QUESTION_PREFETCH_AHEAD = 10;
+    private static final int QUESTION_PREFETCH_AHEAD = 20;
 
     private final int BLUE = Color.rgb(0, 86, 180);
     private final int GREEN = Color.rgb(0, 135, 60);
@@ -2474,7 +2474,8 @@ public class TabletMainActivity extends Activity {
         flags.enqueue("play_history", event);
         flushOutboxAsync();
 
-        main.postDelayed(this::loadNextPlayable, 500L);
+        // CGANDROID010 · INSTANT_ANSWER_ADVANCE001
+        main.post(this::loadNextPlayable);
     }
 
     private JSONObject historyPayload(CgQuestion q, int choice, boolean correct, long responseMs) {
@@ -2687,50 +2688,76 @@ public class TabletMainActivity extends Activity {
     /*
      * CGANDROID009 · SPLIT_TOUCH_UI001
      */
+    /*
+     * CGANDROID010 · VIRTUAL_SPLIT001
+     *
+     * Deux moitiés tactiles strictement égales.
+     * AUCUNE séparation visuelle.
+     */
     private void installSplitTouch(
             View.OnClickListener leftAction,
             View.OnClickListener rightAction
     ) {
-        if (screenFrame == null) return;
 
-        LinearLayout touchLayer = new LinearLayout(this);
-        touchLayer.setOrientation(LinearLayout.HORIZONTAL);
-        touchLayer.setGravity(Gravity.CENTER);
-        touchLayer.setBackgroundColor(Color.TRANSPARENT);
+        if (screenFrame == null) {
+            return;
+        }
 
-        View leftZone = new View(this);
-        leftZone.setBackgroundColor(Color.TRANSPARENT);
+        LinearLayout touchLayer =
+                new LinearLayout(this);
+
+        touchLayer.setOrientation(
+                LinearLayout.HORIZONTAL
+        );
+
+        touchLayer.setBackgroundColor(
+                Color.TRANSPARENT
+        );
+
+        View leftZone =
+                new View(this);
+
+        leftZone.setBackgroundColor(
+                Color.TRANSPARENT
+        );
+
         leftZone.setClickable(true);
         leftZone.setOnClickListener(leftAction);
 
-        View divider = new View(this);
-        divider.setBackgroundColor(
-                Color.argb(105, 255, 255, 255)
+        View rightZone =
+                new View(this);
+
+        rightZone.setBackgroundColor(
+                Color.TRANSPARENT
         );
 
-        View rightZone = new View(this);
-        rightZone.setBackgroundColor(Color.TRANSPARENT);
         rightZone.setClickable(true);
         rightZone.setOnClickListener(rightAction);
 
         touchLayer.addView(
                 leftZone,
-                new LinearLayout.LayoutParams(0, -1, 1f)
-        );
-
-        touchLayer.addView(
-                divider,
-                new LinearLayout.LayoutParams(dp(1), -1)
+                new LinearLayout.LayoutParams(
+                        0,
+                        -1,
+                        1f
+                )
         );
 
         touchLayer.addView(
                 rightZone,
-                new LinearLayout.LayoutParams(0, -1, 1f)
+                new LinearLayout.LayoutParams(
+                        0,
+                        -1,
+                        1f
+                )
         );
 
         screenFrame.addView(
                 touchLayer,
-                new FrameLayout.LayoutParams(-1, -1)
+                new FrameLayout.LayoutParams(
+                        -1,
+                        -1
+                )
         );
     }
 
@@ -2759,50 +2786,295 @@ public class TabletMainActivity extends Activity {
     }
 
 
-    private void showQuestionActionMenu(CgQuestion q) {
-        final String[] choices = new String[]{
-                "Problème",
-                "Thème à exclure",
-                "Menu",
-                "Retour en arrière",
-                "Stats",
-                "Fin de la partie"
-        };
+    /*
+     * CGANDROID010 · LEFT_EDGE_ACTION_DRAWER001
+     *
+     * Le menu système centré est remplacé par un tiroir
+     * collé au bord gauche, adapté à la prise en main tablette.
+     */
+    private void showQuestionActionMenu(
+            CgQuestion q
+    ) {
 
-        new AlertDialog.Builder(this)
-                .setTitle("Actions")
-                .setItems(
-                        choices,
-                        (dialog, which) -> {
-                            switch (which) {
-                                case 0: {
-                                    Button technicalButton =
-                                            new Button(this);
-                                    reportProblem(q, technicalButton);
-                                    break;
-                                }
-                                case 1:
-                                    confirmAnalogExclusion(q);
-                                    break;
-                                case 2:
-                                    showHome();
-                                    break;
-                                case 3:
-                                    showMegathemes();
-                                    break;
-                                case 4:
-                                    showQuickGameStats();
-                                    break;
-                                case 5:
-                                    confirmEndCurrentGame();
-                                    break;
-                                default:
-                                    dialog.dismiss();
-                            }
-                        }
+        if (screenFrame == null) {
+            return;
+        }
+
+        final FrameLayout overlay =
+                new FrameLayout(this);
+
+        overlay.setBackgroundColor(
+                Color.argb(
+                        105,
+                        0,
+                        0,
+                        0
                 )
-                .setNegativeButton("Fermer", null)
-                .show();
+        );
+
+        overlay.setClickable(true);
+
+        overlay.setOnClickListener(v ->
+                screenFrame.removeView(overlay)
+        );
+
+        LinearLayout panel =
+                new LinearLayout(this);
+
+        panel.setOrientation(
+                LinearLayout.VERTICAL
+        );
+
+        panel.setGravity(
+                Gravity.CENTER_VERTICAL
+        );
+
+        panel.setPadding(
+                dp(10),
+                dp(12),
+                dp(10),
+                dp(12)
+        );
+
+        panel.setBackgroundColor(
+                Color.argb(
+                        248,
+                        20,
+                        20,
+                        20
+                )
+        );
+
+        panel.setClickable(true);
+        panel.setOnClickListener(v -> { });
+
+        int panelWidth =
+                Math.min(
+                        dp(470),
+                        Math.max(
+                                dp(330),
+                                Math.round(
+                                        getResources()
+                                                .getDisplayMetrics()
+                                                .widthPixels
+                                                * 0.43f
+                                )
+                        )
+                );
+
+        FrameLayout.LayoutParams panelLp =
+                new FrameLayout.LayoutParams(
+                        panelWidth,
+                        -1
+                );
+
+        panelLp.gravity =
+                Gravity.START;
+
+        overlay.addView(
+                panel,
+                panelLp
+        );
+
+        TextView title =
+                text(
+                        "Actions",
+                        20,
+                        Color.WHITE,
+                        Gravity.CENTER_VERTICAL
+                );
+
+        title.setPadding(
+                dp(18),
+                0,
+                dp(12),
+                0
+        );
+
+        LinearLayout.LayoutParams titleLp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        dp(54)
+                );
+
+        titleLp.setMargins(
+                dp(8),
+                dp(4),
+                dp(8),
+                dp(8)
+        );
+
+        panel.addView(
+                title,
+                titleLp
+        );
+
+        Button problem =
+                actionBand(
+                        "Problème",
+                        GREY,
+                        Color.WHITE
+                );
+
+        Button exclude =
+                actionBand(
+                        "Thème à exclure",
+                        YELLOW,
+                        Color.BLACK
+                );
+
+        Button menu =
+                actionBand(
+                        "Menu",
+                        BLUE,
+                        Color.WHITE
+                );
+
+        Button back =
+                actionBand(
+                        "Retour en arrière",
+                        GREY,
+                        Color.WHITE
+                );
+
+        Button stats =
+                actionBand(
+                        "Stats",
+                        DARK,
+                        Color.WHITE
+                );
+
+        Button end =
+                actionBand(
+                        "Fin de la partie",
+                        RED,
+                        Color.WHITE
+                );
+
+        addActionBand(panel, problem);
+        addActionBand(panel, exclude);
+        addActionBand(panel, menu);
+        addActionBand(panel, back);
+        addActionBand(panel, stats);
+        addActionBand(panel, end);
+
+        problem.setOnClickListener(v -> {
+            screenFrame.removeView(overlay);
+            Button technicalButton =
+                    new Button(this);
+            reportProblem(
+                    q,
+                    technicalButton
+            );
+        });
+
+        exclude.setOnClickListener(v -> {
+            screenFrame.removeView(overlay);
+            confirmAnalogExclusion(q);
+        });
+
+        menu.setOnClickListener(v -> {
+            screenFrame.removeView(overlay);
+            showHome();
+        });
+
+        back.setOnClickListener(v -> {
+            screenFrame.removeView(overlay);
+            showMegathemes();
+        });
+
+        stats.setOnClickListener(v -> {
+            screenFrame.removeView(overlay);
+            showQuickGameStats();
+        });
+
+        end.setOnClickListener(v -> {
+            screenFrame.removeView(overlay);
+            confirmEndCurrentGame();
+        });
+
+        screenFrame.addView(
+                overlay,
+                new FrameLayout.LayoutParams(
+                        -1,
+                        -1
+                )
+        );
+    }
+
+
+    private Button actionBand(
+            String label,
+            int background,
+            int foreground
+    ) {
+
+        Button b =
+                button(
+                        label,
+                        background,
+                        18
+                );
+
+        b.setTypeface(
+                appFont
+        );
+
+        b.setAllCaps(
+                false
+        );
+
+        b.setTextColor(
+                foreground
+        );
+
+        b.setGravity(
+                Gravity.START
+                        | Gravity.CENTER_VERTICAL
+        );
+
+        b.setPadding(
+                dp(22),
+                0,
+                dp(16),
+                0
+        );
+
+        b.setBackground(
+                roundedStroke(
+                        background,
+                        13,
+                        Color.WHITE,
+                        1
+                )
+        );
+
+        return b;
+    }
+
+
+    private void addActionBand(
+            LinearLayout panel,
+            Button button
+    ) {
+
+        LinearLayout.LayoutParams lp =
+                new LinearLayout.LayoutParams(
+                        -1,
+                        dp(58)
+                );
+
+        lp.setMargins(
+                dp(6),
+                dp(5),
+                dp(6),
+                dp(5)
+        );
+
+        panel.addView(
+                button,
+                lp
+        );
     }
 
 
