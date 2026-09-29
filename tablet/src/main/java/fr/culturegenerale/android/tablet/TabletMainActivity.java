@@ -2393,9 +2393,9 @@ public class TabletMainActivity extends Activity {
                 );
 
         successLp.setMargins(
-                0,
-                0,
                 dp(10),
+                0,
+                0,
                 0
         );
 
@@ -2408,21 +2408,21 @@ public class TabletMainActivity extends Activity {
                 );
 
         failureLp.setMargins(
+                0,
+                0,
                 dp(10),
-                0,
-                0,
                 0
         );
 
 
         evaluationRow.addView(
-                success,
-                successLp
+                failure,
+                failureLp
         );
 
         evaluationRow.addView(
-                failure,
-                failureLp
+                success,
+                successLp
         );
 
 
@@ -2433,13 +2433,15 @@ public class TabletMainActivity extends Activity {
                 );
 
         rowLp.setMargins(
-                dp(50),
+                dp(28),
                 0,
-                dp(50),
-                0
+                dp(28),
+                dp(18)
         );
 
-        center.addView(
+        // CGANDROID008 · ANSWER_ACTION_CORNERS001
+        // Rouge à gauche ; vert à droite, au bas de l’écran.
+        root.addView(
                 evaluationRow,
                 rowLp
         );
