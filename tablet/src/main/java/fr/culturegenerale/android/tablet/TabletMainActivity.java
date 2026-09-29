@@ -108,6 +108,7 @@ public class TabletMainActivity extends Activity {
     private final Handler main = new Handler(Looper.getMainLooper());
 
     private Typeface appFont = Typeface.DEFAULT_BOLD;
+    private FrameLayout screenFrame;
     private LinearLayout root;
     private TextView statusView;
 
@@ -2131,7 +2132,6 @@ public class TabletMainActivity extends Activity {
         currentShownAtMs = System.currentTimeMillis();
         baseScreen();
 
-        addStatsBanner();
 
         // CGANDROID002 FIX2 · BANNER_FONT_UNIFY001
         TextView theme = cardText(
@@ -2162,26 +2162,8 @@ public class TabletMainActivity extends Activity {
         preloadUpcomingImages();
         addFlexSpacer();
 
-        LinearLayout footer = new LinearLayout(this);
-        footer.setOrientation(LinearLayout.HORIZONTAL);
-        footer.setGravity(Gravity.CENTER);
-
-        Button p = microButton("P");
-        Button t = microButton("T");
-        Button menu = button("Menu", RED, 18);
-        // CGANDROID003 · REVEAL_ANSWER001
-        Button proposals = button("Révéler", GREEN, 18);
-
-        footer.addView(p, footerMicroLp());
-        footer.addView(t, footerMicroLp());
-        footer.addView(menu, footerLp(1.15f));
-        footer.addView(proposals, footerLp(1.45f));
-        root.addView(footer, footerBarLp());
-
-        p.setOnClickListener(v -> reportProblem(q, p));
-        t.setOnClickListener(v -> confirmAnalogExclusion(q));
-        menu.setOnClickListener(v -> showHome());
-        proposals.setOnClickListener(v -> showAnswers(q));
+        // CGANDROID009 · QUESTION_SPLIT_TOUCH001
+        installQuestionSplitTouch(q);
     }
 
     /*
@@ -2205,7 +2187,6 @@ public class TabletMainActivity extends Activity {
         answerButtons.clear();
         baseScreen();
 
-        addStatsBanner();
 
 
         String correctAnswer = "";
@@ -2326,171 +2307,8 @@ public class TabletMainActivity extends Activity {
         );
 
 
-        /*
-         * Les DEUX seules commandes de validation
-         * visibles sur l'écran de réponse.
-         */
-        LinearLayout evaluationRow =
-                new LinearLayout(this);
-
-        evaluationRow.setOrientation(
-                LinearLayout.HORIZONTAL
-        );
-
-        evaluationRow.setGravity(
-                Gravity.CENTER
-        );
-
-
-        Button success =
-                button(
-                        "✓ J’avais bon",
-                        GREEN,
-                        22
-                );
-
-        Button failure =
-                button(
-                        "✕ J’avais faux",
-                        RED,
-                        22
-                );
-
-
-        success.setTextColor(
-                Color.WHITE
-        );
-
-        failure.setTextColor(
-                Color.WHITE
-        );
-
-
-        success.setBackground(
-                roundedStroke(
-                        GREEN,
-                        16,
-                        Color.WHITE,
-                        1
-                )
-        );
-
-        failure.setBackground(
-                roundedStroke(
-                        RED,
-                        16,
-                        Color.WHITE,
-                        1
-                )
-        );
-
-
-        LinearLayout.LayoutParams successLp =
-                new LinearLayout.LayoutParams(
-                        0,
-                        dp(86),
-                        1f
-                );
-
-        successLp.setMargins(
-                dp(10),
-                0,
-                0,
-                0
-        );
-
-
-        LinearLayout.LayoutParams failureLp =
-                new LinearLayout.LayoutParams(
-                        0,
-                        dp(86),
-                        1f
-                );
-
-        failureLp.setMargins(
-                0,
-                0,
-                dp(10),
-                0
-        );
-
-
-        evaluationRow.addView(
-                failure,
-                failureLp
-        );
-
-        evaluationRow.addView(
-                success,
-                successLp
-        );
-
-
-        LinearLayout.LayoutParams rowLp =
-                new LinearLayout.LayoutParams(
-                        -1,
-                        -2
-                );
-
-        rowLp.setMargins(
-                dp(28),
-                0,
-                dp(28),
-                dp(18)
-        );
-
-        // CGANDROID008 · ANSWER_ACTION_CORNERS001
-        // Rouge à gauche ; vert à droite, au bas de l’écran.
-        root.addView(
-                evaluationRow,
-                rowLp
-        );
-
-
-        /*
-         * Vert :
-         * la réponse mentalement formulée était correcte.
-         *
-         * On transmet l'index réellement correct afin de
-         * conserver la compatibilité du moteur historique.
-         */
-        success.setOnClickListener(v -> {
-
-            if (answering) {
-                return;
-            }
-
-            success.setEnabled(false);
-            failure.setEnabled(false);
-
-            answer(
-                    q,
-                    q.correctIndex
-            );
-        });
-
-
-        /*
-         * Rouge :
-         * la réponse mentalement formulée était incorrecte.
-         *
-         * choice = 0 est le nouveau marqueur interne
-         * "aucune proposition QCM sélectionnée".
-         */
-        failure.setOnClickListener(v -> {
-
-            if (answering) {
-                return;
-            }
-
-            success.setEnabled(false);
-            failure.setEnabled(false);
-
-            answer(
-                    q,
-                    0
-            );
-        });
+        // CGANDROID009 · ANSWER_SPLIT_TOUCH001
+        installAnswerSplitTouch(q);
     }
 
     private LinearLayout.LayoutParams footerLp(float weight) {
@@ -2866,6 +2684,185 @@ public class TabletMainActivity extends Activity {
     }
 
 
+    /*
+     * CGANDROID009 · SPLIT_TOUCH_UI001
+     */
+    private void installSplitTouch(
+            View.OnClickListener leftAction,
+            View.OnClickListener rightAction
+    ) {
+        if (screenFrame == null) return;
+
+        LinearLayout touchLayer = new LinearLayout(this);
+        touchLayer.setOrientation(LinearLayout.HORIZONTAL);
+        touchLayer.setGravity(Gravity.CENTER);
+        touchLayer.setBackgroundColor(Color.TRANSPARENT);
+
+        View leftZone = new View(this);
+        leftZone.setBackgroundColor(Color.TRANSPARENT);
+        leftZone.setClickable(true);
+        leftZone.setOnClickListener(leftAction);
+
+        View divider = new View(this);
+        divider.setBackgroundColor(
+                Color.argb(105, 255, 255, 255)
+        );
+
+        View rightZone = new View(this);
+        rightZone.setBackgroundColor(Color.TRANSPARENT);
+        rightZone.setClickable(true);
+        rightZone.setOnClickListener(rightAction);
+
+        touchLayer.addView(
+                leftZone,
+                new LinearLayout.LayoutParams(0, -1, 1f)
+        );
+
+        touchLayer.addView(
+                divider,
+                new LinearLayout.LayoutParams(dp(1), -1)
+        );
+
+        touchLayer.addView(
+                rightZone,
+                new LinearLayout.LayoutParams(0, -1, 1f)
+        );
+
+        screenFrame.addView(
+                touchLayer,
+                new FrameLayout.LayoutParams(-1, -1)
+        );
+    }
+
+
+    private void installQuestionSplitTouch(CgQuestion q) {
+        installSplitTouch(
+                v -> showQuestionActionMenu(q),
+                v -> showAnswers(q)
+        );
+    }
+
+
+    private void installAnswerSplitTouch(CgQuestion q) {
+        installSplitTouch(
+                v -> {
+                    if (!answering) {
+                        answer(q, 0);
+                    }
+                },
+                v -> {
+                    if (!answering) {
+                        answer(q, q.correctIndex);
+                    }
+                }
+        );
+    }
+
+
+    private void showQuestionActionMenu(CgQuestion q) {
+        final String[] choices = new String[]{
+                "Problème",
+                "Thème à exclure",
+                "Menu",
+                "Retour en arrière",
+                "Stats",
+                "Fin de la partie"
+        };
+
+        new AlertDialog.Builder(this)
+                .setTitle("Actions")
+                .setItems(
+                        choices,
+                        (dialog, which) -> {
+                            switch (which) {
+                                case 0: {
+                                    Button technicalButton =
+                                            new Button(this);
+                                    reportProblem(q, technicalButton);
+                                    break;
+                                }
+                                case 1:
+                                    confirmAnalogExclusion(q);
+                                    break;
+                                case 2:
+                                    showHome();
+                                    break;
+                                case 3:
+                                    showMegathemes();
+                                    break;
+                                case 4:
+                                    showQuickGameStats();
+                                    break;
+                                case 5:
+                                    confirmEndCurrentGame();
+                                    break;
+                                default:
+                                    dialog.dismiss();
+                            }
+                        }
+                )
+                .setNegativeButton("Fermer", null)
+                .show();
+    }
+
+
+    private void showQuickGameStats() {
+        int played = game.played();
+        int good = game.correct();
+        int errors = Math.max(0, played - good);
+
+        double rate =
+                played <= 0
+                        ? 0.0
+                        : good * 100.0 / played;
+
+        String domain =
+                selectedDomain == null ||
+                        selectedDomain.trim().isEmpty()
+                        ? "Toutes les questions"
+                        : selectedDomain;
+
+        String message =
+                "Mégathème : " + domain
+                        + "\n\nQuestions répondues : " + played
+                        + "\nBonnes réponses : " + good
+                        + "\nErreurs : " + errors
+                        + "\nScore : "
+                        + String.format(
+                        Locale.FRANCE,
+                        "%.2f %%",
+                        rate
+                );
+
+        new AlertDialog.Builder(this)
+                .setTitle("Stats")
+                .setMessage(message)
+                .setPositiveButton("Retour au jeu", null)
+                .show();
+    }
+
+
+    private void confirmEndCurrentGame() {
+        new AlertDialog.Builder(this)
+                .setTitle("Fin de la partie")
+                .setMessage(
+                        "Terminer la partie en cours et revenir à l’accueil ?"
+                )
+                .setNegativeButton("Annuler", null)
+                .setPositiveButton(
+                        "Terminer",
+                        (dialog, which) -> {
+                            game.clear();
+                            current = null;
+                            answering = false;
+                            nextBatchPrefetching = false;
+                            showHome();
+                        }
+                )
+                .show();
+    }
+
+
     private void baseScreen() {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
@@ -2877,7 +2874,22 @@ public class TabletMainActivity extends Activity {
         root.setBackgroundColor(Color.BLACK);
 
         scroll.addView(root, new ScrollView.LayoutParams(-1, -1));
-        setContentView(scroll);
+        screenFrame =
+                new FrameLayout(this);
+
+        screenFrame.setBackgroundColor(
+                Color.BLACK
+        );
+
+        screenFrame.addView(
+                scroll,
+                new FrameLayout.LayoutParams(
+                        -1,
+                        -1
+                )
+        );
+
+        setContentView(screenFrame);
     }
 
     private void addTitle(String value, int sp, int color) {
