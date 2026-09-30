@@ -45,7 +45,10 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -127,7 +130,26 @@ public class TabletMainActivity extends Activity {
     private CgQuestion current;
     private long currentShownAtMs = 0L;
     private final List<Button> answerButtons = new ArrayList<>();
-    private final Map<String, Bitmap> imageCache = new HashMap<>();
+    // CGANDROID013 · RAM_LRU001 · évite les sessions qui saturent la mémoire.
+    private final Map<String, Bitmap> imageCache =
+            Collections.synchronizedMap(
+                    new LinkedHashMap<String, Bitmap>(16, .75f, true) {
+                        @Override
+                        protected boolean removeEldestEntry(Map.Entry<String, Bitmap> oldest) {
+                            return size() > 8;
+                        }
+                    }
+            );
+    private CgImageDiskCache imageDiskCache;
+    private String imageCacheUid = "";
+    private final Object localPrefetchLock = new Object();
+    private final ArrayDeque<CgQuestion> localPrefetched = new ArrayDeque<>();
+    private long localPrefetchEpoch = 0L;
+    private boolean localPrefetchRunning = false;
+    private boolean localPrefetchExhausted = false;
+    private boolean localNextRequested = false;
+    private static final int LOCAL_PREFETCH_AHEAD = 4;
+    private final Map<String, Long> imageFetchFailedAt = new HashMap<>();
     private final Set<String> imagePreloadInFlight = new HashSet<>();
     private final Map<String, CgQuestion> questionCache = new HashMap<>();
     private final Set<String> questionPreloadInFlight = new HashSet<>();
@@ -275,6 +297,7 @@ public class TabletMainActivity extends Activity {
     }
 
     private void showHome() {
+        stopLocalImagePrefetch();
         screen = "home";
         current = null;
         answering = false;
@@ -1895,6 +1918,16 @@ public class TabletMainActivity extends Activity {
 
     private void startLocalGameNow() {
 
+        stopLocalImagePrefetch();
+        String uid = auth.uid();
+        if (imageDiskCache == null || !uid.equals(imageCacheUid)) {
+            synchronized (imageCache) {
+                imageCache.clear();
+            }
+            imageDiskCache = new CgImageDiskCache(this, uid);
+            imageCacheUid = uid;
+        }
+
         String streamId =
                 "local_"
                         + System.currentTimeMillis();
@@ -2019,33 +2052,16 @@ public class TabletMainActivity extends Activity {
     /*
      * CGANDROID012 · PERSISTENT_POOL001
      */
+    // CGANDROID013 · IMAGE_READY_BEFORE_SHOW001
     private void loadNextPlayable() {
-
         if (!game.hasActive()) {
             showHome();
             return;
         }
-
-        CgQuestion q =
-                localEngine.nextQuestion(
-                        selectedDomain,
-                        flags
-                );
-
-        if (q == null) {
-            game.clear();
-            localEngine.endSession();
-            showEnd();
-            return;
+        synchronized (localPrefetchLock) {
+            localNextRequested = true;
         }
-
-        current =
-                q;
-
-        answering =
-                false;
-
-        showQuestion(q);
+        dispatchPrefetchedQuestion();
     }
 
     private void requestNextBatch() {
@@ -2284,14 +2300,6 @@ public class TabletMainActivity extends Activity {
         baseScreen();
 
 
-        // CGANDROID002 FIX2 · BANNER_FONT_UNIFY001
-        TextView theme = cardText(
-                q.theme.isEmpty() ? safe(q.megatheme) : q.theme,
-                23, GREEN, Color.WHITE);
-        theme.setGravity(Gravity.CENTER);
-        theme.setMinHeight(dp(48));
-        add(theme, -1, -2, 0, 0, 0, dp(7));
-
         // CGANDROID011 · IMAGE_MEGATHEME_RESTORE001
         if (q.hasImage()) {
 
@@ -2338,6 +2346,14 @@ public class TabletMainActivity extends Activity {
             }
         }
 
+        // CGANDROID013 · BANNER_ORDER001 : rouge puis vert pour les images.
+        // CGANDROID002 FIX2 · BANNER_FONT_UNIFY001
+        TextView theme = cardText(
+                q.theme.isEmpty() ? safe(q.megatheme) : q.theme,
+                23, GREEN, Color.WHITE);
+        theme.setGravity(Gravity.CENTER);
+        theme.setMinHeight(dp(48));
+        add(theme, -1, -2, 0, 0, 0, dp(7));
 
         TextView question = cardText(q.question, 23, YELLOW, Color.BLACK);
         question.setGravity(Gravity.CENTER);
@@ -2385,7 +2401,9 @@ public class TabletMainActivity extends Activity {
             addFlexSpacer();
         }
 
-        preloadUpcomingImages();
+        // La fiche actuelle est déjà préparée avant son affichage.
+        // Pendant la réflexion, anticiper quatre fiches et leurs images.
+        pumpLocalImagePrefetch();
 
         // CGANDROID009 · QUESTION_SPLIT_TOUCH001
         installQuestionSplitTouch(q);
@@ -2615,45 +2633,192 @@ public class TabletMainActivity extends Activity {
 
     private void loadImageAsync(CgQuestion q, FrameLayout area) {
         area.setVisibility(View.VISIBLE);
-
-        Bitmap cached = imageCache.get(q.imageFile);
-        if (cached != null) {
-            area.removeAllViews();
-            ImageView iv = new ImageView(this);
-            iv.setImageBitmap(cached);
-            iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            iv.setBackgroundColor(Color.BLACK);
-            area.addView(iv, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+        Bitmap cached;
+        synchronized (imageCache) {
+            cached = imageCache.get(q.imageFile);
+        }
+        if (cached == null && imageDiskCache != null) {
+            // The normal path already loaded this in the prefetch worker.
+            cached = imageDiskCache.get(q.imageFile);
+            if (cached != null) {
+                synchronized (imageCache) {
+                    imageCache.put(q.imageFile, cached);
+                }
+            }
+        }
+        area.removeAllViews();
+        if (cached == null) {
+            // Network failure or deleted source: never spin a live loader
+            // over an already-displayed question.
+            TextView missing = text(
+                    "Image indisponible · vérifier la connexion",
+                    15, LIGHT_GREY, Gravity.CENTER
+            );
+            area.addView(missing,
+                    new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
             return;
         }
+        ImageView iv = new ImageView(this);
+        iv.setImageBitmap(cached);
+        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        iv.setBackgroundColor(Color.BLACK);
+        area.addView(iv,
+                new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+    }
 
-        TextView loading = text("Chargement de l’image…", 15, LIGHT_GREY, Gravity.CENTER);
-        area.removeAllViews();
-        area.addView(loading, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+    /* ===============================================================
+     * CGANDROID013 · LOCAL_IMAGE_PREFETCH001
+     * The next four questions are chosen IN ORDER by the existing
+     * CGPLAY004 SQLite engine, then their images are prepared BEFORE
+     * the question screen is allowed to appear.
+     * =============================================================== */
+
+    private void stopLocalImagePrefetch() {
+        synchronized (localPrefetchLock) {
+            localPrefetchEpoch++;
+            localPrefetched.clear();
+            localPrefetchRunning = false;
+            localPrefetchExhausted = false;
+            localNextRequested = false;
+        }
+    }
+
+    private void dispatchPrefetchedQuestion() {
+        CgQuestion q = null;
+        boolean complete = false;
+        synchronized (localPrefetchLock) {
+            if (!localNextRequested || !game.hasActive()) return;
+            while (!localPrefetched.isEmpty()) {
+                CgQuestion candidate = localPrefetched.removeFirst();
+                // T exclusion may have changed after a candidate was reserved.
+                if (!flags.isTExcluded(candidate)) {
+                    q = candidate;
+                    localNextRequested = false;
+                    break;
+                }
+            }
+            if (q == null && localPrefetchExhausted && !localPrefetchRunning) {
+                localNextRequested = false;
+                complete = true;
+            }
+        }
+        if (q != null) {
+            current = q;
+            answering = false;
+            showQuestion(q); // memory/disk cache is ready here
+            return;
+        }
+        if (complete) {
+            game.clear();
+            localEngine.endSession();
+            showEnd();
+            return;
+        }
+        // Only seen if a player answers before the anticipated image is ready.
+        if (!"loading".equals(screen)) {
+            showLoading("Préparation de l'image suivante…");
+        }
+        pumpLocalImagePrefetch();
+    }
+
+    private void pumpLocalImagePrefetch() {
+        final long epoch;
+        final String domain;
+        synchronized (localPrefetchLock) {
+            if (!game.hasActive() || localPrefetchRunning
+                    || localPrefetchExhausted
+                    || localPrefetched.size() >= LOCAL_PREFETCH_AHEAD) {
+                return;
+            }
+            localPrefetchRunning = true;
+            epoch = localPrefetchEpoch;
+            domain = selectedDomain;
+        }
 
         io.submit(() -> {
             try {
-                String token = auth.tokenSync();
-                Bitmap bitmap = firestore.loadImageSync(token, q.imageFile);
-                imageCache.put(q.imageFile, bitmap);
+                while (true) {
+                    CgQuestion upcoming;
+                    synchronized (localPrefetchLock) {
+                        if (epoch != localPrefetchEpoch || !game.hasActive()
+                                || localPrefetched.size() >= LOCAL_PREFETCH_AHEAD) {
+                            break;
+                        }
+                        // This marks the question reserved in SQLite; the
+                        // single worker preserves the engine's ordering.
+                        upcoming = localEngine.nextQuestion(domain, flags);
+                        if (upcoming == null) {
+                            localPrefetchExhausted = true;
+                            break;
+                        }
+                    }
+                    if (upcoming.hasImage()) {
+                        prepareImageSync(upcoming.imageFile);
+                    }
+                    synchronized (localPrefetchLock) {
+                        if (epoch != localPrefetchEpoch || !game.hasActive()) break;
+                        localPrefetched.addLast(upcoming);
+                    }
+                    main.post(this::dispatchPrefetchedQuestion);
+                }
+            } catch (Exception error) {
+                android.util.Log.w("CGANDROID013", "Lookahead paused", error);
+            } finally {
+                synchronized (localPrefetchLock) {
+                    if (epoch == localPrefetchEpoch) {
+                        localPrefetchRunning = false;
+                    }
+                }
                 main.post(() -> {
-                    if (current != q || !"question".equals(screen)) return;
-                    area.removeAllViews();
-                    ImageView iv = new ImageView(this);
-                    iv.setImageBitmap(bitmap);
-                    iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                    iv.setBackgroundColor(Color.BLACK);
-                    area.addView(iv, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
-                });
-            } catch (Exception ex) {
-                main.post(() -> {
-                    if (current != q || !"question".equals(screen)) return;
-                    area.removeAllViews();
-                    TextView missing = text("Image indisponible", 14, LIGHT_GREY, Gravity.CENTER);
-                    area.addView(missing, new FrameLayout.LayoutParams(-1, -1, Gravity.CENTER));
+                    if (epoch != currentLocalPrefetchEpoch()) return;
+                    dispatchPrefetchedQuestion();
+                    pumpLocalImagePrefetch();
                 });
             }
         });
+    }
+
+    private long currentLocalPrefetchEpoch() {
+        synchronized (localPrefetchLock) {
+            return localPrefetchEpoch;
+        }
+    }
+
+    /** One download shared by the selector; memory -> disk -> network. */
+    private boolean prepareImageSync(String imageId) {
+        if (imageId == null || imageId.trim().isEmpty()) return true;
+        synchronized (imageCache) {
+            if (imageCache.containsKey(imageId)) return true;
+        }
+        Bitmap fromDisk = imageDiskCache == null ? null : imageDiskCache.get(imageId);
+        if (fromDisk != null) {
+            synchronized (imageCache) {
+                imageCache.put(imageId, fromDisk);
+            }
+            return true;
+        }
+        // Avoid repeatedly stalling the session on the same broken URL.
+        Long lastFailure = imageFetchFailedAt.get(imageId);
+        if (lastFailure != null
+                && System.currentTimeMillis() - lastFailure < 120000L) {
+            return false;
+        }
+        try {
+            String token = auth.tokenSync();
+            Bitmap loaded = firestore.loadImageSync(token, imageId);
+            if (loaded == null) throw new Exception("Image source vide");
+            Bitmap ready = imageDiskCache == null
+                    ? loaded : imageDiskCache.put(imageId, loaded);
+            synchronized (imageCache) {
+                imageCache.put(imageId, ready);
+            }
+            imageFetchFailedAt.remove(imageId);
+            return true;
+        } catch (Exception problem) {
+            imageFetchFailedAt.put(imageId, System.currentTimeMillis());
+            android.util.Log.w("CGANDROID013", "Image unavailable during prefetch", problem);
+            return false;
+        }
     }
 
     private void preloadUpcomingImages() {
