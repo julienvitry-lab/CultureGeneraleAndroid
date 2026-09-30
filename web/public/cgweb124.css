@@ -188,3 +188,17 @@
 #cgweb124Modal .cg124-failure-list span { opacity: .72; }
 html.cg124-open { overflow: hidden; }
 
+
+/* ============================================================
+   CGWEB124 FIX3 · TEXTAREA_STABILITY001
+   ============================================================ */
+
+#cgweb124Modal #cg124Urls {
+  display: block !important;
+  width: 100% !important;
+  height: 260px !important;
+  min-height: 260px !important;
+  max-height: 55vh !important;
+  resize: vertical !important;
+}
+

@@ -6624,28 +6624,238 @@ function cg124ExtractReadableText(html, pageUrl) {
   return finalText;
 }
 
-async function cg124ExtractMany(urls) {
-  const results = new Array(urls.length);
-  const concurrency = 4;
-
-  for (let start = 0; start < urls.length; start += concurrency) {
-    const group = urls.slice(start, start + concurrency);
-    await Promise.all(group.map(async (url, offset) => {
-      const index = start + offset;
-      try {
-        const fetched = await cg124FetchHtml(url);
-        const text = cg124ExtractReadableText(fetched.html, fetched.finalUrl);
-        results[index] = { index, ok: true, text, chars: text.length };
-      } catch (err) {
-        results[index] = {
-          index,
-          ok: false,
-          text: "",
-          error: err && err.message ? err.message : "Erreur inconnue",
-        };
-      }
-    }));
+function cg124IsQuizypediaUrl(raw) {
+  try {
+    const host = new URL(String(raw || "")).hostname.toLowerCase();
+    return host === "quizypedia.fr" || host === "www.quizypedia.fr";
+  } catch (_) {
+    return false;
   }
+}
+
+function cg124StripVisibleUrls(text) {
+  const lines = String(text || "")
+    .replace(/\u00a0/g, " ")
+    .replace(/\r/g, "")
+    .split("\n");
+
+  const cleaned = [];
+
+  for (const sourceLine of lines) {
+    let line = String(sourceLine || "").trim();
+
+    if (!line) {
+      if (cleaned.length && cleaned[cleaned.length - 1] !== "") {
+        cleaned.push("");
+      }
+      continue;
+    }
+
+    line = line
+      .replace(/https?:\/\/[^\s<>"']+/gi, "")
+      .replace(/\bwww\.[^\s<>"']+/gi, "")
+      .trim();
+
+    /*
+     * Une ligne servant uniquement à exposer une URL d'image ou un lien
+     * n'a plus d'intérêt après suppression de l'adresse.
+     */
+    if (
+      !line ||
+      /^(?:url|lien|adresse|image|url image|source image)\s*:?\s*$/i.test(line)
+    ) {
+      continue;
+    }
+
+    cleaned.push(line);
+  }
+
+  return cg124NormalizeText(cleaned.join("\n"));
+}
+
+function cg124FicheToRawText(fiche) {
+  let text = "";
+
+  if (fiche && typeof fiche.rawText === "string") {
+    text = fiche.rawText;
+  }
+
+  if (
+    !text.trim() &&
+    Array.isArray(fiche?.rawLines)
+  ) {
+    text = fiche.rawLines.join("\n");
+  }
+
+  /*
+   * Ultime secours : reconstruction depuis les champs structurés.
+   * Ce chemin ne doit normalement pas être utilisé avec CGWEB122.
+   */
+  if (!text.trim()) {
+    const rows = [];
+
+    if (fiche?.name) {
+      rows.push(String(fiche.name));
+    }
+
+    for (const field of (fiche?.fields || [])) {
+      const label = String(field?.label || "").trim();
+      const value = String(field?.value || "").trim();
+
+      if (!value) continue;
+
+      rows.push(
+        label
+          ? `${label}\n${value}`
+          : value
+      );
+    }
+
+    text = rows.join("\n\n");
+  }
+
+  return cg124StripVisibleUrls(text);
+}
+
+async function cg124ExtractOneUrl(url) {
+  /*
+   * Quizypedia est une application dynamique.
+   * Le HTML brut ne contient pas nécessairement les fiches affichées.
+   *
+   * On réutilise donc volontairement le moteur CGWEB122,
+   * déjà spécialisé dans la récupération intégrale des fiches source.
+   */
+  if (cg124IsQuizypediaUrl(url)) {
+    const parsed = parseQuizypediaUrl(url);
+
+    const capture =
+      await cgweb122CaptureFullFiches(
+        parsed,
+        url
+      );
+
+    const fiches =
+      Array.isArray(capture?.fiches)
+        ? capture.fiches
+        : [];
+
+    const texts =
+      fiches
+        .map(cg124FicheToRawText)
+        .map(cg124NormalizeText)
+        .filter(text => text.length >= 30);
+
+    if (!texts.length) {
+      throw new Error(
+        "Quizypedia : aucune fiche documentaire exploitable détectée"
+      );
+    }
+
+    return {
+      texts,
+      mode: "quizypedia_fiches",
+      ficheCount: texts.length,
+      expectedFiches:
+        Number(
+          capture?.expectedFiches ||
+          capture?.ficheCount ||
+          texts.length
+        )
+    };
+  }
+
+  /*
+   * Pour les autres sites, maintien du moteur générique CGWEB124.
+   */
+  const fetched =
+    await cg124FetchHtml(url);
+
+  const text =
+    cg124ExtractReadableText(
+      fetched.html,
+      fetched.finalUrl
+    );
+
+  return {
+    texts: [text],
+    mode: "generic_page",
+    ficheCount: 1,
+    expectedFiches: 1
+  };
+}
+
+async function cg124ExtractMany(urls) {
+  const results =
+    new Array(urls.length);
+
+  /*
+   * Le moteur CGWEB122 peut utiliser Chromium et coûte davantage qu'un
+   * simple fetch. On limite volontairement la concurrence à 2.
+   */
+  const concurrency = 2;
+
+  for (
+    let start = 0;
+    start < urls.length;
+    start += concurrency
+  ) {
+    const group =
+      urls.slice(
+        start,
+        start + concurrency
+      );
+
+    await Promise.all(
+      group.map(
+        async (url, offset) => {
+          const index =
+            start + offset;
+
+          try {
+            const extracted =
+              await cg124ExtractOneUrl(url);
+
+            const texts =
+              Array.isArray(extracted.texts)
+                ? extracted.texts
+                : [];
+
+            results[index] = {
+              index,
+              ok: true,
+              texts,
+              ficheCount: texts.length,
+              expectedFiches:
+                Number(
+                  extracted.expectedFiches ||
+                  texts.length
+                ),
+              mode:
+                extracted.mode ||
+                "unknown",
+              chars:
+                texts.reduce(
+                  (sum, text) =>
+                    sum + String(text || "").length,
+                  0
+                )
+            };
+          } catch (err) {
+            results[index] = {
+              index,
+              ok: false,
+              texts: [],
+              error:
+                err && err.message
+                  ? err.message
+                  : "Erreur inconnue"
+            };
+          }
+        }
+      )
+    );
+  }
+
   return results;
 }
 
@@ -6689,11 +6899,32 @@ exports.cgweb124RawTextExtract = onRequest(
         }
 
         const results = await cg124ExtractMany(urls);
-        const successCount = results.filter((r) => r?.ok).length;
+
+        const successUrlCount =
+          results.filter(
+            result => result?.ok
+          ).length;
+
+        const successCount =
+          results.reduce(
+            (sum, result) =>
+              sum +
+              (
+                result?.ok &&
+                Array.isArray(result.texts)
+                  ? result.texts.length
+                  : 0
+              ),
+            0
+          );
+
         return res.json({
           ok: true,
           successCount,
-          failureCount: results.length - successCount,
+          successUrlCount,
+          failureCount:
+            results.length -
+            successUrlCount,
           results,
         });
       }

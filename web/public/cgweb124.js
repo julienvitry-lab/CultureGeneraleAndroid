@@ -101,7 +101,7 @@
         <details open>
           <summary>${state.failures.length} échec(s)</summary>
           <div class="cg124-failure-list">${state.failures.map((f) => `
-            <div><strong>Fiche ${f.index + 1}</strong> — ${escapeHtml(f.url)}<br><span>${escapeHtml(f.error)}</span></div>
+            <div><strong>Adresse ${f.index + 1}</strong> — ${escapeHtml(f.url)}<br><span>${escapeHtml(f.error)}</span></div>
           `).join("")}</div>
         </details>`;
     }
@@ -123,7 +123,11 @@
       }
 
       state.urls = parsed.urls;
-      state.texts = new Array(state.urls.length).fill("");
+      /*
+       * Une URL peut maintenant fournir plusieurs fiches.
+       * Le tableau de sortie contient donc les fiches, et non les URL.
+       */
+      state.texts = [];
       state.failures = [];
       summaryEl.innerHTML = "";
       failuresEl.innerHTML = "";
@@ -145,13 +149,37 @@
             if (!response.ok || !payload?.ok) throw new Error(payload?.error || `HTTP ${response.status}`);
 
             payload.results.forEach((item) => {
-              const globalIndex = start + item.index;
-              if (item.ok) state.texts[globalIndex] = item.text || "";
-              else state.failures.push({
-                index: globalIndex,
-                url: state.urls[globalIndex],
-                error: item.error || "Extraction impossible",
-              });
+              const sourceIndex =
+                start +
+                Number(item.index || 0);
+
+              if (item.ok) {
+                const texts =
+                  Array.isArray(item.texts)
+                    ? item.texts
+                    : (
+                        item.text
+                          ? [item.text]
+                          : []
+                      );
+
+                texts
+                  .map(text =>
+                    String(text || "").trim()
+                  )
+                  .filter(Boolean)
+                  .forEach(text => {
+                    state.texts.push(text);
+                  });
+              } else {
+                state.failures.push({
+                  index: sourceIndex,
+                  url: state.urls[sourceIndex],
+                  error:
+                    item.error ||
+                    "Extraction impossible",
+                });
+              }
             });
           } catch (err) {
             batch.forEach((url, offset) => state.failures.push({
