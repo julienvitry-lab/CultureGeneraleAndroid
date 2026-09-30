@@ -118,6 +118,9 @@ public class TabletMainActivity extends Activity {
     private CgFirestore firestore;
     private CgFlags flags;
     private CgGameState game;
+    private CgLocalEngine localEngine;
+
+    private volatile boolean localCatalogRefreshRunning = false;
 
     private String selectedDomain = "";
 
@@ -164,6 +167,7 @@ public class TabletMainActivity extends Activity {
         firestore = new CgFirestore();
         flags = new CgFlags(this);
         game = new CgGameState(this);
+        localEngine = new CgLocalEngine(this);
 
         if (auth.hasRefreshToken()) showHome();
         else showLogin();
@@ -303,6 +307,63 @@ public class TabletMainActivity extends Activity {
                 );
 
         add(historyHelper, -1, -2, dp(30), 0, dp(30), 0);
+
+        scheduleLocalCatalogRefresh();
+}
+
+
+    private void scheduleLocalCatalogRefresh() {
+
+        if (
+                localEngine == null ||
+                !auth.hasRefreshToken()
+        ) {
+            return;
+        }
+
+        main.postDelayed(
+                this::refreshLocalCatalogInBackground,
+                15000L
+        );
+    }
+
+
+    private void refreshLocalCatalogInBackground() {
+
+        if (
+                localCatalogRefreshRunning ||
+                !"home".equals(screen) ||
+                localEngine == null ||
+                !localEngine.isReady(
+                        auth.uid()
+                ) ||
+                !localEngine.needsCatalogRefresh(
+                        auth.uid()
+                )
+        ) {
+            return;
+        }
+
+        localCatalogRefreshRunning =
+                true;
+
+        io.submit(() -> {
+            try {
+                String token =
+                        auth.tokenSync();
+
+                localEngine.refreshCatalogSync(
+                        token,
+                        auth.uid()
+                );
+
+            } catch (Exception ignored) {
+                // Le pool local existant reste jouable.
+            } finally {
+                localCatalogRefreshRunning =
+                        false;
+            }
+        });
     }
 
 
@@ -817,6 +878,8 @@ public class TabletMainActivity extends Activity {
                  * reprendre après le hard reset.
                  */
                 game.clear();
+
+                localEngine.clearLearning();
 
                 historyItems.clear();
 
@@ -1778,39 +1841,24 @@ public class TabletMainActivity extends Activity {
         startEndlessPlay();
     }
 
+    /*
+     * CGANDROID012 · LOCAL_GAME_ENGINE001
+     */
     private void startEndlessPlay() {
 
-        final String domain =
-                selectedDomain;
+        final String uid =
+                auth.uid();
 
-        CgSmartBatch warmed =
-                takeNextGameWarmBatch(
-                        domain
-                );
-
-        if (warmed != null) {
-
-            if (
-                    warmed.ids.isEmpty() &&
-                    "complete".equals(
-                            warmed.status
-                    )
-            ) {
-                showEnd();
-                return;
-            }
-
-            if (!warmed.ids.isEmpty()) {
-                activateEndlessBatch(
-                        warmed,
-                        domain
-                );
-                return;
-            }
+        if (
+                localEngine != null &&
+                localEngine.isReady(uid)
+        ) {
+            startLocalGameNow();
+            return;
         }
 
         showLoading(
-                "Préparation des questions…"
+                "Première préparation locale…"
         );
 
         io.submit(() -> {
@@ -1821,50 +1869,72 @@ public class TabletMainActivity extends Activity {
                 flags.flushOutboxSync(
                         firestore,
                         token,
-                        auth.uid()
+                        uid
                 );
 
-                if (
-                        flags.pendingHistoryCount()
-                                > 0
-                ) {
-                    throw new Exception(
-                            "Certaines réponses attendent encore leur synchronisation."
-                    );
-                }
+                localEngine.bootstrapSync(
+                        token,
+                        uid
+                );
 
-                CgSmartBatch batch =
-                        smart.batchSync(
-                                token,
-                                domain,
-                                new ArrayList<>(),
-                                ENDLESS_BATCH_SIZE
-                        );
-
-                main.post(() -> {
-
-                    if (batch.ids.isEmpty()) {
-                        game.clear();
-                        showEnd();
-                        return;
-                    }
-
-                    activateEndlessBatch(
-                            batch,
-                            domain
-                    );
-                });
+                main.post(
+                        this::startLocalGameNow
+                );
 
             } catch (Exception ex) {
-
                 main.post(() ->
                         showFatal(
-                                "Démarrage impossible",
+                                "Initialisation locale impossible",
                                 friendlyNetworkMessage(ex)
                         )
                 );
             }
         });
+    }
+
+
+    private void startLocalGameNow() {
+
+        String streamId =
+                "local_"
+                        + System.currentTimeMillis();
+
+        game.start(
+                streamId,
+                Integer.MAX_VALUE,
+                selectedDomain,
+                "active",
+                new ArrayList<>()
+        );
+
+        localEngine.beginSession(
+                streamId
+        );
+
+        nextBatchPrefetching =
+                false;
+
+        lastAnsweredQuestion =
+                null;
+
+        lastAnswerCorrect =
+                false;
+
+        lastAttemptId =
+                "";
+
+        lastAttemptRevision =
+                0;
+
+        correctingPrevious =
+                false;
+
+        correctionResumeQuestion =
+                null;
+
+        loadNextPlayable();
+
+        flushOutboxAsync();
     }
 
 
@@ -1946,6 +2016,9 @@ public class TabletMainActivity extends Activity {
         }
     }
 
+    /*
+     * CGANDROID012 · PERSISTENT_POOL001
+     */
     private void loadNextPlayable() {
 
         if (!game.hasActive()) {
@@ -1953,67 +2026,26 @@ public class TabletMainActivity extends Activity {
             return;
         }
 
-        if (game.position() >= game.batchIds().size()) {
+        CgQuestion q =
+                localEngine.nextQuestion(
+                        selectedDomain,
+                        flags
+                );
 
-            if (game.promoteStagedBatch()) {
-                nextBatchPrefetching = false;
-                preloadUpcomingQuestions();
-                loadNextPlayable();
-                return;
-            }
-
-            showLoading(
-                    "Préparation des prochaines questions…"
-            );
-            requestNextBatch();
+        if (q == null) {
+            game.clear();
+            localEngine.endSession();
+            showEnd();
             return;
         }
 
-        maybePrefetchNextBatch();
+        current =
+                q;
 
-        final String id =
-                game.batchIds().get(game.position());
+        answering =
+                false;
 
-        CgQuestion cached;
-        synchronized (questionCache) {
-            cached = questionCache.remove(id);
-        }
-
-        if (cached != null) {
-            if (flags.isTExcluded(cached)) {
-                game.advanceFiltered();
-                loadNextPlayable();
-                return;
-            }
-            current = cached;
-            showQuestion(cached);
-            return;
-        }
-
-        io.submit(() -> {
-            try {
-                String token = auth.tokenSync();
-                CgQuestion q =
-                        firestore.getQuestionSync(
-                                token,
-                                auth.uid(),
-                                id
-                        );
-
-                if (flags.isTExcluded(q)) {
-                    game.advanceFiltered();
-                    main.post(this::loadNextPlayable);
-                    return;
-                }
-
-                current = q;
-                main.post(() -> showQuestion(q));
-
-            } catch (Exception ex) {
-                game.advanceFiltered();
-                main.post(this::loadNextPlayable);
-            }
-        });
+        showQuestion(q);
     }
 
     private void requestNextBatch() {
@@ -2745,6 +2777,12 @@ public class TabletMainActivity extends Activity {
                     correct
             );
 
+            localEngine.reviseAnswer(
+                    q.id,
+                    lastAnswerCorrect,
+                    correct
+            );
+
             lastAnswerCorrect =
                     correct;
 
@@ -2804,6 +2842,11 @@ public class TabletMainActivity extends Activity {
         );
 
         game.recordAnswer(
+                correct
+        );
+
+        localEngine.recordAnswer(
+                q.id,
                 correct
         );
 
@@ -3565,147 +3608,33 @@ public class TabletMainActivity extends Activity {
     }
 
 
+    /*
+     * CGANDROID012 · CLOUD_OFF_CRITICAL_PATH001
+     */
     private void prepareNextGameThenHome() {
 
         game.clear();
 
-        current = null;
-        answering = false;
-        correctingPrevious = false;
-        correctionResumeQuestion = null;
-        nextBatchPrefetching = false;
+        localEngine.endSession();
 
-        showLoading(
-                "Préparation de la prochaine partie…"
-        );
+        current =
+                null;
 
-        io.submit(() -> {
-            try {
-                String token =
-                        auth.tokenSync();
+        answering =
+                false;
 
-                flags.flushOutboxSync(
-                        firestore,
-                        token,
-                        auth.uid()
-                );
+        correctingPrevious =
+                false;
 
-                if (
-                        flags.pendingHistoryCount()
-                                > 0
-                ) {
-                    throw new Exception(
-                            "Réponses en attente de synchronisation."
-                    );
-                }
+        correctionResumeQuestion =
+                null;
 
-                Map<String, CgSmartBatch> warmed =
-                        smart.warmupSync(
-                                token,
-                                DOMAINS,
-                                ENDLESS_BATCH_SIZE
-                        );
+        nextBatchPrefetching =
+                false;
 
-                synchronized (nextGameWarmBatches) {
+        showHome();
 
-                    nextGameWarmBatches.clear();
-
-                    nextGameWarmBatches.putAll(
-                            warmed
-                    );
-
-                    nextGameWarmAtMs =
-                            System.currentTimeMillis();
-                }
-
-                /*
-                 * FIRST_QUESTION_WARM001 :
-                 * charge réellement la première fiche + image
-                 * de chacun des 9 choix.
-                 */
-                for (
-                        CgSmartBatch batch
-                                : warmed.values()
-                ) {
-
-                    if (
-                            batch == null ||
-                            batch.ids.isEmpty()
-                    ) {
-                        continue;
-                    }
-
-                    String firstId =
-                            batch.ids.get(0);
-
-                    CgQuestion q =
-                            firestore.getQuestionSync(
-                                    token,
-                                    auth.uid(),
-                                    firstId
-                            );
-
-                    synchronized (questionCache) {
-                        questionCache.put(
-                                firstId,
-                                q
-                        );
-                    }
-
-                    if (
-                            q.hasImage() &&
-                            !imageCache.containsKey(
-                                    q.imageFile
-                            )
-                    ) {
-
-                        try {
-                            Bitmap bitmap =
-                                    firestore.loadImageSync(
-                                            token,
-                                            q.imageFile
-                                    );
-
-                            if (bitmap != null) {
-                                imageCache.put(
-                                        q.imageFile,
-                                        bitmap
-                                );
-                            }
-
-                        } catch (Exception ignored) { }
-                    }
-                }
-
-                main.post(() -> {
-                    showHome();
-
-                    Toast.makeText(
-                            this,
-                            "Prochaine partie préparée.",
-                            Toast.LENGTH_SHORT
-                    ).show();
-                });
-
-            } catch (Exception ex) {
-
-                synchronized (nextGameWarmBatches) {
-                    nextGameWarmBatches.clear();
-                    nextGameWarmAtMs = 0L;
-                }
-
-                main.post(() -> {
-                    showHome();
-
-                    Toast.makeText(
-                            this,
-                            "Préchargement non terminé : "
-                                    + safe(ex.getMessage()),
-                            Toast.LENGTH_LONG
-                    ).show();
-                });
-            }
-        });
+        flushOutboxAsync();
     }
 
 
