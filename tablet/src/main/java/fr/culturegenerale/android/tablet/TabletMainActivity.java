@@ -472,34 +472,42 @@ public class TabletMainActivity extends Activity {
                 localCatalogRefreshRunning ||
                 !"home".equals(screen) ||
                 localEngine == null ||
-                !localEngine.isReady(
-                        auth.uid()
-                ) ||
-                !localEngine.needsCatalogRefresh(
-                        auth.uid()
-                )
+                !localEngine.isReady(auth.uid())
         ) {
             return;
         }
 
-        localCatalogRefreshRunning =
-                true;
+        final String uid = auth.uid();
+        final boolean repairNeeded = localEngine.needsCatalogRepair(uid);
+        final boolean refreshNeeded = localEngine.needsCatalogRefresh(uid);
+
+        if (!repairNeeded && !refreshNeeded) {
+            return;
+        }
+
+        localCatalogRefreshRunning = true;
 
         io.submit(() -> {
             try {
-                String token =
-                        auth.tokenSync();
+                // CGANDROID016 · LOCAL_CATALOG_REPAIR001
+                // Même sans réseau, les références historiques déjà présentes
+                // dans SQLite sont corrigées immédiatement.
+                if (repairNeeded) {
+                    localEngine.repairLocalCatalogInPlace(uid);
+                }
 
-                localEngine.refreshCatalogSync(
-                        token,
-                        auth.uid()
-                );
+                if (!isNetworkAvailable()) {
+                    return;
+                }
+
+                String token = auth.tokenSync();
+                localEngine.refreshCatalogSync(token, uid);
 
             } catch (Exception ignored) {
-                // Le pool local existant reste jouable.
+                // Le pool local existant reste jouable et une tentative ultérieure
+                // pourra finaliser la reconstruction depuis Firestore.
             } finally {
-                localCatalogRefreshRunning =
-                        false;
+                localCatalogRefreshRunning = false;
             }
         });
     }
@@ -2017,7 +2025,31 @@ public class TabletMainActivity extends Activity {
                 localEngine != null &&
                 localEngine.isReady(uid)
         ) {
-            startLocalGameNow();
+            // CGANDROID016 · LOCAL_CATALOG_REPAIR001
+            // Une ancienne base SQLite est utilisable immédiatement, mais le
+            // premier lancement 016 la normalise avant de servir une question.
+            if (!localEngine.needsCatalogRepair(uid)) {
+                startLocalGameNow();
+                return;
+            }
+
+            showLoading("Réparation du catalogue local…");
+
+            io.submit(() -> {
+                try {
+                    localEngine.repairLocalCatalogInPlace(uid);
+
+                    if (isNetworkAvailable()) {
+                        String token = auth.tokenSync();
+                        localEngine.refreshCatalogSync(token, uid);
+                    }
+                } catch (Exception ignored) {
+                    // Hors ligne ou Cloud indisponible : la base locale réparée
+                    // reste jouable. Le rattrapage Cloud sera retenté à l'accueil.
+                } finally {
+                    main.post(this::startLocalGameNow);
+                }
+            });
             return;
         }
 

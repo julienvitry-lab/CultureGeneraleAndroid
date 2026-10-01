@@ -39,6 +39,10 @@ final class CgLocalEngine extends SQLiteOpenHelper {
     private static final String META_SESSION = "current_session";
     private static final String META_HISTORY_SEEDED = "history_seeded";
 
+    // CGANDROID016 · LOCAL_CATALOG_REPAIR001
+    private static final String META_CATALOG_REPAIR = "cgandroid016_catalog_repair";
+    private static final String CATALOG_REPAIR_VERSION = "1";
+
     private final Random random = new Random();
 
     CgLocalEngine(Context context) {
@@ -460,6 +464,82 @@ final class CgLocalEngine extends SQLiteOpenHelper {
         return questionCount(getReadableDatabase());
     }
 
+    /*
+     * CGANDROID016 · LOCAL_CATALOG_REPAIR001
+     * Le marqueur n'est posé qu'après une reconstruction locale complète
+     * depuis le catalogue Cloud. Une réparation in-place reste possible
+     * hors ligne, sans toucher à learning / attempts / historique.
+     */
+    synchronized boolean needsCatalogRepair(String uid) {
+        if (!isReady(uid)) return false;
+        return !CATALOG_REPAIR_VERSION.equals(
+                meta(getReadableDatabase(), META_CATALOG_REPAIR)
+        );
+    }
+
+    synchronized int repairLocalCatalogInPlace(String uid) {
+        if (!isReady(uid)) return 0;
+
+        SQLiteDatabase db = getWritableDatabase();
+        Cursor cursor = null;
+        int repaired = 0;
+
+        db.beginTransaction();
+        try {
+            cursor = db.query(
+                    "questions",
+                    new String[]{
+                            "id",
+                            "detail",
+                            "image_file",
+                            "is_image"
+                    },
+                    null, null, null, null, null
+            );
+
+            while (cursor.moveToNext()) {
+                CgQuestion q = new CgQuestion();
+                q.id = safe(cursor.getString(0));
+                q.detail = safe(cursor.getString(1));
+                q.imageFile = safe(cursor.getString(2));
+                q.isImage = cursor.getInt(3) != 0;
+
+                String beforeDetail = q.detail;
+                String beforeImage = q.imageFile;
+                boolean beforeFlag = q.isImage;
+
+                CgLegacyImageNormalizer.normalizeQuestion(q, "", "");
+
+                if (
+                        beforeDetail.equals(q.detail)
+                                && beforeImage.equals(q.imageFile)
+                                && beforeFlag == q.isImage
+                ) {
+                    continue;
+                }
+
+                ContentValues cv = new ContentValues();
+                cv.put("detail", safe(q.detail));
+                cv.put("image_file", safe(q.imageFile));
+                cv.put("is_image", q.isImage ? 1 : 0);
+
+                repaired += db.update(
+                        "questions",
+                        cv,
+                        "id=?",
+                        new String[]{q.id}
+                );
+            }
+
+            db.setTransactionSuccessful();
+        } finally {
+            if (cursor != null) cursor.close();
+            db.endTransaction();
+        }
+
+        return repaired;
+    }
+
     synchronized void bootstrapSync(String token, String uid) throws Exception {
         if (isReady(uid)) return;
 
@@ -486,6 +566,7 @@ final class CgLocalEngine extends SQLiteOpenHelper {
             putMeta(db, META_READY, "1");
             putMeta(db, META_SYNC_AT, String.valueOf(System.currentTimeMillis()));
             putMeta(db, META_SESSION, "");
+            putMeta(db, META_CATALOG_REPAIR, CATALOG_REPAIR_VERSION);
 
             db.setTransactionSuccessful();
         } finally {
@@ -509,6 +590,7 @@ final class CgLocalEngine extends SQLiteOpenHelper {
         try {
             replaceCatalog(db, rows, bucketX);
             putMeta(db, META_SYNC_AT, String.valueOf(System.currentTimeMillis()));
+            putMeta(db, META_CATALOG_REPAIR, CATALOG_REPAIR_VERSION);
             db.setTransactionSuccessful();
         } finally {
             db.endTransaction();
@@ -1081,6 +1163,13 @@ final class CgLocalEngine extends SQLiteOpenHelper {
         q.imageFile = str(fields, "image_file");
         q.isImage = bool(fields, "is_image") || !q.imageFile.isEmpty();
 
+        // CGANDROID016 · LEGACY_IMAGE_NORMALIZE001 / DETAIL_TO_IMAGE001
+        CgLegacyImageNormalizer.normalizeQuestion(
+                q,
+                str(fields, "image_thumb_file"),
+                str(fields, "image_source_url")
+        );
+
         return q;
     }
 
@@ -1099,6 +1188,9 @@ final class CgLocalEngine extends SQLiteOpenHelper {
         q.correctIndex = c.getInt(c.getColumnIndexOrThrow("correct_index"));
         q.imageFile = c.getString(c.getColumnIndexOrThrow("image_file"));
         q.isImage = c.getInt(c.getColumnIndexOrThrow("is_image")) != 0;
+
+        // Rend également jouables les lignes SQLite créées avant CGANDROID016.
+        CgLegacyImageNormalizer.normalizeQuestion(q, "", "");
 
         return q;
     }
