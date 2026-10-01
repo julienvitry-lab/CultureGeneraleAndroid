@@ -2498,60 +2498,24 @@ public class TabletMainActivity extends Activity {
         addStatsBanner();
 
 
-        // CGANDROID011 · IMAGE_MEGATHEME_RESTORE001
-        if (q.hasImage()) {
+        // CGANDROID017 · MEGATHEME_SCREEN_REMOVE001
+        // Le mégathème appartient à l'écran de choix du parcours.
+        // Il ne doit jamais être répété sur l'écran Question, image ou texte.
+        // Aucun fallback vers q.megatheme / selectedDomain n'est autorisé ici.
 
-            String megaLabel =
-                    safe(q.megatheme);
-
-            if (megaLabel.isEmpty()) {
-                megaLabel =
-                        safe(selectedDomain);
-            }
-
-            if (
-                    !megaLabel.isEmpty() &&
-                    !"Toutes les questions".equals(
-                            megaLabel
-                    )
-            ) {
-
-                TextView mega =
-                        cardText(
-                                megaLabel,
-                                20,
-                                RED,
-                                Color.WHITE
-                        );
-
-                mega.setGravity(
-                        Gravity.CENTER
-                );
-
-                mega.setMinHeight(
-                        dp(44)
-                );
-
-                add(
-                        mega,
-                        -1,
-                        -2,
-                        0,
-                        0,
-                        0,
-                        dp(7)
-                );
-            }
+        // CGANDROID017 · MEGATHEME_SCREEN_REMOVE001
+        // Le bandeau vert est strictement le THEME.
+        // Si une ancienne fiche n'a pas de thème, on n'affiche aucun
+        // substitut : le mégathème ne doit jamais revenir indirectement.
+        String visibleTheme = safe(q.theme);
+        if (!visibleTheme.isEmpty()) {
+            TextView theme = cardText(
+                    visibleTheme,
+                    23, GREEN, Color.WHITE);
+            theme.setGravity(Gravity.CENTER);
+            theme.setMinHeight(dp(48));
+            add(theme, -1, -2, 0, 0, 0, dp(7));
         }
-
-        // CGANDROID013 · BANNER_ORDER001 : rouge puis vert pour les images.
-        // CGANDROID002 FIX2 · BANNER_FONT_UNIFY001
-        TextView theme = cardText(
-                q.theme.isEmpty() ? safe(q.megatheme) : q.theme,
-                23, GREEN, Color.WHITE);
-        theme.setGravity(Gravity.CENTER);
-        theme.setMinHeight(dp(48));
-        add(theme, -1, -2, 0, 0, 0, dp(7));
 
         TextView question = cardText(q.question, 23, YELLOW, Color.BLACK);
         question.setGravity(Gravity.CENTER);
@@ -3575,6 +3539,8 @@ public class TabletMainActivity extends Activity {
     }
 
     private void confirmAnalogExclusion(CgQuestion q) {
+        // CGANDROID017 · ANALOG_EXCLUSION_GUARD001
+        // addT() mémorise le GROUPE ANALOGUE, jamais l'ID seul ni le thème seul.
         flags.addT(q);
 
         JSONObject payload = new JSONObject();
@@ -3584,7 +3550,7 @@ public class TabletMainActivity extends Activity {
             payload.put("question", q.question);
             payload.put("theme_key", CgFlags.comparisonKey(q.theme));
             payload.put("question_key", CgFlags.comparisonKey(q.question));
-            payload.put("group_key", CgFlags.analogKey(q.theme, q.question));
+            payload.put("group_key", CgFlags.analogKey(q));
             payload.put("session_id", game.sessionId());
             payload.put("created_ms", System.currentTimeMillis());
             payload.put("state", "pending");
@@ -5524,19 +5490,35 @@ final class CgFlags {
         return s;
     }
 
+    /*
+     * CGANDROID017 · ANALOG_EXCLUSION_GUARD001
+     *
+     * REGLE IMMUTABLE :
+     * analogue = même thème normalisé + même question normalisée.
+     *
+     * - l'ID de la question n'entre PAS dans la clé ;
+     * - le mégathème n'entre PAS dans la clé ;
+     * - le détail n'entre PAS dans la clé ;
+     * - le thème seul n'est JAMAIS une clé d'exclusion.
+     */
     static String analogKey(String theme, String question) {
         return comparisonKey(theme) + "\n" + comparisonKey(question);
     }
 
+    static String analogKey(CgQuestion q) {
+        if (q == null) return analogKey("", "");
+        return analogKey(q.theme, q.question);
+    }
+
     void addT(CgQuestion q) {
         Set<String> existing = new HashSet<>(prefs.getStringSet(K_T, new HashSet<>()));
-        existing.add(analogKey(q.theme, q.question));
+        existing.add(analogKey(q));
         prefs.edit().putStringSet(K_T, existing).apply();
     }
 
     boolean isTExcluded(CgQuestion q) {
         Set<String> set = prefs.getStringSet(K_T, new HashSet<>());
-        return set.contains(analogKey(q.theme, q.question));
+        return set.contains(analogKey(q));
     }
 
     synchronized void enqueue(String collection, JSONObject payload) {

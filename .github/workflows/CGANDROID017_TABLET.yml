@@ -1,4 +1,4 @@
-name: CGANDROID016 · CultureGenerale Tablette
+name: CGANDROID017 · CultureGenerale Tablette
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ on:
       - "gradle.properties"
       - "gradle/**"
       - "gradlew"
-      - ".github/workflows/CGANDROID016_TABLET.yml"
+      - ".github/workflows/CGANDROID017_TABLET.yml"
 
 permissions:
   contents: read
@@ -50,7 +50,10 @@ jobs:
           echo "✓ module ciblé : tablet"
           echo "✓ applicationId : fr.culturegenerale.android.tablet"
 
-      - name: Compiler CGANDROID016 pour tablette
+      - name: Valider CGANDROID017
+        run: python3 scripts/ci/validate_cgandroid017.py
+
+      - name: Compiler CGANDROID017 pour tablette
         run: ./gradlew :tablet:assembleDebug --stacktrace --no-daemon
 
       - name: Vérifier l'APK produit
@@ -61,10 +64,10 @@ jobs:
           echo "APK : $APK"
           ls -lh "$APK"
 
-      - name: Publier l'APK tablette CGANDROID016
+      - name: Publier l'APK tablette CGANDROID017
         uses: actions/upload-artifact@v4
         with:
-          name: CultureGenerale-Tablette-CGANDROID016
+          name: CultureGenerale-Tablette-CGANDROID017
           path: tablet/build/outputs/apk/debug/tablet-debug.apk
           if-no-files-found: error
           retention-days: 14
