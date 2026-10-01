@@ -318,7 +318,6 @@ final class CgLocalEngine extends SQLiteOpenHelper {
                 },
                 null,
                 null,
-                null,
                 "seq DESC",
                 "1"
         );
