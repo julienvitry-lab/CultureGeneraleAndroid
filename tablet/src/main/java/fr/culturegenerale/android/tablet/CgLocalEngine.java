@@ -534,6 +534,19 @@ final class CgLocalEngine extends SQLiteOpenHelper {
     }
 
     synchronized CgQuestion nextQuestion(String domain, CgFlags flags) {
+        return nextQuestion(
+                domain,
+                flags,
+                Collections.emptySet()
+        );
+    }
+
+
+    synchronized CgQuestion nextQuestion(
+            String domain,
+            CgFlags flags,
+            Set<String> temporarilyExcluded
+    ) {
         SQLiteDatabase db = getWritableDatabase();
         String sessionId = meta(db, META_SESSION);
         if (sessionId.isEmpty()) return null;
@@ -568,7 +581,17 @@ final class CgLocalEngine extends SQLiteOpenHelper {
             while (c.moveToNext()) {
                 CgQuestion q = readQuestion(c);
 
-                if (q.id.isEmpty() || served.contains(q.id)) continue;
+                if (
+                        q.id.isEmpty() ||
+                        served.contains(q.id) ||
+                        (
+                                temporarilyExcluded != null &&
+                                temporarilyExcluded.contains(q.id)
+                        )
+                ) {
+                    continue;
+                }
+
                 if (flags != null && flags.isTExcluded(q)) continue;
 
                 int fail = c.getInt(c.getColumnIndexOrThrow("local_fail"));
@@ -640,6 +663,101 @@ final class CgLocalEngine extends SQLiteOpenHelper {
         rememberTheme(db, chosen.themeKey);
         return chosen.question;
     }
+
+    /*
+     * CGANDROID015 · DEFER_MISSING_IMAGES001
+     *
+     * Une question image sélectionnée hors ligne mais non disponible
+     * sur disque est rendue au pool. Elle n'est ni vue, ni répondue,
+     * ni comptée comme échec.
+     */
+    synchronized void deferQuestion(
+            CgQuestion question
+    ) {
+
+        if (
+                question == null ||
+                question.id == null ||
+                question.id.trim().isEmpty()
+        ) {
+            return;
+        }
+
+        SQLiteDatabase db =
+                getWritableDatabase();
+
+        String sessionId =
+                meta(
+                        db,
+                        META_SESSION
+                );
+
+        if (sessionId.isEmpty()) {
+            return;
+        }
+
+        db.beginTransaction();
+
+        try {
+
+            db.delete(
+                    "session_served",
+                    "session_id=? AND question_id=?",
+                    new String[]{
+                            sessionId,
+                            question.id
+                    }
+            );
+
+            String key =
+                    themeKey(question);
+
+            Cursor c =
+                    db.rawQuery(
+                            "SELECT MAX(seq) " +
+                                    "FROM recent_themes " +
+                                    "WHERE theme_key=?",
+                            new String[]{
+                                    key
+                            }
+                    );
+
+            long lastSeq =
+                    0L;
+
+            try {
+                if (
+                        c.moveToFirst() &&
+                        !c.isNull(0)
+                ) {
+                    lastSeq =
+                            c.getLong(0);
+                }
+            } finally {
+                c.close();
+            }
+
+            if (lastSeq > 0L) {
+
+                db.delete(
+                        "recent_themes",
+                        "seq=?",
+                        new String[]{
+                                String.valueOf(
+                                        lastSeq
+                                )
+                        }
+                );
+            }
+
+            db.setTransactionSuccessful();
+
+        } finally {
+
+            db.endTransaction();
+        }
+    }
+
 
     synchronized void recordAnswer(String questionId, boolean correct) {
         if (questionId == null || questionId.trim().isEmpty()) return;

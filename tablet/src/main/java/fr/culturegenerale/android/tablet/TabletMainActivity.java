@@ -9,6 +9,8 @@ import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -150,6 +152,15 @@ public class TabletMainActivity extends Activity {
     private boolean localNextRequested = false;
     private static final int LOCAL_PREFETCH_AHEAD = 4;
     private final Map<String, Long> imageFetchFailedAt = new HashMap<>();
+
+    // CGANDROID015 · OFFLINE_PLAY001 / DEFER_MISSING_IMAGES001
+    private final Set<String> offlineDeferredQuestionIds =
+            new HashSet<>();
+    private boolean offlinePauseDueToNetwork = false;
+
+    // CGANDROID015 · OUTBOX_RESUME001
+    private volatile boolean outboxFlushRunning = false;
+
     private final Set<String> imagePreloadInFlight = new HashSet<>();
     private final Map<String, CgQuestion> questionCache = new HashMap<>();
     private final Set<String> questionPreloadInFlight = new HashSet<>();
@@ -196,15 +207,109 @@ public class TabletMainActivity extends Activity {
         game = new CgGameState(this);
         localEngine = new CgLocalEngine(this);
 
+        // OUTBOX_RESUME001 : retente silencieusement les réponses
+        // en attente lorsque le réseau revient.
+        main.postDelayed(
+                outboxResumeTick,
+                12000L
+        );
+
         if (auth.hasRefreshToken()) showHome();
         else showLogin();
     }
 
     @Override
     protected void onDestroy() {
+        main.removeCallbacks(
+                outboxResumeTick
+        );
         super.onDestroy();
         io.shutdownNow();
     }
+
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+
+        if (
+                auth != null &&
+                auth.hasRefreshToken()
+        ) {
+            flushOutboxAsync();
+            resumeOfflinePoolIfPossible();
+        }
+    }
+
+    /*
+     * CGANDROID015 · OUTBOX_RESUME001
+     *
+     * La file SharedPreferences existante reste persistante après
+     * fermeture de l'app. Ce tick ne crée rien : il relance seulement
+     * l'envoi lorsqu'une connexion est de nouveau disponible.
+     */
+    private final Runnable outboxResumeTick =
+            new Runnable() {
+
+                @Override
+                public void run() {
+
+                    if (
+                            auth != null &&
+                            flags != null &&
+                            auth.hasRefreshToken() &&
+                            isNetworkAvailable()
+                    ) {
+
+                        if (
+                                flags.pendingHistoryCount()
+                                        > 0
+                        ) {
+                            flushOutboxAsync();
+                        }
+
+                        resumeOfflinePoolIfPossible();
+                    }
+
+                    if (!isFinishing()) {
+                        main.postDelayed(
+                                this,
+                                15000L
+                        );
+                    }
+                }
+            };
+
+
+    @SuppressWarnings("deprecation")
+    private boolean isNetworkAvailable() {
+
+        try {
+
+            ConnectivityManager manager =
+                    (ConnectivityManager)
+                            getSystemService(
+                                    Context.CONNECTIVITY_SERVICE
+                            );
+
+            if (manager == null) {
+                return false;
+            }
+
+            NetworkInfo info =
+                    manager.getActiveNetworkInfo();
+
+            return (
+                    info != null &&
+                    info.isConnected()
+            );
+
+        } catch (Exception ignored) {
+
+            return false;
+        }
+    }
+
 
     @Override
     public void onBackPressed() {
@@ -222,6 +327,11 @@ public class TabletMainActivity extends Activity {
 
         if ("answers".equals(screen) && current != null) {
             showQuestion(current);
+            return;
+        }
+
+        if ("offline_pause".equals(screen) && game.hasActive()) {
+            showHome();
             return;
         }
         if ("size".equals(screen)) {
@@ -2235,75 +2345,96 @@ public class TabletMainActivity extends Activity {
         }
     }
 
+    /*
+     * CGANDROID015 · COMPACT_LIVE_STATS001
+     */
     private void addStatsBanner() {
-        LinearLayout band = new LinearLayout(this);
-        band.setOrientation(LinearLayout.HORIZONTAL);
-        band.setGravity(Gravity.CENTER);
-        band.setPadding(dp(5), dp(5), dp(5), dp(5));
-        band.setBackground(
-                roundedStroke(
-                        Color.rgb(16, 16, 16),
+
+        int played =
+                game.played();
+
+        int good =
+                game.correct();
+
+        int errors =
+                Math.max(
+                        0,
+                        played - good
+                );
+
+        double scorePct =
+                played <= 0
+                        ? 0.0
+                        : (
+                        good
+                                * 100.0
+                                / played
+                );
+
+        String line =
+                "Question "
+                        + (played + 1)
+                        + "  ·  ✓ "
+                        + good
+                        + "  ·  ✕ "
+                        + errors
+                        + "  ·  "
+                        + String.format(
+                        Locale.FRANCE,
+                        "%.1f %%",
+                        scorePct
+                );
+
+        if (!isNetworkAvailable()) {
+            line +=
+                    "  ·  HORS LIGNE";
+        }
+
+        TextView band =
+                text(
+                        line,
                         14,
                         Color.WHITE,
+                        Gravity.CENTER
+                );
+
+        band.setTypeface(
+                appFont
+        );
+
+        band.setSingleLine(
+                true
+        );
+
+        band.setPadding(
+                dp(10),
+                0,
+                dp(10),
+                0
+        );
+
+        band.setBackground(
+                roundedStroke(
+                        Color.rgb(
+                                18,
+                                18,
+                                18
+                        ),
+                        8,
+                        GREY,
                         1
                 )
         );
 
-        int played = game.played();
-        int good = game.correct();
-        int errors = Math.max(0, played - good);
-        double scorePct =
-                played <= 0
-                        ? 0.0
-                        : (good * 100.0) / played;
-
-        band.addView(
-                statCell(
-                        "Mégathème",
-                        selectedDomain.isEmpty()
-                                ? "Toutes"
-                                : selectedDomain
-                ),
-                statLp(1.35f)
+        add(
+                band,
+                -1,
+                dp(34),
+                0,
+                0,
+                0,
+                dp(5)
         );
-
-        band.addView(
-                statCell(
-                        "Question",
-                        String.valueOf(played + 1)
-                ),
-                statLp(.8f)
-        );
-
-        band.addView(
-                statCell(
-                        "Score",
-                        String.format(
-                                Locale.FRANCE,
-                                "%.2f %%",
-                                scorePct
-                        )
-                ),
-                statLp(.9f)
-        );
-
-        band.addView(
-                statCell(
-                        "Bonnes réponses",
-                        String.valueOf(good)
-                ),
-                statLp(1.15f)
-        );
-
-        band.addView(
-                statCell(
-                        "Erreurs",
-                        String.valueOf(errors)
-                ),
-                statLp(.9f)
-        );
-
-        add(band, -1, dp(70), 0, 0, 0, dp(8));
     }
 
     private LinearLayout.LayoutParams statLp(float weight) {
@@ -2331,6 +2462,8 @@ public class TabletMainActivity extends Activity {
         answerButtons.clear();
         currentShownAtMs = System.currentTimeMillis();
         baseScreen();
+
+        addStatsBanner();
 
 
         // CGANDROID011 · IMAGE_MEGATHEME_RESTORE001
@@ -2463,6 +2596,7 @@ public class TabletMainActivity extends Activity {
         answerButtons.clear();
         baseScreen();
 
+        addStatsBanner();
 
 
         String correctAnswer = "";
@@ -2713,12 +2847,16 @@ public class TabletMainActivity extends Activity {
             localPrefetchRunning = false;
             localPrefetchExhausted = false;
             localNextRequested = false;
+            offlineDeferredQuestionIds.clear();
+            offlinePauseDueToNetwork = false;
         }
     }
 
     private void dispatchPrefetchedQuestion() {
         CgQuestion q = null;
         boolean complete = false;
+        boolean deferredPause = false;
+
         synchronized (localPrefetchLock) {
             if (!localNextRequested || !game.hasActive()) return;
             while (!localPrefetched.isEmpty()) {
@@ -2732,21 +2870,33 @@ public class TabletMainActivity extends Activity {
             }
             if (q == null && localPrefetchExhausted && !localPrefetchRunning) {
                 localNextRequested = false;
-                complete = true;
+
+                if (!offlineDeferredQuestionIds.isEmpty()) {
+                    deferredPause = true;
+                } else {
+                    complete = true;
+                }
             }
         }
+
         if (q != null) {
             current = q;
             answering = false;
             showQuestion(q); // memory/disk cache is ready here
             return;
         }
+        if (deferredPause) {
+            showOfflinePause();
+            return;
+        }
+
         if (complete) {
             game.clear();
             localEngine.endSession();
             showEnd();
             return;
         }
+
         // Only seen if a player answers before the anticipated image is ready.
         if (!"loading".equals(screen)) {
             showLoading("Préparation de l'image suivante…");
@@ -2779,15 +2929,46 @@ public class TabletMainActivity extends Activity {
                         }
                         // This marks the question reserved in SQLite; the
                         // single worker preserves the engine's ordering.
-                        upcoming = localEngine.nextQuestion(domain, flags);
+                        upcoming =
+                                localEngine.nextQuestion(
+                                        domain,
+                                        flags,
+                                        new HashSet<>(
+                                                offlineDeferredQuestionIds
+                                        )
+                                );
+
                         if (upcoming == null) {
                             localPrefetchExhausted = true;
                             break;
                         }
                     }
-                    if (upcoming.hasImage()) {
-                        prepareImageSync(upcoming.imageFile);
+                    if (
+                            upcoming.hasImage() &&
+                            !prepareImageSync(
+                                    upcoming.imageFile
+                            )
+                    ) {
+
+                        localEngine.deferQuestion(
+                                upcoming
+                        );
+
+                        synchronized (localPrefetchLock) {
+
+                            offlineDeferredQuestionIds.add(
+                                    upcoming.id
+                            );
+
+                            if (!isNetworkAvailable()) {
+                                offlinePauseDueToNetwork =
+                                        true;
+                            }
+                        }
+
+                        continue;
                     }
+
                     synchronized (localPrefetchLock) {
                         if (epoch != localPrefetchEpoch || !game.hasActive()) break;
                         localPrefetched.addLast(upcoming);
@@ -2830,6 +3011,16 @@ public class TabletMainActivity extends Activity {
             }
             return true;
         }
+
+        /*
+         * OFFLINE_PLAY001 :
+         * une image absente du cache ne déclenche aucun appel réseau
+         * si Android indique qu'il n'y a pas de connexion.
+         */
+        if (!isNetworkAvailable()) {
+            return false;
+        }
+
         // Avoid repeatedly stalling the session on the same broken URL.
         Long lastFailure = imageFetchFailedAt.get(imageId);
         if (lastFailure != null
@@ -2853,6 +3044,163 @@ public class TabletMainActivity extends Activity {
             return false;
         }
     }
+
+    /*
+     * CGANDROID015 · OFFLINE_PLAY001
+     */
+    private void showOfflinePause() {
+
+        screen =
+                "offline_pause";
+
+        baseScreen();
+
+        gap(44);
+
+        addTitle(
+                "Partie hors ligne",
+                30,
+                Color.WHITE
+        );
+
+        gap(14);
+
+        String message =
+                isNetworkAvailable()
+                        ? "Les questions restantes nécessitent des images "
+                        + "qui ne sont pas encore disponibles sur la tablette."
+                        : "Toutes les questions actuellement jouables hors ligne "
+                        + "ont été proposées. Les questions avec une image non "
+                        + "encore mise en cache sont conservées pour plus tard.";
+
+        TextView info =
+                cardText(
+                        message,
+                        19,
+                        DARK,
+                        Color.WHITE
+                );
+
+        info.setGravity(
+                Gravity.CENTER
+        );
+
+        add(
+                info,
+                -1,
+                -2,
+                dp(80),
+                0,
+                dp(80),
+                dp(20)
+        );
+
+        Button retry =
+                button(
+                        "Réessayer",
+                        BLUE,
+                        20
+                );
+
+        add(
+                retry,
+                -1,
+                dp(58),
+                dp(160),
+                0,
+                dp(160),
+                dp(10)
+        );
+
+        retry.setOnClickListener(v -> {
+
+            if (!isNetworkAvailable()) {
+
+                Toast.makeText(
+                        this,
+                        "Toujours hors ligne.",
+                        Toast.LENGTH_SHORT
+                ).show();
+
+                return;
+            }
+
+            offlinePauseDueToNetwork =
+                    true;
+
+            resumeOfflinePoolIfPossible();
+        });
+
+        Button home =
+                button(
+                        "Accueil",
+                        GREY,
+                        19
+                );
+
+        add(
+                home,
+                -1,
+                dp(54),
+                dp(190),
+                0,
+                dp(190),
+                0
+        );
+
+        home.setOnClickListener(
+                v -> showHome()
+        );
+    }
+
+
+    private void resumeOfflinePoolIfPossible() {
+
+        if (
+                !isNetworkAvailable() ||
+                !offlinePauseDueToNetwork ||
+                !game.hasActive()
+        ) {
+            return;
+        }
+
+        boolean waitingScreen =
+                "offline_pause".equals(
+                        screen
+                );
+
+        synchronized (localPrefetchLock) {
+
+            offlineDeferredQuestionIds.clear();
+
+            imageFetchFailedAt.clear();
+
+            localPrefetchExhausted =
+                    false;
+
+            offlinePauseDueToNetwork =
+                    false;
+
+            if (waitingScreen) {
+                localNextRequested =
+                        true;
+            }
+        }
+
+        if (waitingScreen) {
+
+            showLoading(
+                    "Connexion retrouvée · reprise de la partie…"
+            );
+        }
+
+        pumpLocalImagePrefetch();
+
+        if (waitingScreen) {
+            dispatchPrefetchedQuestion();
+        }
+    }
+
 
     private void preloadUpcomingImages() {
         preloadUpcomingQuestions();
@@ -3218,11 +3566,39 @@ public class TabletMainActivity extends Activity {
     }
 
     private void flushOutboxAsync() {
+
+        if (
+                outboxFlushRunning ||
+                !isNetworkAvailable()
+        ) {
+            return;
+        }
+
+        outboxFlushRunning =
+                true;
+
         io.submit(() -> {
+
             try {
-                String token = auth.tokenSync();
-                flags.flushOutboxSync(firestore, token, auth.uid());
-            } catch (Exception ignored) { }
+
+                String token =
+                        auth.tokenSync();
+
+                flags.flushOutboxSync(
+                        firestore,
+                        token,
+                        auth.uid()
+                );
+
+            } catch (Exception ignored) {
+
+                // L'outbox persistante reste intacte.
+
+            } finally {
+
+                outboxFlushRunning =
+                        false;
+            }
         });
     }
 
@@ -3564,13 +3940,6 @@ public class TabletMainActivity extends Activity {
                         Color.WHITE
                 );
 
-        Button stats =
-                actionBand(
-                        "Stats",
-                        DARK,
-                        Color.WHITE
-                );
-
         Button end =
                 actionBand(
                         "Fin de la partie",
@@ -3582,7 +3951,6 @@ public class TabletMainActivity extends Activity {
         addActionBand(panel, menu);
         addActionBand(panel, back);
         addActionBand(panel, exclude);
-        addActionBand(panel, stats);
         addActionBand(panel, end);
 
         problem.setOnClickListener(v -> {
@@ -3608,11 +3976,6 @@ public class TabletMainActivity extends Activity {
         back.setOnClickListener(v -> {
             screenFrame.removeView(overlay);
             returnToPreviousQuestion(q);
-        });
-
-        stats.setOnClickListener(v -> {
-            screenFrame.removeView(overlay);
-            showQuickGameStats();
         });
 
         end.setOnClickListener(v -> {
