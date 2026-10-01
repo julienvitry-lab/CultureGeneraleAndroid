@@ -931,3 +931,34 @@ body.cg16-installed
     grid-template-columns:repeat(2,minmax(0,1fr))!important;
   }
 }
+
+/* ============================================================
+   CGWEB127 FIX1
+   LOWER_KPI_HEIGHT_PLUS_1MM001
+   ============================================================ */
+
+/*
+  Instruction ciblée :
+  +1 mm de hauteur UNIQUEMENT sur les 10 tuiles KPI du bas
+  (Maîtrise + Temps de réponse et difficulté).
+
+  Aucun changement :
+  - aux KPI supérieurs ;
+  - à la largeur ;
+  - aux polices ;
+  - aux valeurs ;
+  - aux calculs.
+*/
+
+body.cg16-installed
+#cgweb035Panel
+.cg115-detail-metrics-row {
+  grid-auto-rows:calc(54px + 1mm)!important;
+}
+
+body.cg16-installed
+#cgweb035Panel
+.cg115-detail-metrics-row > article {
+  height:calc(54px + 1mm)!important;
+  min-height:calc(54px + 1mm)!important;
+}
