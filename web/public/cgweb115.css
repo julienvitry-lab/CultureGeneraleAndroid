@@ -962,3 +962,92 @@ body.cg16-installed
   height:calc(54px + 1mm)!important;
   min-height:calc(54px + 1mm)!important;
 }
+
+/* ============================================================
+   CGWEB127 FIX2
+   LOWER_KPI_UNIFORM_HEIGHT002 / KPI_TWO_ROW_LAYOUT001
+   ============================================================ */
+
+/*
+  Les 10 KPI du bas restent STRICTEMENT de même hauteur.
+
+  Correction structurelle :
+  chaque carte est une grille interne à deux zones :
+    1. libellé
+    2. valeur
+
+  Le chevauchement devient impossible même si le libellé
+  occupe deux lignes.
+*/
+
+body.cg16-installed
+#cgweb035Panel
+.cg115-detail-metrics-row {
+  grid-auto-rows:calc(54px + 4mm)!important;
+}
+
+body.cg16-installed
+#cgweb035Panel
+.cg115-detail-metrics-row > article {
+  box-sizing:border-box!important;
+  width:100%!important;
+  height:calc(54px + 4mm)!important;
+  min-height:calc(54px + 4mm)!important;
+
+  display:grid!important;
+  grid-template-rows:auto auto!important;
+  align-content:center!important;
+  align-items:start!important;
+  row-gap:4px!important;
+
+  padding:7px 10px!important;
+}
+
+/*
+  Même comportement pour TOUS les libellés :
+  une ou deux lignes, jamais de superposition avec la valeur.
+*/
+body.cg16-installed
+#cgweb035Panel
+.cg115-detail-metrics-row > article > span,
+body.cg16-installed
+#cgweb035Panel
+.cg115-detail-metrics-row > article > small {
+  display:block!important;
+  width:100%!important;
+  margin:0!important;
+  padding:0!important;
+
+  white-space:normal!important;
+  overflow:visible!important;
+
+  line-height:1.18!important;
+}
+
+/*
+  Même comportement pour TOUTES les valeurs.
+*/
+body.cg16-installed
+#cgweb035Panel
+.cg115-detail-metrics-row > article > b,
+body.cg16-installed
+#cgweb035Panel
+.cg115-detail-metrics-row > article > strong {
+  display:block!important;
+  width:100%!important;
+  margin:0!important;
+  padding:0!important;
+
+  line-height:1.08!important;
+}
+
+/*
+  Neutralisation explicite de toute règle ciblant uniquement
+  le dernier KPI : il doit rester identique aux 9 autres.
+*/
+body.cg16-installed
+#cgweb035Panel
+.cg115-detail-metrics-row > article:last-child {
+  height:calc(54px + 4mm)!important;
+  min-height:calc(54px + 4mm)!important;
+}
