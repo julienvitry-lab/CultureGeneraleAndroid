@@ -29,7 +29,7 @@ import java.util.Set;
 final class CgLocalEngine extends SQLiteOpenHelper {
 
     private static final String DB_NAME = "cgandroid012_local_learning.db";
-    private static final int DB_VERSION = 1;
+    private static final int DB_VERSION = 2;
     private static final int THEME_COOLDOWN = 8;
     private static final long CATALOG_REFRESH_MS = 6L * 60L * 60L * 1000L;
 
@@ -37,6 +37,7 @@ final class CgLocalEngine extends SQLiteOpenHelper {
     private static final String META_UID = "uid";
     private static final String META_SYNC_AT = "catalog_sync_at";
     private static final String META_SESSION = "current_session";
+    private static final String META_HISTORY_SEEDED = "history_seeded";
 
     private final Random random = new Random();
 
@@ -95,14 +96,352 @@ final class CgLocalEngine extends SQLiteOpenHelper {
                         "value TEXT NOT NULL DEFAULT ''" +
                         ")"
         );
+
+        createAttemptLedger(db);
     }
 
     @Override
-    public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        throw new IllegalStateException(
-                "Migration locale non prévue : " + oldVersion + " -> " + newVersion
+    public void onUpgrade(
+            SQLiteDatabase db,
+            int oldVersion,
+            int newVersion
+    ) {
+        if (oldVersion < 2) {
+            createAttemptLedger(db);
+        }
+        if (newVersion > DB_VERSION) {
+            throw new IllegalStateException(
+                    "Migration locale inconnue : "
+                            + oldVersion
+                            + " -> "
+                            + newVersion
+            );
+        }
+    }
+
+    private static void createAttemptLedger(
+            SQLiteDatabase db
+    ) {
+        db.execSQL(
+                "CREATE TABLE IF NOT EXISTS attempts (" +
+                        "attempt_id TEXT PRIMARY KEY," +
+                        "session_id TEXT NOT NULL DEFAULT ''," +
+                        "seq INTEGER NOT NULL DEFAULT 0," +
+                        "question_id TEXT NOT NULL," +
+                        "correct INTEGER NOT NULL DEFAULT 0," +
+                        "revision INTEGER NOT NULL DEFAULT 1," +
+                        "played_at INTEGER NOT NULL DEFAULT 0," +
+                        "response_ms INTEGER NOT NULL DEFAULT 0" +
+                        ")"
+        );
+        db.execSQL(
+                "CREATE INDEX IF NOT EXISTS idx_attempts_session_seq " +
+                        "ON attempts(session_id, seq)"
+        );
+        db.execSQL(
+                "CREATE INDEX IF NOT EXISTS idx_attempts_played_at " +
+                        "ON attempts(played_at DESC)"
         );
     }
+
+
+    synchronized boolean historySeeded() {
+        return "1".equals(
+                meta(
+                        getReadableDatabase(),
+                        META_HISTORY_SEEDED
+                )
+        );
+    }
+
+
+    synchronized void importCloudHistory(
+            List<CgHistoryItem> items
+    ) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            if (items != null) {
+                for (CgHistoryItem item : items) {
+                    if (
+                            item == null ||
+                            item.questionId == null ||
+                            item.questionId.trim().isEmpty()
+                    ) {
+                        continue;
+                    }
+
+                    String attemptId =
+                            item.attemptId == null
+                                    ? ""
+                                    : item.attemptId.trim();
+
+                    if (attemptId.isEmpty()) {
+                        attemptId =
+                                "cloud_"
+                                        + item.questionId
+                                        + "_"
+                                        + item.playedAtMs
+                                        + "_"
+                                        + (item.correct ? "1" : "0");
+                    }
+
+                    ContentValues cv = new ContentValues();
+                    cv.put("attempt_id", attemptId);
+                    cv.put("session_id", "cloud");
+                    cv.put("seq", 0);
+                    cv.put("question_id", item.questionId);
+                    cv.put("correct", item.correct ? 1 : 0);
+                    cv.put("revision", 1);
+                    cv.put("played_at", item.playedAtMs);
+                    cv.put("response_ms", 0);
+
+                    db.insertWithOnConflict(
+                            "attempts",
+                            null,
+                            cv,
+                            SQLiteDatabase.CONFLICT_IGNORE
+                    );
+                }
+            }
+
+            putMeta(db, META_HISTORY_SEEDED, "1");
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+    }
+
+
+    synchronized CgLocalAttempt recordAttempt(
+            String sessionId,
+            String attemptId,
+            String questionId,
+            boolean correct,
+            long playedAtMs,
+            long responseMs
+    ) {
+        SQLiteDatabase db = getWritableDatabase();
+
+        Cursor seqCursor = db.rawQuery(
+                "SELECT COALESCE(MAX(seq),0)+1 " +
+                        "FROM attempts WHERE session_id=?",
+                new String[]{safe(sessionId)}
+        );
+
+        int seq = 1;
+        try {
+            if (seqCursor.moveToFirst()) {
+                seq = Math.max(1, seqCursor.getInt(0));
+            }
+        } finally {
+            seqCursor.close();
+        }
+
+        ContentValues cv = new ContentValues();
+        cv.put("attempt_id", attemptId);
+        cv.put("session_id", safe(sessionId));
+        cv.put("seq", seq);
+        cv.put("question_id", questionId);
+        cv.put("correct", correct ? 1 : 0);
+        cv.put("revision", 1);
+        cv.put("played_at", playedAtMs);
+        cv.put("response_ms", Math.max(0L, responseMs));
+
+        db.insertWithOnConflict(
+                "attempts",
+                null,
+                cv,
+                SQLiteDatabase.CONFLICT_REPLACE
+        );
+
+        return new CgLocalAttempt(
+                attemptId,
+                safe(sessionId),
+                seq,
+                questionId,
+                correct,
+                1,
+                playedAtMs
+        );
+    }
+
+
+    synchronized void reviseAttempt(
+            String attemptId,
+            boolean correct,
+            int revision,
+            long playedAtMs,
+            long responseMs
+    ) {
+        if (
+                attemptId == null ||
+                attemptId.trim().isEmpty()
+        ) {
+            return;
+        }
+
+        ContentValues cv = new ContentValues();
+        cv.put("correct", correct ? 1 : 0);
+        cv.put("revision", Math.max(1, revision));
+        cv.put("played_at", playedAtMs);
+        cv.put("response_ms", Math.max(0L, responseMs));
+
+        getWritableDatabase().update(
+                "attempts",
+                cv,
+                "attempt_id=?",
+                new String[]{attemptId}
+        );
+    }
+
+
+    synchronized CgLocalAttempt previousAttempt(
+            String sessionId,
+            int beforeSeq
+    ) {
+        Cursor c = getReadableDatabase().query(
+                "attempts",
+                new String[]{
+                        "attempt_id",
+                        "session_id",
+                        "seq",
+                        "question_id",
+                        "correct",
+                        "revision",
+                        "played_at"
+                },
+                "session_id=? AND seq<?",
+                new String[]{
+                        safe(sessionId),
+                        String.valueOf(beforeSeq)
+                },
+                null,
+                null,
+                null,
+                "seq DESC",
+                "1"
+        );
+
+        try {
+            if (!c.moveToFirst()) {
+                return null;
+            }
+            return new CgLocalAttempt(
+                    c.getString(0),
+                    c.getString(1),
+                    c.getInt(2),
+                    c.getString(3),
+                    c.getInt(4) != 0,
+                    c.getInt(5),
+                    c.getLong(6)
+            );
+        } finally {
+            c.close();
+        }
+    }
+
+
+    synchronized CgQuestion questionById(
+            String questionId
+    ) {
+        if (
+                questionId == null ||
+                questionId.trim().isEmpty()
+        ) {
+            return null;
+        }
+
+        Cursor c = getReadableDatabase().query(
+                "questions",
+                null,
+                "id=?",
+                new String[]{questionId},
+                null,
+                null,
+                null,
+                "1"
+        );
+
+        try {
+            return c.moveToFirst()
+                    ? readQuestion(c)
+                    : null;
+        } finally {
+            c.close();
+        }
+    }
+
+
+    synchronized List<CgHistoryItem> listLocalHistory(
+            int maxItems
+    ) {
+        List<CgHistoryItem> out =
+                new ArrayList<>();
+
+        Cursor c = getReadableDatabase().rawQuery(
+                "SELECT " +
+                        "a.attempt_id," +
+                        "a.question_id," +
+                        "a.correct," +
+                        "a.played_at," +
+                        "q.megatheme," +
+                        "q.theme," +
+                        "q.question_text," +
+                        "q.option_a," +
+                        "q.option_b," +
+                        "q.option_c," +
+                        "q.option_d," +
+                        "q.correct_index " +
+                        "FROM attempts a " +
+                        "LEFT JOIN questions q ON q.id=a.question_id " +
+                        "ORDER BY a.played_at DESC LIMIT ?",
+                new String[]{
+                        String.valueOf(
+                                Math.max(1, maxItems)
+                        )
+                }
+        );
+
+        try {
+            while (c.moveToNext()) {
+                CgHistoryItem item =
+                        new CgHistoryItem();
+
+                item.attemptId = safe(c.getString(0));
+                item.questionId = safe(c.getString(1));
+                item.correct = c.getInt(2) != 0;
+                item.playedAtMs = c.getLong(3);
+                item.domain = safe(c.getString(4));
+                item.theme = safe(c.getString(5));
+                item.question = safe(c.getString(6));
+
+                int correctIndex = c.getInt(11);
+
+                if (
+                        correctIndex >= 1 &&
+                        correctIndex <= 4
+                ) {
+                    item.correctAnswer =
+                            safe(
+                                    c.getString(
+                                            6 + correctIndex
+                                    )
+                            );
+                }
+
+                item.interactionMode =
+                        "local_attempt_ledger";
+
+                out.add(item);
+            }
+        } finally {
+            c.close();
+        }
+
+        return out;
+    }
+
 
     synchronized boolean isReady(String uid) {
         if (uid == null || uid.trim().isEmpty()) return false;
@@ -352,7 +691,9 @@ final class CgLocalEngine extends SQLiteOpenHelper {
             db.delete("learning", null, null);
             db.delete("recent_themes", null, null);
             db.delete("session_served", null, null);
+            db.delete("attempts", null, null);
             putMeta(db, META_SESSION, "");
+            putMeta(db, META_HISTORY_SEEDED, "1");
             db.setTransactionSuccessful();
         } finally {
             db.endTransaction();
@@ -895,5 +1236,37 @@ final class CgLocalEngine extends SQLiteOpenHelper {
     private static final class LocalCandidate {
         CgQuestion question;
         String themeKey = "";
+    }
+}
+
+final class CgLocalAttempt {
+
+    final String attemptId;
+    final String sessionId;
+    final int seq;
+    final String questionId;
+    final boolean correct;
+    final int revision;
+    final long playedAtMs;
+
+    CgLocalAttempt(
+            String attemptId,
+            String sessionId,
+            int seq,
+            String questionId,
+            boolean correct,
+            int revision,
+            long playedAtMs
+    ) {
+        this.attemptId =
+                attemptId == null ? "" : attemptId;
+        this.sessionId =
+                sessionId == null ? "" : sessionId;
+        this.seq = seq;
+        this.questionId =
+                questionId == null ? "" : questionId;
+        this.correct = correct;
+        this.revision = Math.max(1, revision);
+        this.playedAtMs = playedAtMs;
     }
 }

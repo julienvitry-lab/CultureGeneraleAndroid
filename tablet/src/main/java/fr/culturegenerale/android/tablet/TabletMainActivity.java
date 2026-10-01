@@ -165,6 +165,11 @@ public class TabletMainActivity extends Activity {
     private boolean correctingPrevious = false;
     private CgQuestion correctionResumeQuestion = null;
 
+    // CGANDROID014 · MULTI_STEP_REWIND001
+    private CgQuestion rewindAnchorQuestion = null;
+    private CgLocalAttempt rewindTargetAttempt = null;
+    private int rewindDepth = 0;
+
     // CGANDROID011 · NEXT_GAME_ALL_DOMAIN_WARMUP001
     private static final long NEXT_GAME_WARM_TTL_MS = 30L * 60L * 1000L;
     private final Map<String, CgSmartBatch> nextGameWarmBatches =
@@ -398,8 +403,29 @@ public class TabletMainActivity extends Activity {
 
     private void showHistory() {
 
-        screen = "history";
-        historyFilter = "all";
+        screen =
+                "history";
+
+        historyFilter =
+                "all";
+
+
+        if (
+                localEngine != null &&
+                localEngine.historySeeded()
+        ) {
+            historyItems.clear();
+
+            historyItems.addAll(
+                    localEngine.listLocalHistory(
+                            HISTORY_MAX_EVENTS
+                    )
+            );
+
+            renderHistory();
+            return;
+        }
+
 
         baseScreen();
 
@@ -410,69 +436,72 @@ public class TabletMainActivity extends Activity {
         );
 
         addSub(
-                "Chargement de tes réponses…",
+                "Consolidation locale de l’historique…",
                 16,
                 LIGHT_GREY
         );
 
         gap(20);
 
-        TextView loading =
-                text(
-                        "Lecture de l’historique Cloud…",
-                        18,
-                        YELLOW,
-                        Gravity.CENTER
-                );
-
-        add(
-                loading,
-                -1,
-                dp(80),
-                dp(30),
-                dp(20),
-                dp(30),
-                0
-        );
-
 
         io.submit(() -> {
-
             try {
-
                 String token =
                         auth.tokenSync();
 
-                List<CgHistoryItem> loaded =
+                flags.flushOutboxSync(
+                        firestore,
+                        token,
+                        auth.uid()
+                );
+
+                List<CgHistoryItem> cloud =
                         firestore.listPlayHistorySync(
                                 token,
                                 auth.uid(),
                                 HISTORY_MAX_EVENTS
                         );
 
-                main.post(() -> {
+                localEngine.importCloudHistory(
+                        cloud
+                );
 
+                List<CgHistoryItem> local =
+                        localEngine.listLocalHistory(
+                                HISTORY_MAX_EVENTS
+                        );
+
+                main.post(() -> {
                     if (!"history".equals(screen)) {
                         return;
                     }
 
                     historyItems.clear();
-                    historyItems.addAll(loaded);
-
+                    historyItems.addAll(local);
                     renderHistory();
                 });
 
             } catch (Exception ex) {
 
-                main.post(() -> {
+                List<CgHistoryItem> local =
+                        localEngine.listLocalHistory(
+                                HISTORY_MAX_EVENTS
+                        );
 
+                main.post(() -> {
                     if (!"history".equals(screen)) {
                         return;
                     }
 
-                    showHistoryError(
-                            ex.getMessage()
-                    );
+                    if (!local.isEmpty()) {
+                        historyItems.clear();
+                        historyItems.addAll(local);
+                        renderHistory();
+                    } else {
+                        showHistoryError(
+                                ex.getMessage()
+                        );
+                    }
                 });
             }
         });
@@ -903,6 +932,8 @@ public class TabletMainActivity extends Activity {
                 game.clear();
 
                 localEngine.clearLearning();
+
+                clearRewindState();
 
                 historyItems.clear();
 
@@ -1965,6 +1996,8 @@ public class TabletMainActivity extends Activity {
         correctionResumeQuestion =
                 null;
 
+        clearRewindState();
+
         loadNextPlayable();
 
         flushOutboxAsync();
@@ -2914,47 +2947,56 @@ public class TabletMainActivity extends Activity {
                         responseMs
                 );
 
-        boolean revisingPrevious =
-                correctingPrevious &&
-                lastAnsweredQuestion != null &&
+        long playedAtMs =
+                event.optLong(
+                        "client_played_at_ms",
+                        System.currentTimeMillis()
+                );
+
+        boolean revisingRewind =
+                rewindTargetAttempt != null &&
                 safe(q.id).equals(
-                        safe(lastAnsweredQuestion.id)
-                ) &&
-                !lastAttemptId.isEmpty();
+                        safe(
+                                rewindTargetAttempt.questionId
+                        )
+                );
 
-        if (revisingPrevious) {
+        if (revisingRewind) {
 
-            lastAttemptRevision =
+            CgLocalAttempt target =
+                    rewindTargetAttempt;
+
+            int newRevision =
                     Math.max(
                             1,
-                            lastAttemptRevision
+                            target.revision
                     ) + 1;
 
             stampAttemptMetadata(
                     event,
-                    lastAttemptId,
-                    lastAttemptRevision,
+                    target.attemptId,
+                    newRevision,
                     true
             );
 
             game.replaceLastAnswer(
-                    lastAnswerCorrect,
+                    target.correct,
                     correct
             );
 
             localEngine.reviseAnswer(
                     q.id,
-                    lastAnswerCorrect,
+                    target.correct,
                     correct
             );
 
-            lastAnswerCorrect =
-                    correct;
-
-            game.clearStagedBatch();
-
-            nextBatchPrefetching =
-                    false;
+            localEngine.reviseAttempt(
+                    target.attemptId,
+                    correct,
+                    newRevision,
+                    playedAtMs,
+                    responseMs
+            );
 
             flags.enqueue(
                     "play_history",
@@ -2964,30 +3006,21 @@ public class TabletMainActivity extends Activity {
             flushOutboxAsync();
 
             CgQuestion resume =
-                    correctionResumeQuestion;
+                    rewindAnchorQuestion;
 
-            correctionResumeQuestion =
-                    null;
-
-            correctingPrevious =
-                    false;
+            clearRewindState();
 
             answering =
                     false;
 
             main.post(() -> {
-
                 if (resume != null) {
-
                     current =
                             resume;
-
                     showQuestion(
                             resume
                     );
-
                 } else {
-
                     loadNextPlayable();
                 }
             });
@@ -3015,15 +3048,21 @@ public class TabletMainActivity extends Activity {
                 correct
         );
 
+        localEngine.recordAttempt(
+                game.sessionId(),
+                attemptId,
+                q.id,
+                correct,
+                playedAtMs,
+                responseMs
+        );
+
         lastAnsweredQuestion =
                 q;
-
         lastAnswerCorrect =
                 correct;
-
         lastAttemptId =
                 attemptId;
-
         lastAttemptRevision =
                 1;
 
@@ -3673,43 +3712,108 @@ public class TabletMainActivity extends Activity {
             CgQuestion forwardQuestion
     ) {
 
-        if (correctingPrevious) {
-
-            Toast.makeText(
-                    this,
-                    "Correction de la question précédente déjà en cours.",
-                    Toast.LENGTH_SHORT
-            ).show();
-
-            return;
-        }
-
         if (
-                lastAnsweredQuestion == null ||
-                lastAttemptId.isEmpty()
+                game == null ||
+                !game.hasActive() ||
+                game.sessionId().isEmpty()
         ) {
-
             Toast.makeText(
                     this,
-                    "Aucune question précédente à rectifier.",
+                    "Aucune partie active.",
                     Toast.LENGTH_SHORT
             ).show();
-
             return;
         }
 
-        correctionResumeQuestion =
-                forwardQuestion;
+        if (rewindAnchorQuestion == null) {
+            rewindAnchorQuestion =
+                    forwardQuestion;
+            rewindTargetAttempt =
+                    null;
+            rewindDepth =
+                    0;
+        }
+
+        int beforeSeq =
+                rewindTargetAttempt == null
+                        ? Integer.MAX_VALUE
+                        : rewindTargetAttempt.seq;
+
+        CgLocalAttempt previous =
+                localEngine.previousAttempt(
+                        game.sessionId(),
+                        beforeSeq
+                );
+
+        if (previous == null) {
+            Toast.makeText(
+                    this,
+                    "Début de la partie atteint.",
+                    Toast.LENGTH_SHORT
+            ).show();
+            return;
+        }
+
+        CgQuestion previousQuestion =
+                localEngine.questionById(
+                        previous.questionId
+                );
+
+        if (previousQuestion == null) {
+            Toast.makeText(
+                    this,
+                    "Question précédente introuvable.",
+                    Toast.LENGTH_SHORT
+            ).show();
+            return;
+        }
+
+        rewindTargetAttempt =
+                previous;
+
+        rewindDepth++;
 
         correctingPrevious =
-                true;
+                false;
+
+        correctionResumeQuestion =
+                null;
 
         current =
-                lastAnsweredQuestion;
+                previousQuestion;
+
+        answering =
+                false;
 
         showQuestion(
-                lastAnsweredQuestion
+                previousQuestion
         );
+
+        Toast.makeText(
+                this,
+                "Retour : "
+                        + rewindDepth
+                        + (
+                        rewindDepth == 1
+                                ? " question en arrière"
+                                : " questions en arrière"
+                ),
+                Toast.LENGTH_SHORT
+        ).show();
+    }
+
+
+    private void clearRewindState() {
+        rewindAnchorQuestion =
+                null;
+        rewindTargetAttempt =
+                null;
+        rewindDepth =
+                0;
+        correctingPrevious =
+                false;
+        correctionResumeQuestion =
+                null;
     }
 
 
@@ -3796,6 +3900,8 @@ public class TabletMainActivity extends Activity {
 
         nextBatchPrefetching =
                 false;
+
+        clearRewindState();
 
         showHome();
 
