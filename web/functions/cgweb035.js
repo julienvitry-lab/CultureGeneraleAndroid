@@ -56,6 +56,7 @@ const CGPLAY004_THEME_DIVERSITY_VERSION='CGPLAY004_FIX1_THEME_DIVERSITY001';
 const CGPLAY004_UNSEEN_FIRST_VERSION='CGPLAY004_FIX2_UNSEEN_FIRST001';
 const CGPLAY004_OLDEST_PLAYED_FIRST_VERSION='CGPLAY004_FIX2_OLDEST_PLAYED_FIRST001';
 const CGWEB_HISTORY_BINDING_VERSION='CGWEB_HISTORY_QUESTION_BINDING_FIX001';
+const CGWEB126_HISTORY_RESULT_TRUTH_VERSION='CGWEB126_HISTORY_RESULT_TRUTH001_ANDROID_MENTAL_COMPAT001_HISTORY_RETRO_READ001';
 // CGWEB_HISTORY_QUESTION_BINDING_FIX001
 // CGPLAY004_FIX2_UNSEEN_FIRST001_OLDEST_PLAYED_FIRST001
 // CGPLAY004_FIX1_LONG_SESSION_RANDOMIZE001_THEME_DIVERSITY001
@@ -585,9 +586,30 @@ function learningModelMeta(xPolicy){
 function isEvaluable(e){
   return e.playType==='challenge_choice'||e.playType==='challenge_mental';
 }
+// CGWEB126 · HISTORY_RESULT_TRUTH001 / ANDROID_MENTAL_COMPAT001
+//
+// Vérité prioritaire : is_correct lorsqu'il existe.
+// Compatibilité historique :
+// - ancien Android mental : assimilated / review
+// - Android récent : correct / wrong + is_correct booléen
+//
+// Ce calcul est fait À LA LECTURE : les anciens documents play_history
+// sont réparés visuellement/statistiquement sans migration Firestore.
 function isPositive(e){
-  if(e.playType==='challenge_choice')return e.isCorrect===true;
-  if(e.playType==='challenge_mental')return e.result==='assimilated';
+  if(e.playType==='challenge_choice'){
+    if(typeof e.isCorrect==='boolean')return e.isCorrect;
+    return e.result==='correct'||e.result==='assimilated';
+  }
+
+  if(e.playType==='challenge_mental'){
+    if(typeof e.isCorrect==='boolean')return e.isCorrect;
+
+    if(e.result==='correct'||e.result==='assimilated')return true;
+    if(e.result==='wrong'||e.result==='review')return false;
+
+    return false;
+  }
+
   return false;
 }
 function questionKey(e){

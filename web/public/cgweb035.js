@@ -1,4 +1,4 @@
-const CGWEB035_VERSION='CGWEB114_HISTORY_CARD_CLICK001_HISTORY_RESULT_BORDER001_HISTORY_MIDDLE_EXPAND001';
+const CGWEB035_VERSION='CGWEB126_HISTORY_RESULT_TRUTH001_ANDROID_MENTAL_COMPAT001_HISTORY_RETRO_READ001';
 // CGWEB114_HISTORY_CARD_CLICK001_HISTORY_RESULT_BORDER001_HISTORY_MIDDLE_EXPAND001
 // CGWEB113_FIX3_AUTH_BOOT_RETRY001_HISTORY_BOOT_RELIABLE001
 // CGWEB113_FIX2_HISTORY_FAST_PAGE001_HISTORY_COLD_START001
@@ -93,7 +93,27 @@ async function cg35Overview(){
     cg35Status('✅ Vue d’ensemble à jour.','ok');
   }catch(e){cg35SetBody(`<div class="cg35-error">${cg35Esc(e.message)}</div>`);cg35Status(`❌ ${e.message}`,'bad')}
 }
-function cg35HistoryResult(e){if(e.playType==='revision_reveal')return 'Révélation';if(e.playType==='challenge_choice')return e.positive?'Juste':'Faux';if(e.playType==='challenge_mental')return e.result==='assimilated'?'Assimilée':'À revoir';return e.result||'—'}
+// CGWEB126 · HISTORY_RESULT_TRUTH001
+// Le backend fournit e.positive après normalisation des générations Android.
+// L'interface ne doit plus recalculer la réussite depuis l'ancien mot
+// « assimilated », sous peine de transformer correct -> À revoir.
+function cg35HistoryResult(e){
+  if(e.playType==='revision_reveal')return 'Révélation';
+
+  if(e.playType==='challenge_choice'){
+    if(e.positive===true)return 'Juste';
+    if(e.positive===false)return 'Faux';
+    return e.result||'—';
+  }
+
+  if(e.playType==='challenge_mental'){
+    if(e.positive===true)return 'Assimilée';
+    if(e.positive===false)return 'À revoir';
+    return e.result||'—';
+  }
+
+  return e.result||'—';
+}
 function cg35HistoryType(e){if(e.playType==='challenge_choice')return 'QCM';if(e.playType==='challenge_mental')return 'Mental';if(e.playType==='revision_reveal')return 'Révision';return e.playType||'Événement'}
 function cg35HistoryCard(e){
   const qcm=e.playType==='challenge_choice';
