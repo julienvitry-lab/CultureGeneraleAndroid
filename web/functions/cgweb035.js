@@ -1,6 +1,7 @@
 const {getApps,initializeApp}=require('firebase-admin/app');
 const {getAuth}=require('firebase-admin/auth');
 const {getFirestore,FieldPath}=require('firebase-admin/firestore');
+const {getQuestionCatalog}=require('./cgcost001');
 
 if(!getApps().length)initializeApp();
 
@@ -4827,114 +4828,24 @@ async function smartLongUnseenPool(
  * Il ne mémorise AUCUN résultat utilisateur.
  */
 async function cgplay004Model003Catalog(uid){
-
-  const cached=
-    CGPLAY004_MODEL003_CATALOG_CACHE
-      .get(uid);
-
-  if(
-    cached &&
-    Date.now()-cached.at<
-      CGPLAY004_MODEL003_CATALOG_TTL_MS
-  ){
+  const cached=CGPLAY004_MODEL003_CATALOG_CACHE.get(uid);
+  if(cached&&Date.now()-cached.at<CGPLAY004_MODEL003_CATALOG_TTL_MS){
     return cached.rows;
   }
 
+  const shared=await getQuestionCatalog(uid);
+  const rows=shared.rows.map(row=>({
+    id:String(row.id),
+    row:num(row.id),
+    domain:one(row.megatheme),
+    theme:one(row.theme),
+    question:one(row.question),
+    detail:one(row.detail)
+  }));
 
-  const col=
-    getFirestore()
-      .collection('users')
-      .doc(uid)
-      .collection('questions');
-
-
-  const rows=[];
-
-  let last=null;
-
-
-  for(;;){
-
-    let q=
-      col
-        .orderBy(
-          FieldPath.documentId()
-        )
-        .select(
-          'question',
-          'detail',
-          'megatheme',
-          'theme'
-        )
-        .limit(1000);
-
-
-    if(last){
-      q=q.startAfter(last);
-    }
-
-
-    const snap=
-      await q.get();
-
-
-    if(snap.empty){
-      break;
-    }
-
-
-    for(const d of snap.docs){
-
-      const x=
-        d.data()||{};
-
-      rows.push({
-
-        id:d.id,
-
-        row:
-          num(d.id),
-
-        domain:
-          one(x.megatheme),
-
-        theme:
-          one(x.theme),
-
-        question:
-          one(x.question),
-
-        detail:
-          one(x.detail)
-      });
-    }
-
-
-    last=
-      snap.docs[
-        snap.docs.length-1
-      ];
-
-
-    if(snap.size<1000){
-      break;
-    }
-  }
-
-
-  CGPLAY004_MODEL003_CATALOG_CACHE
-    .set(
-      uid,
-      {
-        at:Date.now(),
-        rows
-      }
-    );
-
-
+  CGPLAY004_MODEL003_CATALOG_CACHE.set(uid,{at:Date.now(),rows});
   return rows;
 }
-
 
 /*
  * Une question devient maîtrisée dès qu'elle possède

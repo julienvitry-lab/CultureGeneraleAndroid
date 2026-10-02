@@ -22,6 +22,8 @@ const {
   handleLearningHub
 } = require('./cgweb035');
 
+const {getQuestionCatalog}=require('./cgcost001');
+
 
 if (!getApps().length) {
   initializeApp();
@@ -514,237 +516,51 @@ function compareRows(
 }
 
 
-async function streamingSearch(
-  uid,
-  criteria
-) {
+async function streamingSearch(uid,criteria){
+  const startedAt=Date.now();
+  const catalog=await getQuestionCatalog(uid);
+  const keepCount=Math.max(1,criteria.offset+criteria.limit);
+  const candidates=[];
+  let total=0;
 
-  const startedAt =
-    Date.now();
+  for(const row of catalog.rows){
+    const match=evaluateRow(row,criteria);
+    if(!match)continue;
+    total++;
+    candidates.push(match);
 
-  const db =
-    getFirestore();
-
-  const collection =
-    db
-      .collection('users')
-      .doc(uid)
-      .collection('questions');
-
-
-  /*
-   * PROJECTED_FIELDS001
-   *
-   * L'ordre par ID permet une pagination stable
-   * sans conserver de DocumentSnapshot précédent.
-   */
-  const baseQuery =
-    collection
-      .orderBy(
-        FieldPath.documentId()
-      )
-      .select(
-        ...PROJECTED_FIELDS
-      );
-
-
-  let lastId = null;
-
-  let catalogSize = 0;
-  let total = 0;
-  let batches = 0;
-
-
-  /*
-   * Pour retourner la page offset..offset+limit,
-   * nous n'avons besoin de conserver que les
-   * meilleurs K éléments rencontrés jusque-là.
-   */
-  const keepCount =
-    Math.max(
-      1,
-      criteria.offset +
-      criteria.limit
-    );
-
-
-  const candidates = [];
-
-
-  while (true) {
-
-    let query =
-      baseQuery.limit(
-        BATCH_SIZE
-      );
-
-
-    if (lastId !== null) {
-      query =
-        query.startAfter(
-          lastId
-        );
-    }
-
-
-    const snapshot =
-      await query.get();
-
-
-    if (snapshot.empty) {
-      break;
-    }
-
-
-    batches += 1;
-
-    catalogSize +=
-      snapshot.size;
-
-
-    for (
-      const doc
-      of snapshot.docs
-    ) {
-
-      const row =
-        rowFromDocument(doc);
-
-      const match =
-        evaluateRow(
-          row,
-          criteria
-        );
-
-
-      if (!match) {
-        continue;
-      }
-
-
-      total += 1;
-
-      candidates.push(
-        match
-      );
-    }
-
-
-    /*
-     * Borne mémoire :
-     *
-     * on trie périodiquement puis on ne conserve
-     * que les K éléments qui pourraient encore
-     * appartenir à la page demandée.
-     */
-    if (
-      candidates.length >
-      keepCount + 2000
-    ) {
-
-      candidates.sort(
-        (a, b) =>
-          compareRows(
-            a,
-            b,
-            criteria
-          )
-      );
-
-      candidates.length =
-        Math.min(
-          candidates.length,
-          keepCount
-        );
-    }
-
-
-    lastId =
-      snapshot.docs[
-        snapshot.docs.length - 1
-      ].id;
-
-
-    if (
-      snapshot.size <
-      BATCH_SIZE
-    ) {
-      break;
+    if(candidates.length>keepCount+2000){
+      candidates.sort((a,b)=>compareRows(a,b,criteria));
+      candidates.length=Math.min(candidates.length,keepCount);
     }
   }
 
+  candidates.sort((a,b)=>compareRows(a,b,criteria));
+  if(candidates.length>keepCount)candidates.length=keepCount;
 
-  candidates.sort(
-    (a, b) =>
-      compareRows(
-        a,
-        b,
-        criteria
-      )
-  );
-
-
-  if (
-    candidates.length >
-    keepCount
-  ) {
-    candidates.length =
-      keepCount;
-  }
-
-
-  const page =
-    candidates.slice(
-      criteria.offset,
-      criteria.offset +
-      criteria.limit
-    );
-
-
-  const nextOffset =
-    criteria.offset +
-    page.length;
-
+  const page=candidates.slice(criteria.offset,criteria.offset+criteria.limit);
+  const nextOffset=criteria.offset+page.length;
 
   return {
-    ok: true,
-
+    ok:true,
     total,
-
-    catalogSize,
-
-    cached: false,
-
-    rows: page,
-
-    offset:
-      criteria.offset,
-
-    nextOffset:
-      nextOffset < total
-        ? nextOffset
-        : null,
-
-    truncated:
-      nextOffset < total,
-
-    /*
-     * Diagnostic léger.
-     */
-    scanMode:
-      'streaming',
-
-    batchSize:
-      BATCH_SIZE,
-
-    batches,
-
-    scanMs:
-      Date.now() -
-      startedAt
+    catalogSize:catalog.rows.length,
+    cached:catalog.source!=='firestore-full-build'&&catalog.source!=='firestore-full-build-count-repair',
+    rows:page,
+    offset:criteria.offset,
+    nextOffset:nextOffset<total?nextOffset:null,
+    truncated:nextOffset<total,
+    scanMode:'cgcost001-persistent-catalog',
+    batchSize:0,
+    batches:0,
+    scanMs:Date.now()-startedAt,
+    catalogSource:catalog.source,
+    catalogVersion:catalog.version,
+    catalogFirestoreReads:catalog.firestoreReads,
+    catalogChangedRows:catalog.changedRows,
+    catalogDeletedRows:catalog.deletedRows
   };
 }
-
 
 exports.cgweb032Search =
   onRequest(

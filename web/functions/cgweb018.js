@@ -2,6 +2,7 @@ const {onRequest} = require('firebase-functions/v2/https');
 const {getApps, initializeApp} = require('firebase-admin/app');
 const {getAuth} = require('firebase-admin/auth');
 const {getFirestore, FieldValue} = require('firebase-admin/firestore');
+const {getQuestionCatalog}=require('./cgcost001');
 
 if (!getApps().length) initializeApp();
 
@@ -49,15 +50,11 @@ async function requireUser(req) {
 
 async function buildThemeCatalog(uid) {
   const db = getFirestore();
-  const questionsRef = db.collection('users').doc(uid).collection('questions');
-
-  // On ne dépend PAS de question_search_delta : celui-ci peut être incomplet
-  // pour les questions historiques. On lit uniquement le champ theme.
-  const snap = await questionsRef.select('theme').get();
+  const catalog = await getQuestionCatalog(uid);
   const set = new Set();
 
-  for (const doc of snap.docs) {
-    const theme = one(doc.get('theme'));
+  for (const row of catalog.rows) {
+    const theme = one(row.theme);
     if (theme) set.add(theme);
   }
 
@@ -69,19 +66,19 @@ async function buildThemeCatalog(uid) {
     await metaRef.set({
       themes,
       theme_count: themes.length,
-      question_count_at_build: snap.size,
+      question_count_at_build: catalog.rows.length,
       catalog_schema: CATALOG_SCHEMA,
       updated_ms: Date.now(),
       updated_at: FieldValue.serverTimestamp(),
-      source: 'CGWEB018_FIX4'
+      source: 'CGCOST001_FIRESTORE_READ_OPTIMIZE001',
+      catalog_source: catalog.source,
+      catalog_version: catalog.version
     }, {merge: true});
   } catch (error) {
-    // Si le catalogue devenait trop volumineux pour un document Firestore,
-    // la recherche reste fonctionnelle pour cet appel.
     console.warn('CGWEB018 catalog cache write', error?.message || String(error));
   }
 
-  return {themes, refreshed: true, questionCount: snap.size};
+  return {themes, refreshed: true, questionCount: catalog.rows.length};
 }
 
 async function getThemeCatalog(uid, force = false) {
