@@ -5867,6 +5867,120 @@ async function captureStrictQuestionnaire(url,fiches,questionnaire,questionnaire
   }
 }
 
+
+/* ==================================================================
+   CGWEB128
+   QUIZYPEDIA_QR_MODE001
+   ANSWER_ONLY_PAYLOAD001
+   WRONG_OPTIONS_RETIRE001
+
+   Le moteur Quizypedia peut utiliser temporairement les quatre
+   propositions pour déterminer la réponse correcte.
+
+   Mais aucune proposition incorrecte ne doit franchir la frontière
+   backend -> navigateur.
+
+   Sortie publique :
+     question
+     detail
+     answer
+     métadonnées source
+
+   Sont volontairement retirés :
+     options
+     correct_index
+     toute proposition incorrecte
+   ================================================================== */
+
+const CGWEB128_QUIZYPEDIA_QR_MODE001 = true;
+
+
+function cgweb128QuizypediaQrRows(rows){
+
+  return (
+    Array.isArray(rows)
+      ? rows
+      : []
+  )
+    .map(row=>{
+
+      const options =
+        Array.isArray(row?.options)
+          ? row.options.map(one)
+          : [];
+
+      const correctIndex =
+        Number(
+          row?.correct_index || 0
+        );
+
+      const answer =
+        one(row?.correct_text) ||
+        (
+          correctIndex >= 1 &&
+          correctIndex <= options.length
+            ? one(options[correctIndex - 1])
+            : ''
+        );
+
+      const question =
+        one(row?.question);
+
+      if(
+        !question ||
+        !answer
+      ){
+        return null;
+      }
+
+      /*
+       * ANSWER_ONLY_PAYLOAD001
+       *
+       * Aucun tableau options n'est copié.
+       * Aucune proposition erronée n'est exposée.
+       */
+      return {
+
+        question,
+
+        detail:
+          one(row?.detail),
+
+        answer,
+
+        source_fiche:
+          one(
+            row?.source_fiche ||
+            answer
+          ),
+
+        source_number:
+          Number(
+            row?.source_number || 0
+          ),
+
+        answer_label:
+          one(row?.answer_label),
+
+        match_mode:
+          one(row?.match_mode),
+
+        source:
+          one(row?.source),
+
+        image_url:
+          one(row?.image_url),
+
+        verbatim_panel:
+          Boolean(
+            row?.verbatim_panel
+          )
+      };
+    })
+    .filter(Boolean);
+}
+
+
 exports.cgimport002Quizypedia=onRequest({
   region:'europe-west1',
   timeoutSeconds:420,
@@ -6023,6 +6137,11 @@ exports.cgimport002Quizypedia=onRequest({
       mode:'capture',
       kind:'questionnaire',
       strict:true,
+
+      // CGWEB128
+      qrMode:true,
+      answerOnly:true,
+
       strictComplete:capture.complete,
 
       expectedCapture:
@@ -6078,7 +6197,11 @@ exports.cgimport002Quizypedia=onRequest({
         fullText:f.lines.join(' | '),
         fields:f.fields
       })),
-      questions:capture.questions,
+      // CGWEB128 · aucune proposition incorrecte ne quitte le backend.
+      questions:
+        cgweb128QuizypediaQrRows(
+          capture.questions
+        ),
       diagnostics:capture.diagnostics,
       missingFiches:capture.missingFiches||[],
       sessionsUsed:capture.sessionsUsed||1,

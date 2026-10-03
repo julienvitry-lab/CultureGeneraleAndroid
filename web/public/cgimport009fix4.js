@@ -1,3 +1,7 @@
+// CGWEB128 · QUIZYPEDIA_QR_MODE001
+// ANSWER_ONLY_PAYLOAD001
+// WRONG_OPTIONS_RETIRE001
+// LEGACY_QR_COMPAT001
 // CGWEB116_FIX3_FIX4_FIX7_TARGET_COMPLETE_UI001
 // CGWEB116_FIX3_FIX4_FIX3_DIRECT_ENGINE_API001
 // CGWEB116_FIX3_FIX4_FIX2_MULTI_ONE_CLICK_PARITY001
@@ -75,32 +79,116 @@ async function apiCall(body){
 }
 
 function sourceToDrafts(data,questionnaireMeta=null){
-  const mega=$('cgimp2Mega').value.trim();
-  const theme=$('cgimp2Theme').value.trim()||data.theme||'';
-  const sourceUrl=canonicalUrl(data.effectiveUrl||data.requestedUrl||'');
-  return (data.questions||[]).map(q=>({
-    selected:questionnaireMeta?Boolean(questionnaireMeta.selected):true,
-    megatheme:mega,
-    theme,
-    question:String(q.question||''),
-    detail:String(q.detail||''),
-    options:Array.isArray(q.options)?q.options.map(v=>String(v||'')):[],
-    correct_index:Number(q.correct_index||0),
-    url_quizypedia:sourceUrl,
-    url_internet:'',
-    image_file:'',
-    non_trouve:0,
-    status:'',
-    is_image:0,
-    fiche:String(q.source_fiche||''),
-    source_number:Number(q.source_number||0),
-    questionnaire_title:String(data.questionnaire||questionnaireMeta?.title||''),
-    questionnaire_url:sourceUrl,
-    strict_source:true
-  })).filter(q=>
-    q.question&&q.options.length===4&&q.options.every(Boolean)&&
-    q.correct_index>=1&&q.correct_index<=4
-  );
+
+  const mega =
+    $('cgimp2Mega').value.trim();
+
+  const theme =
+    $('cgimp2Theme').value.trim() ||
+    data.theme ||
+    '';
+
+  const sourceUrl =
+    canonicalUrl(
+      data.effectiveUrl ||
+      data.requestedUrl ||
+      ''
+    );
+
+
+  /*
+   * CGWEB128
+   *
+   * Le navigateur ne construit plus de tableau
+   * de propositions.
+   *
+   * Une fiche importable =
+   *
+   * QUESTION
+   * +
+   * DETAIL éventuel
+   * +
+   * REPONSE correcte
+   */
+
+  return (data.questions || [])
+    .map(q=>({
+
+      selected:
+        questionnaireMeta
+          ? Boolean(questionnaireMeta.selected)
+          : true,
+
+      megatheme:
+        mega,
+
+      theme,
+
+      question:
+        String(
+          q.question || ''
+        ),
+
+      detail:
+        String(
+          q.detail || ''
+        ),
+
+      answer:
+        String(
+          q.answer || ''
+        ).trim(),
+
+      url_quizypedia:
+        sourceUrl,
+
+      url_internet:
+        '',
+
+      image_file:
+        '',
+
+      non_trouve:
+        0,
+
+      status:
+        '',
+
+      is_image:
+        0,
+
+      fiche:
+        String(
+          q.source_fiche || ''
+        ),
+
+      source_number:
+        Number(
+          q.source_number || 0
+        ),
+
+      questionnaire_title:
+        String(
+          data.questionnaire ||
+          questionnaireMeta?.title ||
+          ''
+        ),
+
+      questionnaire_url:
+        sourceUrl,
+
+      strict_source:
+        true,
+
+      qr_mode:
+        true
+    }))
+    .filter(q=>
+      Boolean(
+        q.question &&
+        q.answer
+      )
+    );
 }
 
 function applyClassification(){
@@ -108,7 +196,7 @@ function applyClassification(){
   const theme=$('cgimp2Theme').value.trim()||extracted?.theme||'';
   drafts.forEach(q=>{q.megatheme=mega;q.theme=theme;});
   render();
-  status('Mégathème / thème appliqués. Le contenu Quizypedia reste inchangé.','ok');
+  status('Mégathème / thème appliqués. La question et sa bonne réponse Quizypedia sont conservées.','ok');
 }
 
 function batchSelectedItems(){
@@ -272,101 +360,273 @@ function renderBatch(){
 }
 
 function render(){
+
   renderCounters();
   renderBatch();
-  const box=$('cgimp2List');
+
+  const box =
+    $('cgimp2List');
+
 
   if(!drafts.length){
-    box.innerHTML='<div class="cgimp2-empty">Aucun QCM Quizypedia capturé pour le moment.</div>';
+
+    box.innerHTML =
+      '<div class="cgimp2-empty">' +
+      'Aucune question / réponse Quizypedia capturée pour le moment.' +
+      '</div>';
+
     return;
   }
 
-  box.innerHTML=drafts.map((q,i)=>`
-    <article class="cgimp8-card" data-i="${i}">
-      <div class="cgimp8-card-top">
-        <label class="cgimp8-lot">
-          <input type="checkbox" class="cgimp2-check" ${q.selected?'checked':''}>
-          <span>Lot</span>
-        </label>
-        <button type="button" class="cgimp8-modify">Modifier</button>
-      </div>
 
-      <div class="cgimp8-source">Quizypedia · ${esc(q.fiche||`Fiche ${q.source_number||''}`)}</div>
-      <div class="cgimp8-category">${esc(q.megatheme||'—')} &gt; ${esc(q.theme||'—')}</div>
+  box.innerHTML =
+    drafts.map((q,i)=>`
 
-      <div class="cgimp8-question">${esc(q.question)}</div>
-      ${q.detail?`<div class="cgimp8-detail">${esc(q.detail).replace(/\n/g,'<br>')}</div>`:''}
+      <article
+        class="cgimp8-card"
+        data-i="${i}"
+      >
 
-      <div class="cgimp8-options">
-        ${q.options.map((v,j)=>`
-          <div class="cgimp8-option ${j+1===q.correct_index?'cgimp8-correct':''}">
-            <strong>${'ABCD'[j]}.</strong>&nbsp;<span>${esc(v)}</span>
-          </div>
-        `).join('')}
-      </div>
+        <div class="cgimp8-card-top">
 
-      <div class="cgimp8-footer">
-        <span>Réponse : ${q.correct_index}</span>
-        <span>Source : Quizypedia 1:1</span>
-        ${q.questionnaire_title?`<span>Questionnaire : ${esc(q.questionnaire_title)}</span>`:''}
-      </div>
+          <label class="cgimp8-lot">
 
-      <details class="cgimp8-editor">
-        <summary>Modifier avant import</summary>
-        <div class="cgimp2-edit">
-          <label class="wide">Question
-            <textarea data-field="question" rows="3">${esc(q.question)}</textarea>
+            <input
+              type="checkbox"
+              class="cgimp2-check"
+              ${q.selected ? 'checked' : ''}
+            >
+
+            <span>Lot</span>
+
           </label>
-          <label class="wide">Détail
-            <textarea data-field="detail" rows="4">${esc(q.detail)}</textarea>
-          </label>
-          ${q.options.map((v,j)=>`
-            <label>${'ABCD'[j]}
-              <input data-opt="${j}" value="${esc(v)}">
-            </label>
-          `).join('')}
-          <label>Bonne réponse
-            <select data-field="correct_index">
-              ${[1,2,3,4].map(n=>`
-                <option value="${n}" ${n===q.correct_index?'selected':''}>
-                  ${'ABCD'[n-1]}
-                </option>
-              `).join('')}
-            </select>
-          </label>
+
+
+          <button
+            type="button"
+            class="cgimp8-modify"
+          >
+            Modifier
+          </button>
+
         </div>
-      </details>
-    </article>
-  `).join('');
 
-  box.querySelectorAll('.cgimp8-card').forEach(card=>{
-    const i=Number(card.dataset.i),q=drafts[i];
-    const editor=card.querySelector('.cgimp8-editor');
 
-    card.querySelector('.cgimp8-modify').addEventListener('click',()=>{
-      editor.open=!editor.open;
-      if(editor.open)editor.scrollIntoView({behavior:'smooth',block:'nearest'});
+        <div class="cgimp8-source">
+
+          Quizypedia ·
+          ${esc(
+            q.fiche ||
+            `Fiche ${q.source_number || ''}`
+          )}
+
+        </div>
+
+
+        <div class="cgimp8-category">
+
+          ${esc(q.megatheme || '—')}
+          &gt;
+          ${esc(q.theme || '—')}
+
+        </div>
+
+
+        <div class="cgimp8-question">
+
+          ${esc(q.question)}
+
+        </div>
+
+
+        ${
+          q.detail
+            ? `
+              <div class="cgimp8-detail">
+                ${esc(q.detail).replace(/\n/g,'<br>')}
+              </div>
+            `
+            : ''
+        }
+
+
+        <!--
+          CGWEB128
+          Une seule réponse.
+          Aucun A/B/C/D.
+        -->
+
+        <div class="cgimp8-options">
+
+          <div class="cgimp8-option cgimp8-correct">
+
+            <strong>Réponse :</strong>
+
+            &nbsp;
+
+            <span>
+              ${esc(q.answer)}
+            </span>
+
+          </div>
+
+        </div>
+
+
+        <div class="cgimp8-footer">
+
+          <span>
+            Source : Quizypedia
+          </span>
+
+          <span>
+            Mode : Question / Réponse
+          </span>
+
+          ${
+            q.questionnaire_title
+              ? `
+                <span>
+                  Questionnaire :
+                  ${esc(q.questionnaire_title)}
+                </span>
+              `
+              : ''
+          }
+
+        </div>
+
+
+        <details class="cgimp8-editor">
+
+          <summary>
+            Modifier avant import
+          </summary>
+
+
+          <div class="cgimp2-edit">
+
+            <label class="wide">
+
+              Question
+
+              <textarea
+                data-field="question"
+                rows="3"
+              >${esc(q.question)}</textarea>
+
+            </label>
+
+
+            <label class="wide">
+
+              Détail
+
+              <textarea
+                data-field="detail"
+                rows="4"
+              >${esc(q.detail)}</textarea>
+
+            </label>
+
+
+            <label class="wide">
+
+              Réponse
+
+              <textarea
+                data-field="answer"
+                rows="2"
+              >${esc(q.answer)}</textarea>
+
+            </label>
+
+          </div>
+
+        </details>
+
+      </article>
+
+    `).join('');
+
+
+  box
+    .querySelectorAll(
+      '.cgimp8-card'
+    )
+    .forEach(card=>{
+
+      const i =
+        Number(
+          card.dataset.i
+        );
+
+      const q =
+        drafts[i];
+
+      const editor =
+        card.querySelector(
+          '.cgimp8-editor'
+        );
+
+
+      card
+        .querySelector(
+          '.cgimp8-modify'
+        )
+        .addEventListener(
+          'click',
+          ()=>{
+
+            editor.open =
+              !editor.open;
+
+            if(editor.open){
+
+              editor.scrollIntoView({
+                behavior:'smooth',
+                block:'nearest'
+              });
+            }
+          }
+        );
+
+
+      card
+        .querySelector(
+          '.cgimp2-check'
+        )
+        .addEventListener(
+          'change',
+          e=>{
+
+            q.selected =
+              e.target.checked;
+
+            renderCounters();
+            updateImportAvailability();
+          }
+        );
+
+
+      card
+        .querySelectorAll(
+          '[data-field]'
+        )
+        .forEach(inp=>{
+
+          inp.addEventListener(
+            'change',
+            ()=>{
+
+              q[
+                inp.dataset.field
+              ] =
+                inp.value;
+            }
+          );
+        });
     });
-
-    card.querySelector('.cgimp2-check').addEventListener('change',e=>{
-      q.selected=e.target.checked;
-      renderCounters();
-      updateImportAvailability();
-    });
-
-    card.querySelectorAll('[data-field]').forEach(inp=>{
-      inp.addEventListener('change',()=>{
-        const f=inp.dataset.field;
-        q[f]=f==='correct_index'?Number(inp.value):inp.value;
-      });
-    });
-
-    card.querySelectorAll('[data-opt]').forEach(inp=>{
-      inp.addEventListener('change',()=>{
-        q.options[Number(inp.dataset.opt)]=inp.value;
-      });
-    });
-  });
 }
 
 function replaceDraftsForQuestionnaire(data,item){
@@ -454,7 +714,7 @@ async function captureBatch(onlyFailures=false){
   if(!failed.length){
     status(
       `✅ Thème capturé : ${selected.length}/${selected.length} questionnaire(s), `+
-      `${drafts.filter(q=>q.selected).length} QCM stricts. Aucun import n’a encore eu lieu.`,
+      `${drafts.filter(q=>q.selected).length} Q/R validées. Aucun import n’a encore eu lieu.`,
       'ok'
     );
   }else{
@@ -485,7 +745,7 @@ async function captureDirect(url){
 
     if(strictComplete){
       status(
-        `✅ Capture stricte complète : ${drafts.length}/${data.fiches.length} QCM en ${Number(data.sessionsUsed||1)} session(s). `+
+        `✅ Capture stricte complète : ${drafts.length}/${data.fiches.length} Q/R en ${Number(data.sessionsUsed||1)} session(s). `+
         `Aucun contenu n’a été inventé. Aucun import n’a encore eu lieu.`,
         'ok'
       );
@@ -694,7 +954,7 @@ async function importSelected(arg={}){
 // vers le moteur Firestore historique ci-dessous.
 
   if(!skipConfirm&&!confirm(
-    `Importer ${selected.length} QCM Quizypedia 1:1 ?\n\n`+
+    `Importer ${selected.length} questions / réponses Quizypedia ?\n\n`+
     `Seuls les ID Culture Générale seront nouveaux.`
   ))return;
 
@@ -719,23 +979,65 @@ async function importSelected(arg={}){
         if(duplicate){skipped++;continue;}
       }
 
+      /*
+       * CGWEB128
+       * Stockage Question / Réponse.
+       *
+       * answer = champ canonique Q/R.
+       *
+       * proposition_a + correct_index=1 :
+       * pont temporaire avec l'APK Android actuelle.
+       *
+       * proposition_b/c/d :
+       * volontairement absentes.
+       */
+
       await create.create({
-        requested_id:String(base+i),
-        megatheme:q.megatheme,
-        theme:q.theme,
-        question:q.question,
-        detail:q.detail,
-        proposition_a:q.options[0],
-        proposition_b:q.options[1],
-        proposition_c:q.options[2],
-        proposition_d:q.options[3],
-        correct_index:Number(q.correct_index),
-        url_quizypedia:q.url_quizypedia,
-        url_internet:'',
-        image_file:'',
-        non_trouve:0,
-        status:'',
-        is_image:0
+
+        requested_id:
+          String(base+i),
+
+        megatheme:
+          q.megatheme,
+
+        theme:
+          q.theme,
+
+        question:
+          q.question,
+
+        detail:
+          q.detail,
+
+        answer:
+          q.answer,
+
+        /*
+         * LEGACY_QR_COMPAT001
+         */
+        proposition_a:
+          q.answer,
+
+        correct_index:
+          1,
+
+        url_quizypedia:
+          q.url_quizypedia,
+
+        url_internet:
+          '',
+
+        image_file:
+          '',
+
+        non_trouve:
+          0,
+
+        status:
+          '',
+
+        is_image:
+          0
       });
       created++;
     }
@@ -877,7 +1179,7 @@ function relabelUi(){
 
   if(kicker)kicker.textContent='CGIMPORT009 FIX4 · DIAGNOSTIC FICHE · 1:1';
   if(sub)sub.textContent=
-    'Collez l’URL d’un thème Quizypedia : capture en lot, reprise multi-session et identification explicite de toute fiche source manquante. Aucun contenu QCM n’est inventé.';
+    'Collez l’URL d’un thème Quizypedia : capture en lot, reprise multi-session et identification explicite de toute fiche source manquante. Seule la bonne réponse source est conservée ; aucune proposition incorrecte n’est importée.';
 
   if($('cgimp2Analyze'))$('cgimp2Analyze').textContent='Importer';
   if($('cgimp2Url')){
@@ -886,8 +1188,8 @@ function relabelUi(){
 
   const qSmall=$('cgimp2Questions')?.parentElement?.querySelector('small');
   const fSmall=$('cgimp2Fields')?.parentElement?.querySelector('small');
-  if(qSmall)qSmall.textContent='QCM capturés';
-  if(fSmall)fSmall.textContent='QCM stricts';
+  if(qSmall)qSmall.textContent='Questions capturées';
+  if(fSmall)fSmall.textContent='Réponses validées';
 
   ensureBatchUi();
 
