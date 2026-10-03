@@ -915,11 +915,30 @@ final class CgLocalEngine extends SQLiteOpenHelper {
             cv.put("theme", safe(q.theme));
             cv.put("question_text", safe(q.question));
             cv.put("detail", safe(q.detail));
-            cv.put("option_a", safe(q.options[0]));
-            cv.put("option_b", safe(q.options[1]));
-            cv.put("option_c", safe(q.options[2]));
-            cv.put("option_d", safe(q.options[3]));
-            cv.put("correct_index", q.correctIndex);
+
+            // CGANDROID017 · LOCAL_QR_STORAGE001
+            String answer =
+                    safe(
+                            q.resolvedAnswer()
+                    );
+
+            /*
+             * Le schéma SQLite reste inchangé pour éviter
+             * une migration destructive, mais ne contient
+             * plus qu'une réponse.
+             */
+            cv.put("option_a", answer);
+            cv.put("option_b", "");
+            cv.put("option_c", "");
+            cv.put("option_d", "");
+
+            cv.put(
+                    "correct_index",
+                    answer.isEmpty()
+                            ? 0
+                            : 1
+            );
+
             cv.put("image_file", safe(q.imageFile));
             cv.put("is_image", q.isImage ? 1 : 0);
 
@@ -971,8 +990,7 @@ final class CgLocalEngine extends SQLiteOpenHelper {
                     if (
                             q.id.isEmpty()
                                     || q.question.isEmpty()
-                                    || q.correctIndex < 1
-                                    || q.correctIndex > 4
+                                    || q.answer.isEmpty()
                     ) {
                         continue;
                     }
@@ -1155,11 +1173,19 @@ final class CgLocalEngine extends SQLiteOpenHelper {
         q.theme = str(fields, "theme");
         q.question = str(fields, "question");
         q.detail = str(fields, "detail");
+
+        // ANSWER_CANONICAL_READ001
+        q.answer = str(fields, "answer");
+
+        // LEGACY_QCM_FALLBACK001
         q.options[0] = str(fields, "proposition_a");
         q.options[1] = str(fields, "proposition_b");
         q.options[2] = str(fields, "proposition_c");
         q.options[3] = str(fields, "proposition_d");
         q.correctIndex = integer(fields, "correct_index");
+
+        q.normalizeQr();
+
         q.imageFile = str(fields, "image_file");
         q.isImage = bool(fields, "is_image") || !q.imageFile.isEmpty();
 
@@ -1181,11 +1207,20 @@ final class CgLocalEngine extends SQLiteOpenHelper {
         q.theme = c.getString(c.getColumnIndexOrThrow("theme"));
         q.question = c.getString(c.getColumnIndexOrThrow("question_text"));
         q.detail = c.getString(c.getColumnIndexOrThrow("detail"));
+
         q.options[0] = c.getString(c.getColumnIndexOrThrow("option_a"));
         q.options[1] = c.getString(c.getColumnIndexOrThrow("option_b"));
         q.options[2] = c.getString(c.getColumnIndexOrThrow("option_c"));
         q.options[3] = c.getString(c.getColumnIndexOrThrow("option_d"));
         q.correctIndex = c.getInt(c.getColumnIndexOrThrow("correct_index"));
+
+        /*
+         * Une ancienne ligne SQLite est convertie
+         * en mémoire vers answer.
+         */
+        q.answer = "";
+        q.normalizeQr();
+
         q.imageFile = c.getString(c.getColumnIndexOrThrow("image_file"));
         q.isImage = c.getInt(c.getColumnIndexOrThrow("is_image")) != 0;
 

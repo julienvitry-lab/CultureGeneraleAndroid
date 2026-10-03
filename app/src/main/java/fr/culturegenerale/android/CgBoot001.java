@@ -323,11 +323,29 @@ public final class CgBoot001 {
         putValue(cv, "theme", doc.get("theme"));
         putValue(cv, "question", doc.get("question"));
         putValue(cv, "detail", doc.get("detail"));
-        putValue(cv, "proposition_a", doc.get("proposition_a"));
-        putValue(cv, "proposition_b", doc.get("proposition_b"));
-        putValue(cv, "proposition_c", doc.get("proposition_c"));
-        putValue(cv, "proposition_d", doc.get("proposition_d"));
-        putValue(cv, "correct_index", doc.get("correct_index"));
+
+        /*
+         * CGANDROID017 · ANSWER_CANONICAL_READ001
+         *
+         * L'ancien SQLite téléphone reste structurellement
+         * compatible, mais answer est désormais la source.
+         */
+        String answer =
+                resolveAnswer(doc);
+
+        putValue(cv, "proposition_a", answer);
+        putValue(cv, "proposition_b", "");
+        putValue(cv, "proposition_c", "");
+        putValue(cv, "proposition_d", "");
+
+        putValue(
+                cv,
+                "correct_index",
+                answer.isEmpty()
+                        ? 0
+                        : 1
+        );
+
         putValue(cv, "url_quizypedia", doc.get("url_quizypedia"));
         putValue(cv, "url_internet", doc.get("url_internet"));
         putValue(cv, "image_file", doc.get("image_file"));
@@ -337,6 +355,73 @@ public final class CgBoot001 {
 
         return cv;
     }
+
+    /*
+     * CGANDROID017 · LEGACY_QCM_FALLBACK001
+     */
+    private static String resolveAnswer(
+            DocumentSnapshot doc
+    ) {
+
+        if (doc == null) {
+            return "";
+        }
+
+        Object canonical =
+                doc.get("answer");
+
+        if (canonical != null) {
+
+            String answer =
+                    String.valueOf(canonical)
+                            .trim();
+
+            if (!answer.isEmpty()) {
+                return answer;
+            }
+        }
+
+        Object raw =
+                doc.get("correct_index");
+
+        int index = 0;
+
+        if (raw instanceof Number) {
+
+            index =
+                    ((Number) raw)
+                            .intValue();
+
+        } else if (raw != null) {
+
+            try {
+                index =
+                        Integer.parseInt(
+                                String.valueOf(raw)
+                        );
+            } catch (Exception ignored) { }
+        }
+
+        if (
+                index < 1 ||
+                index > 4
+        ) {
+            return "";
+        }
+
+        char letter =
+                (char) ('a' + index - 1);
+
+        Object legacy =
+                doc.get(
+                        "proposition_" + letter
+                );
+
+        return legacy == null
+                ? ""
+                : String.valueOf(legacy).trim();
+    }
+
 
     private static void putValue(ContentValues cv, String key, Object value) {
         if (value == null) {

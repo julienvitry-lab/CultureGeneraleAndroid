@@ -5628,11 +5628,40 @@ private void flagAndNext(String status, String msg) {
         cgSync002Put(values, document, "theme");
         cgSync002Put(values, document, "question");
         cgSync002Put(values, document, "detail");
-        cgSync002Put(values, document, "proposition_a");
-        cgSync002Put(values, document, "proposition_b");
-        cgSync002Put(values, document, "proposition_c");
-        cgSync002Put(values, document, "proposition_d");
-        cgSync002Put(values, document, "correct_index");
+
+        /*
+         * CGANDROID017 · SYNC_ANSWER_CANONICAL001
+         */
+        Object answerObject =
+                document.get("answer");
+
+        String answer =
+                answerObject == null
+                        ? ""
+                        : String.valueOf(
+                                answerObject
+                        ).trim();
+
+        if (!answer.isEmpty()) {
+
+            values.put("proposition_a", answer);
+            values.put("proposition_b", "");
+            values.put("proposition_c", "");
+            values.put("proposition_d", "");
+            values.put("correct_index", 1);
+
+        } else {
+
+            /*
+             * LEGACY_QCM_FALLBACK001
+             */
+            cgSync002Put(values, document, "proposition_a");
+            cgSync002Put(values, document, "proposition_b");
+            cgSync002Put(values, document, "proposition_c");
+            cgSync002Put(values, document, "proposition_d");
+            cgSync002Put(values, document, "correct_index");
+        }
+
         cgSync002Put(values, document, "url_quizypedia");
         cgSync002Put(values, document, "url_internet");
         cgSync002Put(values, document, "image_file");

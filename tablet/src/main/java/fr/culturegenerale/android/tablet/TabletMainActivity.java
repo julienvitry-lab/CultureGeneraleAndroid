@@ -2595,19 +2595,11 @@ public class TabletMainActivity extends Activity {
         addStatsBanner();
 
 
-        String correctAnswer = "";
-
-        if (
-                q != null &&
-                q.correctIndex >= 1 &&
-                q.correctIndex <= 4
-        ) {
-
-            correctAnswer =
-                    q.options[
-                            q.correctIndex - 1
-                    ];
-        }
+        // CGANDROID017 · ANSWER_CANONICAL_READ001
+        String correctAnswer =
+                q == null
+                        ? ""
+                        : q.resolvedAnswer();
 
 
         if (
@@ -3450,69 +3442,93 @@ public class TabletMainActivity extends Activity {
     }
 
 
-    private JSONObject historyPayload(CgQuestion q, int choice, boolean correct, long responseMs) {
-        JSONObject x = new JSONObject();
+    /*
+     * CGANDROID017 · HISTORY_QR_SNAPSHOT001
+     *
+     * Les nouveaux événements n'écrivent plus A/B/C/D,
+     * selected_index ni correct_index.
+     */
+    private JSONObject historyPayload(
+            CgQuestion q,
+            int choice,
+            boolean correct,
+            long responseMs
+    ) {
+
+        JSONObject x =
+                new JSONObject();
+
         try {
+
+            String answer =
+                    q == null
+                            ? ""
+                            : q.resolvedAnswer();
+
+            x.put("schema_version", 3);
             x.put("question_id", q.id);
-            try { x.put("question_row_number", Long.parseLong(q.id)); } catch (Exception ignored) { }
-            x.put("client_played_at_ms", System.currentTimeMillis());
+
+            try {
+                x.put(
+                        "question_row_number",
+                        Long.parseLong(q.id)
+                );
+            } catch (Exception ignored) { }
+
+            x.put(
+                    "client_played_at_ms",
+                    System.currentTimeMillis()
+            );
+
             x.put("play_type", "challenge_mental");
             x.put("game_mode", "qr");
-            x.put("result", correct ? "correct" : "wrong");
+
+            x.put(
+                    "result",
+                    correct
+                            ? "correct"
+                            : "wrong"
+            );
+
             x.put("is_correct", correct);
             x.put("response_time_ms", responseMs);
             x.put("domain", q.megatheme);
             x.put("theme", q.theme);
-            // CGANDROID_HISTORY_SNAPSHOT_TRUTH001
-            x.put("selected_index", choice);
-            x.put("correct_index", q.correctIndex);
 
-            // CGANDROID003 · SELF_ASSESSMENT_HISTORY001
-            //
-            // choice == 0 signifie :
-            // "J'avais faux", sans fabriquer une fausse proposition
-            // A/B/C/D que l'utilisateur n'a jamais sélectionnée.
-            x.put(
-                    "selected_answer",
-                    choice >= 1 && choice <= 4
-                            ? q.options[choice - 1]
-                            : ""
-            );
-
-            x.put(
-                    "correct_answer",
-                    q.options[
-                            Math.max(
-                                    0,
-                                    Math.min(
-                                            3,
-                                            q.correctIndex - 1
-                                    )
-                            )
-                    ]
-            );
+            /*
+             * answer = vérité canonique.
+             * correct_answer reste temporairement comme alias
+             * pour les anciens lecteurs.
+             */
+            x.put("answer", answer);
+            x.put("correct_answer", answer);
 
             x.put(
                     "interaction_mode",
                     "endless_self_assessment_qr"
             );
+
             x.put("source", BuildConfig.CG_CHANNEL);
             x.put("session_id", game.sessionId());
 
-            JSONObject snap = new JSONObject();
+            JSONObject snap =
+                    new JSONObject();
+
             snap.put("question_id", q.id);
             snap.put("domain", q.megatheme);
             snap.put("theme", q.theme);
             snap.put("question", q.question);
             snap.put("detail", q.detail);
-            snap.put("proposition_a", q.options[0]);
-            snap.put("proposition_b", q.options[1]);
-            snap.put("proposition_c", q.options[2]);
-            snap.put("proposition_d", q.options[3]);
-            snap.put("correct_index", q.correctIndex);
+            snap.put("answer", answer);
             snap.put("image_file", q.imageFile);
-            x.put("question_snapshot", snap);
+
+            x.put(
+                    "question_snapshot",
+                    snap
+            );
+
         } catch (Exception ignored) { }
+
         return x;
     }
 
@@ -4969,15 +4985,33 @@ final class CgFirestore {
         q.theme = str(f, "theme");
         q.question = str(f, "question");
         q.detail = str(f, "detail");
+
+        // CGANDROID017 · ANSWER_CANONICAL_READ001
+        q.answer = str(f, "answer");
+
+        /*
+         * LEGACY_QCM_FALLBACK001
+         * Utilisé seulement si answer manque.
+         */
         q.options[0] = str(f, "proposition_a");
         q.options[1] = str(f, "proposition_b");
         q.options[2] = str(f, "proposition_c");
         q.options[3] = str(f, "proposition_d");
         q.correctIndex = integer(f, "correct_index");
+
+        q.normalizeQr();
+
         q.imageFile = str(f, "image_file");
         q.isImage = boolish(f, "is_image") || !q.imageFile.isEmpty();
-        if (q.question.isEmpty()) throw new Exception("Libellé de question vide.");
-        if (q.correctIndex < 1 || q.correctIndex > 4) throw new Exception("correct_index invalide.");
+
+        if (q.question.isEmpty()) {
+            throw new Exception("Libellé de question vide.");
+        }
+
+        if (q.answer.isEmpty()) {
+            throw new Exception("Réponse Q/R indisponible.");
+        }
+
         return q;
     }
 
@@ -5139,11 +5173,24 @@ final class CgFirestore {
                                 "theme"
                         );
 
+                // CGANDROID017 · HISTORY_QR_SNAPSHOT001
                 item.correctAnswer =
                         str(
                                 fields,
-                                "correct_answer"
+                                "answer"
                         );
+
+                if (
+                        item.correctAnswer == null ||
+                        item.correctAnswer.isEmpty()
+                ) {
+
+                    item.correctAnswer =
+                            str(
+                                    fields,
+                                    "correct_answer"
+                            );
+                }
 
                 item.interactionMode =
                         str(
@@ -5233,9 +5280,24 @@ final class CgFirestore {
 
 
                     /*
-                     * Compatibilité avec anciens événements
-                     * qui auraient le snapshot mais pas
-                     * correct_answer au niveau racine.
+                     * Snapshot CGANDROID017.
+                     */
+                    if (
+                            item.correctAnswer == null ||
+                            item.correctAnswer.isEmpty()
+                    ) {
+
+                        item.correctAnswer =
+                                str(
+                                        snapshotFields,
+                                        "answer"
+                                );
+                    }
+
+
+                    /*
+                     * LEGACY_QCM_FALLBACK001 :
+                     * dernier recours pour l'ancien historique.
                      */
                     if (
                             item.correctAnswer == null ||
@@ -5453,17 +5515,92 @@ final class CgHistoryItem {
 }
 
 
+/*
+ * CGANDROID017 · ANSWER_CANONICAL_READ001
+ * CGANDROID017 · LEGACY_QCM_FALLBACK001
+ */
 final class CgQuestion {
+
     String id = "";
     String megatheme = "";
     String theme = "";
     String question = "";
     String detail = "";
-    final String[] options = new String[]{"", "", "", ""};
+
+    String answer = "";
+
+    /*
+     * Conservé uniquement pour lire les anciennes données.
+     */
+    final String[] options =
+            new String[]{"", "", "", ""};
+
     int correctIndex = 0;
+
     String imageFile = "";
     boolean isImage = false;
-    boolean hasImage() { return isImage && imageFile != null && !imageFile.trim().isEmpty(); }
+
+
+    String resolvedAnswer() {
+
+        String direct =
+                answer == null
+                        ? ""
+                        : answer.trim();
+
+        if (!direct.isEmpty()) {
+            return direct;
+        }
+
+        if (
+                correctIndex >= 1 &&
+                correctIndex <= 4
+        ) {
+
+            String legacy =
+                    options[correctIndex - 1];
+
+            return legacy == null
+                    ? ""
+                    : legacy.trim();
+        }
+
+        return "";
+    }
+
+
+    void normalizeQr() {
+
+        String resolved =
+                resolvedAnswer();
+
+        answer =
+                resolved;
+
+        if (!resolved.isEmpty()) {
+
+            /*
+             * Normalisation mémoire.
+             *
+             * Le gameplay historique peut continuer à utiliser
+             * correctIndex/options pendant la transition,
+             * mais il ne voit plus qu'une réponse.
+             */
+            options[0] = resolved;
+            options[1] = "";
+            options[2] = "";
+            options[3] = "";
+
+            correctIndex = 1;
+        }
+    }
+
+
+    boolean hasImage() {
+        return isImage
+                && imageFile != null
+                && !imageFile.trim().isEmpty();
+    }
 }
 
 /* ========================================================================== */

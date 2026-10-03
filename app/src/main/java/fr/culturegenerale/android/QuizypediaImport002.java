@@ -407,8 +407,22 @@ public final class QuizypediaImport002 {
                 String id = "cgimp2_" + UUID.randomUUID().toString().replace("-", "");
                 ContentValues cv = new ContentValues();
                 cv.put("row_number", ++row); cv.put("original_id", id); cv.put("megatheme", q.megatheme); cv.put("theme", q.theme);
-                cv.put("question", q.question); cv.put("detail", q.detail); cv.put("proposition_a", q.a); cv.put("proposition_b", q.b); cv.put("proposition_c", q.c); cv.put("proposition_d", q.d);
-                cv.put("correct_index", q.correctIndex); cv.put("url_quizypedia", q.url); cv.put("url_internet", ""); cv.put("image_file", ""); cv.put("non_trouve", 0); cv.put("status", ""); cv.put("is_image", 0);
+                String answer = answerOf(q);
+
+                cv.put("question", q.question);
+                cv.put("detail", q.detail);
+
+                /*
+                 * SQLite téléphone historique :
+                 * une seule réponse dans A.
+                 */
+                cv.put("proposition_a", answer);
+                cv.put("proposition_b", "");
+                cv.put("proposition_c", "");
+                cv.put("proposition_d", "");
+                cv.put("correct_index", answer.isEmpty() ? 0 : 1);
+
+                cv.put("url_quizypedia", q.url); cv.put("url_internet", ""); cv.put("image_file", ""); cv.put("non_trouve", 0); cv.put("status", ""); cv.put("is_image", 0);
                 long ins = db.insertOrThrow("questions", null, cv);
                 if (ins >= 0) { r.inserted++; r.ids.add(id); q.rowNumber = row; }
             }
@@ -427,8 +441,17 @@ public final class QuizypediaImport002 {
             if (q.rowNumber <= 0 || idPos >= ids.size()) continue;
             String id = ids.get(idPos++);
             Map<String,Object> m = new HashMap<>();
-            m.put("row_number", q.rowNumber); m.put("megatheme", q.megatheme); m.put("theme", q.theme); m.put("question", q.question); m.put("detail", q.detail);
-            m.put("proposition_a", q.a); m.put("proposition_b", q.b); m.put("proposition_c", q.c); m.put("proposition_d", q.d); m.put("correct_index", q.correctIndex);
+            String answer = answerOf(q);
+
+            m.put("row_number", q.rowNumber);
+            m.put("megatheme", q.megatheme);
+            m.put("theme", q.theme);
+            m.put("question", q.question);
+            m.put("detail", q.detail);
+
+            // CGANDROID017 · Cloud Q/R strict.
+            m.put("answer", answer);
+
             m.put("url_quizypedia", q.url); m.put("url_internet", ""); m.put("image_file", ""); m.put("non_trouve", 0); m.put("is_image", 0); m.put("status", "");
             m.put("cg_revision", 1L); m.put("cg_writer", "android-cgimport002"); m.put("cg_updated_at", FieldValue.serverTimestamp());
             batch.set(fs.collection("users").document(user.getUid()).collection("questions").document(id), m);
@@ -437,6 +460,34 @@ public final class QuizypediaImport002 {
         }
         if (batchCount > 0) batch.commit();
     }
+
+    private static String answerOf(
+            QuestionDraft q
+    ) {
+
+        if (q == null) {
+            return "";
+        }
+
+        switch (q.correctIndex) {
+
+            case 1:
+                return clean(q.a);
+
+            case 2:
+                return clean(q.b);
+
+            case 3:
+                return clean(q.c);
+
+            case 4:
+                return clean(q.d);
+
+            default:
+                return "";
+        }
+    }
+
 
     private static EditText edit(Activity a, String hint) { EditText e = new EditText(a); e.setHint(hint); e.setTextSize(17); e.setSingleLine(true); return e; }
     private static TextView text(Activity a, String s) { TextView t = new TextView(a); t.setText(s); t.setTextSize(16); t.setPadding(0,dp(a,8),0,dp(a,8)); return t; }
