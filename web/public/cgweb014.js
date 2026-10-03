@@ -276,6 +276,40 @@ async function cg14Apply() {
   }
 }
 
+// CGWEB134_BULK_EXPORT_QR001
+function cg14Answer(row) {
+
+  const direct =
+    String(
+      row?.answer ??
+      row?.correct_answer ??
+      ""
+    ).trim();
+
+  if (direct) return direct;
+
+  const n =
+    Number(row?.correct_index);
+
+  if (
+    Number.isInteger(n) &&
+    n >= 1 &&
+    n <= 4
+  ) {
+    return String(
+      row?.[`proposition_${String.fromCharCode(96+n)}`] ??
+      ""
+    ).trim();
+  }
+
+  if (n === 0) {
+    return String(row?.proposition_a ?? "").trim();
+  }
+
+  return "";
+}
+
+
 function cg14CsvEscape(value) {
   const s = String(value ?? "");
   return `"${s.replace(/"/g, '""')}"`;
@@ -324,11 +358,7 @@ async function cg14Export() {
       "theme",
       "question",
       "detail",
-      "proposition_a",
-      "proposition_b",
-      "proposition_c",
-      "proposition_d",
-      "correct_index",
+      "answer",
       "url_quizypedia",
       "url_internet",
       "image_file",
@@ -344,7 +374,9 @@ async function cg14Export() {
           cg14CsvEscape(
             field === "original_id"
               ? (row.original_id ?? row.id ?? "")
-              : row[field]
+              : field === "answer"
+                ? cg14Answer(row)
+                : row[field]
           )
         ).join(";")
       )

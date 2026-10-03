@@ -895,23 +895,78 @@ window.CGSYNC007_API = {
 // CGSYNC007_CONFLICT_ENGINE_END
 
 // CGDEDUP001_API_START
+// CGWEB134_DEDUP_QR_CORE001
 const CGDEDUP001_FIELDS = new Set([
   "megatheme", "theme", "question", "detail", "answer",
-  "proposition_a", "proposition_b", "proposition_c", "proposition_d",
-  "correct_index", "url_quizypedia", "url_internet",
+  "url_quizypedia", "url_internet",
   "image_file", "image_thumb_file", "image_source_url", "image_mime",
   "image_width", "image_height", "image_bytes", "image_sha256",
   "image_schema", "image_origin", "image_original_name", "image_updated_ms",
   "non_trouve", "status", "is_image"
 ]);
 
+function cgdedup001AnswerOf(data) {
+  const direct =
+    String(
+      data?.answer ??
+      data?.correct_answer ??
+      ""
+    ).trim();
+
+  if (direct) return direct;
+
+  const n =
+    Number(data?.correct_index);
+
+  if (
+    Number.isInteger(n) &&
+    n >= 1 &&
+    n <= 4
+  ) {
+    return String(
+      data?.[`proposition_${String.fromCharCode(96+n)}`] ??
+      ""
+    ).trim();
+  }
+
+  if (n === 0) {
+    return String(data?.proposition_a ?? "").trim();
+  }
+
+  return "";
+}
+
+function cgdedup001CanonicalSnapshot(data) {
+  const out = {};
+
+  for (const key of CGDEDUP001_FIELDS) {
+    if (data?.[key] !== undefined) {
+      out[key] = data[key];
+    }
+  }
+
+  const answer =
+    cgdedup001AnswerOf(data);
+
+  if (answer) {
+    out.answer = answer;
+  }
+
+  return out;
+}
+
 function cgdedup001CleanPatch(patch) {
   const clean = {};
-  for (const [key, value] of Object.entries(patch || {})) {
-    if (CGDEDUP001_FIELDS.has(key) && value !== undefined) {
+
+  for (const [key,value] of Object.entries(patch || {})) {
+    if (
+      CGDEDUP001_FIELDS.has(key) &&
+      value !== undefined
+    ) {
       clean[key] = value;
     }
   }
+
   return clean;
 }
 
@@ -934,6 +989,31 @@ async function cgdedup001ResolvePair(options = {}) {
   const expectedKeepRevision = Number(options.expectedKeepRevision ?? 0);
   const expectedDeleteRevision = Number(options.expectedDeleteRevision ?? 0);
   const patch = cgdedup001CleanPatch(options.patch || {});
+
+  const normalizeQr =
+    Object.prototype.hasOwnProperty.call(
+      patch,
+      "answer"
+    );
+
+  const answer =
+    normalizeQr
+      ? String(patch.answer ?? "").trim()
+      : "";
+
+  const writePatch =
+    normalizeQr
+      ? {
+          ...patch,
+          answer,
+          proposition_a:answer,
+          correct_index:1,
+          proposition_b:deleteField(),
+          proposition_c:deleteField(),
+          proposition_d:deleteField()
+        }
+      : patch;
+
   const mode = String(options.mode || "keep").trim() || "keep";
   const writer = cgsync007WriterMeta("CGDEDUP001");
 
@@ -970,8 +1050,8 @@ async function cgdedup001ResolvePair(options = {}) {
         expected_delete_revision: expectedDeleteRevision,
         cloud_delete_revision: deleteRevision,
         attempted_patch: patch,
-        keep_snapshot: keepData,
-        delete_snapshot: deleteData,
+        keep_snapshot: cgdedup001CanonicalSnapshot(keepData),
+        delete_snapshot: cgdedup001CanonicalSnapshot(deleteData),
         source: "CGDEDUP001",
         writer_id: writer.cg_writer_id,
         writer_label: writer.cg_writer_label,
@@ -995,7 +1075,7 @@ async function cgdedup001ResolvePair(options = {}) {
     if (Object.keys(patch).length) {
       nextKeepRevision = keepRevision + 1;
       transaction.update(keepRef, {
-        ...patch,
+        ...writePatch,
         ...writer,
         cg_revision: nextKeepRevision,
         cg_base_revision: keepRevision,
@@ -1025,8 +1105,9 @@ async function cgdedup001ResolvePair(options = {}) {
       keep_revision_after: nextKeepRevision,
       delete_revision: deleteRevision,
       merge_patch: patch,
-      keep_snapshot_before: keepData,
-      deleted_snapshot: deleteData,
+      qr_normalized: normalizeQr,
+      keep_snapshot_before: cgdedup001CanonicalSnapshot(keepData),
+      deleted_snapshot: cgdedup001CanonicalSnapshot(deleteData),
       source: "CGDEDUP001",
       writer_id: writer.cg_writer_id,
       writer_label: writer.cg_writer_label,

@@ -6,10 +6,10 @@ const {getFirestore, FieldValue} = require('firebase-admin/firestore');
 if (!getApps().length) initializeApp();
 const REGION = 'europe-west1';
 
+// CGWEB134_BACKEND_QR_FIELDS001
 const CONTENT_FIELDS = [
-  'megatheme','theme','question','detail',
-  'proposition_a','proposition_b','proposition_c','proposition_d',
-  'correct_index','url_quizypedia','url_internet',
+  'megatheme','theme','question','detail','answer',
+  'url_quizypedia','url_internet',
   'image_file','image_thumb_file','image_source_url','image_mime',
   'image_width','image_height','image_bytes','image_sha256',
   'image_schema','image_origin','image_original_name','image_updated_ms',
@@ -19,9 +19,37 @@ const STOP = new Set(['de','du','des','la','le','les','un','une','et','ou','a','
 
 function one(v){return String(v??'').trim()}
 function norm(v){return one(v).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()}
-function tokens(data){return [...new Set(norm(CONTENT_FIELDS.map(f=>data?.[f]).filter(v=>typeof v==='string').join(' ')).split(/\s+/).filter(t=>t.length>=2&&!STOP.has(t)))]}
+function answerOf(data){
+  const direct=one(data?.answer??data?.correct_answer??'');
+  if(direct)return direct;
+  const n=Number(data?.correct_index);
+  if(Number.isInteger(n)&&n>=1&&n<=4)return one(data?.[`proposition_${String.fromCharCode(96+n)}`]);
+  if(n===0)return one(data?.proposition_a);
+  return '';
+}
+function tokens(data){
+  return [...new Set(
+    norm([
+      data?.megatheme,
+      data?.theme,
+      data?.question,
+      data?.detail,
+      answerOf(data)
+    ].filter(Boolean).join(' '))
+      .split(/\s+/)
+      .filter(t=>t.length>=2&&!STOP.has(t))
+  )];
+}
 function revision(data){const n=Number(data?.cg_revision||0);return Number.isFinite(n)&&n>=0?Math.trunc(n):0}
-function snapshot(data){const out={};for(const f of CONTENT_FIELDS){if(data?.[f]!==undefined)out[f]=data[f]}return out}
+function snapshot(data){
+  const out={};
+  for(const f of CONTENT_FIELDS){
+    if(data?.[f]!==undefined)out[f]=data[f];
+  }
+  const answer=answerOf(data);
+  if(answer)out.answer=answer;
+  return out;
+}
 function cors(req,res){res.set('Access-Control-Allow-Origin','*');res.set('Access-Control-Allow-Headers','Authorization, Content-Type');res.set('Access-Control-Allow-Methods','POST, OPTIONS');if(req.method==='OPTIONS'){res.status(204).send('');return true}return false}
 function json(res,status,body){res.status(status).set('content-type','application/json; charset=utf-8').send(JSON.stringify(body))}
 async function requireUser(req){const h=String(req.headers.authorization||'');if(!h.startsWith('Bearer '))throw Object.assign(new Error('Authentification Firebase requise.'),{status:401});return getAuth().verifyIdToken(h.slice(7))}
@@ -82,6 +110,26 @@ exports.cgweb022History = onRequest({region:REGION,timeoutSeconds:540,memory:'1G
         for(const field of CONTENT_FIELDS){
           restore[field]=Object.prototype.hasOwnProperty.call(before,field)?before[field]:FieldValue.delete();
         }
+
+        const restoredAnswer=answerOf(before);
+
+        restore.answer=
+          restoredAnswer ||
+          FieldValue.delete();
+
+        restore.proposition_a=
+          restoredAnswer ||
+          FieldValue.delete();
+
+        restore.correct_index=
+          restoredAnswer
+            ? 1
+            : FieldValue.delete();
+
+        restore.proposition_b=FieldValue.delete();
+        restore.proposition_c=FieldValue.delete();
+        restore.proposition_d=FieldValue.delete();
+
         const nextRev=(currentRev===null?Number(h.revision_before||0):currentRev)+1;
         const payload={...restore,cg_revision:nextRev,cg_base_revision:currentRev??Number(h.revision_before||0),cg_updated_at:FieldValue.serverTimestamp(),cg_updated_by:'web',cg_writer_id:'cgweb022',cg_writer_label:'Web · CGWEB022',cg_update_source:'CGWEB022_RESTORE'};
         if(qSnap.exists)tx.update(qRef,payload);else tx.set(qRef,payload,{merge:true});

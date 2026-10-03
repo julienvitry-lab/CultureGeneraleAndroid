@@ -7,16 +7,13 @@
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 
+  // CGWEB134_DEDUP_QR001
   const FIELDS = [
     ["megatheme", "Mégathème"],
     ["theme", "Thème"],
     ["question", "Question"],
     ["detail", "Détail"],
-    ["proposition_a", "Proposition A"],
-    ["proposition_b", "Proposition B"],
-    ["proposition_c", "Proposition C"],
-    ["proposition_d", "Proposition D"],
-    ["correct_index", "Réponse correcte"],
+    ["answer", "Réponse"],
     ["url_quizypedia", "URL Quizypedia"],
     ["url_internet", "URL Internet"],
     ["image_file", "Image"],
@@ -24,6 +21,38 @@
     ["status", "Statut"],
     ["is_image", "is_image"]
   ];
+
+  function answerOf(row) {
+    const direct =
+      String(
+        row?.answer ??
+        row?.correct_answer ??
+        ""
+      ).trim();
+
+    if (direct) return direct;
+
+    const n = Number(row?.correct_index);
+
+    if (Number.isInteger(n) && n >= 1 && n <= 4) {
+      return String(
+        row?.[`proposition_${String.fromCharCode(96+n)}`] ??
+        ""
+      ).trim();
+    }
+
+    if (n === 0) {
+      return String(row?.proposition_a ?? "").trim();
+    }
+
+    return "";
+  }
+
+  function fieldValue(row, key) {
+    return key === "answer"
+      ? answerOf(row)
+      : row?.[key];
+  }
 
   const CGD = {
     report: null,
@@ -72,8 +101,8 @@
   }
 
   function chooseDefault(a, b, key) {
-    const av = normalizeComparable(a?.[key]);
-    const bv = normalizeComparable(b?.[key]);
+    const av = normalizeComparable(fieldValue(a,key));
+    const bv = normalizeComparable(fieldValue(b,key));
 
     if (!av && bv) return "b";
     if (av && !bv) return "a";
@@ -111,22 +140,25 @@
     const labels = pair.labels;
 
     const rows = FIELDS.map(([key, label]) => {
-      const choice = chooseDefault(a, b, key);
+      const av = fieldValue(a,key);
+      const bv = fieldValue(b,key);
+      const choice = chooseDefault(a,b,key);
+
       return `
-        <tr class="${diffClass(a?.[key], b?.[key])}">
+        <tr class="${diffClass(av,bv)}">
           <th>${esc(label)}</th>
           <td>
             <label class="cgd-radio">
               <input type="radio" name="cgd-${esc(key)}" value="a"
                 ${choice === "a" ? "checked" : ""}>
-              <span>${cellValue(a?.[key])}</span>
+              <span>${cellValue(av)}</span>
             </label>
           </td>
           <td>
             <label class="cgd-radio">
               <input type="radio" name="cgd-${esc(key)}" value="b"
                 ${choice === "b" ? "checked" : ""}>
-              <span>${cellValue(b?.[key])}</span>
+              <span>${cellValue(bv)}</span>
             </label>
           </td>
         </tr>`;
@@ -198,18 +230,43 @@
 
   function buildPatch(target) {
     const pair = CGD.pair;
-    const [a, b] = pair.rows;
+    const [a,b] = pair.rows;
     const patch = {};
 
     for (const [key] of FIELDS) {
-      const selected = document.querySelector(
-        `input[name="cgd-${CSS.escape(key)}"]:checked`
-      )?.value || "a";
-      const source = selected === "b" ? b : a;
-      const targetRow = target === "a" ? a : b;
-      const value = source?.[key];
+      const selected =
+        document.querySelector(
+          `input[name="cgd-${CSS.escape(key)}"]:checked`
+        )?.value || "a";
 
-      if (normalizeComparable(value) !== normalizeComparable(targetRow?.[key])) {
+      const source =
+        selected === "b" ? b : a;
+
+      const targetRow =
+        target === "a" ? a : b;
+
+      const value =
+        fieldValue(source,key);
+
+      const targetValue =
+        fieldValue(targetRow,key);
+
+      /*
+       * Même si la réponse résolue est identique,
+       * une vieille question dépourvue de answer
+       * doit pouvoir être normalisée au moment
+       * d'une fusion.
+       */
+      const missingCanonicalAnswer =
+        key === "answer" &&
+        normalizeComparable(value) &&
+        !normalizeComparable(targetRow?.answer);
+
+      if (
+        missingCanonicalAnswer ||
+        normalizeComparable(value) !==
+        normalizeComparable(targetValue)
+      ) {
         patch[key] = value ?? "";
       }
     }
