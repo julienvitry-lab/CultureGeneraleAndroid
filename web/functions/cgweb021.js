@@ -5,6 +5,8 @@ const {getFirestore,FieldValue}=require('firebase-admin/firestore');
 if(!getApps().length)initializeApp();
 const REGION='europe-west1',MAX_IDS=500;
 // CGWEB134_BACKEND_QR_FIELDS001
+// CGWEB136_PURE_QR_WRITE001
+// CGWEB136_LEGACY_READ_ONLY001
 const QR_FIELDS=['megatheme','theme','question','detail','answer','url_quizypedia','url_internet','image_file','image_thumb_file','image_source_url','image_mime','image_width','image_height','image_bytes','image_sha256','image_schema','image_origin','image_original_name','image_updated_ms','non_trouve','status','is_image'];
 const LEGACY_QCM_FIELDS=['proposition_a','proposition_b','proposition_c','proposition_d','correct_index'];
 const FIELDS=[...QR_FIELDS,...LEGACY_QCM_FIELDS];
@@ -39,11 +41,16 @@ if(mode==='undo'){const auditId=one(body.auditId);if(!auditId)return json(res,40
 for(const f of QR_FIELDS)restore[f]=Object.prototype.hasOwnProperty.call(before,f)?before[f]:FieldValue.delete();
 const restoredAnswer=answerOf(before);
 restore.answer=restoredAnswer||FieldValue.delete();
-restore.proposition_a=restoredAnswer||FieldValue.delete();
-restore.correct_index=restoredAnswer?1:FieldValue.delete();
+
+/*
+ * CGWEB136 :
+ * l'undo restaure la réponse, jamais le schéma QCM.
+ */
+restore.proposition_a=FieldValue.delete();
 restore.proposition_b=FieldValue.delete();
 restore.proposition_c=FieldValue.delete();
 restore.proposition_d=FieldValue.delete();
+restore.correct_index=FieldValue.delete();
 const next=cloudRev+1;tx.update(qRef,{...restore,cg_revision:next,cg_base_revision:cloudRev,cg_updated_at:FieldValue.serverTimestamp(),cg_updated_by:'web',cg_writer_id:'cgweb021',cg_writer_label:'Web · CGWEB021',cg_update_source:'CGWEB021_UNDO'});tx.set(deltaRef,{question_id:id,deleted:false,tokens:searchTokens(before),cgindex_updated_at:FieldValue.serverTimestamp()},{merge:true});tx.update(itemDoc.ref,{undone:true,undo_revision:next,undone_ms:Date.now()});return{status:'undone',id}})},5);const counts={undone:0,conflict:0,missing:0,already_undone:0,error:0};for(const r of results)counts[r.status]=(counts[r.status]||0)+1;await auditRef.set({undo_last_ms:Date.now(),undo_counts:counts,status:counts.conflict||counts.error?'undo_partial':'undone'},{merge:true});return json(res,200,{ok:true,auditId,counts,results:results.slice(0,50)})}
 const ids=idsOf(body.ids);if(!ids.length)return json(res,400,{ok:false,error:'Aucun ID sélectionné.'});if(ids.length>MAX_IDS)return json(res,400,{ok:false,error:`Maximum ${MAX_IDS} questions par lot sécurisé.`});const patch=patchFor(one(body.action),body.value);
 if(mode==='preview'){const refs=ids.map(id=>db.collection('users').doc(user.uid).collection('questions').doc(id)),snaps=refs.length?await db.getAll(...refs):[],expectedRevisions={},samples=[];let existing=0,changeCount=0,unchanged=0,missing=0;for(let i=0;i<snaps.length;i++){const s=snaps[i],id=ids[i];if(!s.exists){missing++;continue}existing++;const d=s.data()||{},r=rev(d);expectedRevisions[id]=r;const effective=diff(d,patch);if(!Object.keys(effective).length){unchanged++;continue}changeCount++;if(samples.length<30)samples.push({id,revision:r,before:Object.fromEntries(Object.keys(patch).map(k=>[k,d[k]??null])),after:effective})}return json(res,200,{ok:true,mode:'preview',requested:ids.length,patch,existing,changeCount,unchanged,missing,expectedRevisions,samples})}

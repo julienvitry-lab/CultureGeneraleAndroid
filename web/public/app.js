@@ -222,25 +222,20 @@ window.CGWEB001 = {
       if (Object.prototype.hasOwnProperty.call(patch, key)) clean[key] = patch[key];
     }
     /*
-     * CGWEB133 · ACTIVE_QCM_WRITER_RETIRE001
+     * CGWEB136 · PURE_QR_WRITE001
+     *
+     * answer est désormais le seul champ réponse écrit.
      */
-    const normalizeQr =
+    if (
       Object.prototype.hasOwnProperty.call(
         clean,
         "answer"
-      );
-
-    if (normalizeQr) {
-      const answer =
-        String(clean.answer ?? "").trim();
-
-      clean.answer = answer;
-      clean.proposition_a = answer;
-      clean.correct_index = 1;
-
-      delete clean.proposition_b;
-      delete clean.proposition_c;
-      delete clean.proposition_d;
+      )
+    ) {
+      clean.answer =
+        String(
+          clean.answer ?? ""
+        ).trim();
     }
 
     clean.updated_at = serverTimestamp();
@@ -254,8 +249,7 @@ window.CGWEB001 = {
       questionId,
       clean,
       {
-        source:"CGWEB005_QR",
-        normalizeQr
+        source:"CGWEB005_QR"
       }
     );
     const fresh = await getDoc(ref);
@@ -407,6 +401,10 @@ window.CGSYNC005_API = {
 // CGWEB135_POST_QR_AUDIT001
 // CGWEB135_ACTIVE_RESIDUAL_ZEROING001
 // CGWEB135_ANDROID_BRIDGE_BOUNDARY001
+// CGWEB136_ANDROID_BRIDGE_RETIRE001
+// CGWEB136_LEGACY_READ_ONLY001
+// CGWEB136_PURE_QR_WRITE001
+// CGWEB136_FINAL_QR_AUDIT001
 // CGINDEX001_HELPERS_START
 function cgindex001Normalize(text) {
   return String(text || "")
@@ -595,11 +593,11 @@ window.CGINDEX001_API = {
 // EDITOR_QR001
 // LEGACY_CATALOG_COMPAT001
 // CGSYNC007_CONFLICT_ENGINE_START
-const CGWEB135_ANDROID_BRIDGE_FIELDS = Object.freeze([
-  "proposition_a",
-  "correct_index"
-]);
-
+/*
+ * CGWEB136 · ANDROID_BRIDGE_RETIRE001
+ *
+ * Aucun champ de bridge Android n'est désormais produit par le Web.
+ */
 const CGSYNC007_EDITABLE_FIELDS = new Set([
   "megatheme", "theme", "question", "detail", "answer",
   "url_quizypedia", "url_internet",
@@ -704,11 +702,12 @@ async function cgsync007WriteQuestion(questionId, patch, options = {}) {
   }
 
   /*
-   * ANDROID_BRIDGE_BOUNDARY001
+   * CGWEB136 · PURE_QR_WRITE001
    *
-   * Les écrans n'écrivent que answer.
-   * Le pont Android est généré ici et seulement ici
-   * pour les mises à jour CGSYNC007.
+   * answer est l'unique donnée réponse écrite.
+   *
+   * proposition_[A-D] et correct_index ne peuvent plus
+   * être recréés par CGSYNC007.
    */
   const hasCanonicalAnswer =
     Object.prototype.hasOwnProperty.call(
@@ -717,12 +716,10 @@ async function cgsync007WriteQuestion(questionId, patch, options = {}) {
     );
 
   if (hasCanonicalAnswer) {
-    const answer =
-      String(clean.answer ?? "").trim();
-
-    clean.answer = answer;
-    clean.proposition_a = answer;
-    clean.correct_index = 1;
+    clean.answer =
+      String(
+        clean.answer ?? ""
+      ).trim();
   }
 
   const questionRef = doc(db, "users", u.uid, "questions", id);
@@ -771,23 +768,26 @@ async function cgsync007WriteQuestion(questionId, patch, options = {}) {
     const nextRevision = cloudRevision + 1;
 
     /*
-     * CGWEB131 · LEGACY_CATALOG_COMPAT001
+     * CGWEB136 · LEGACY_READ_ONLY001
      *
-     * Une ancienne fiche reste lisible tant qu'elle n'est pas modifiée.
+     * Une ancienne question reste lisible tant qu'elle n'est
+     * pas modifiée.
      *
-     * Dès qu'un éditeur Q/R l'enregistre avec normalizeQr=true :
-     * proposition_b/c/d disparaissent physiquement de Firestore.
+     * Dès qu'une réponse canonique est enregistrée :
+     * TOUS les champs QCM historiques disparaissent du document.
      */
     const normalizeQr =
       options?.normalizeQr === true ||
       hasCanonicalAnswer;
 
-    const qrLegacyDeletes =
+    const legacyFieldDeletes =
       normalizeQr
         ? {
+            proposition_a: deleteField(),
             proposition_b: deleteField(),
             proposition_c: deleteField(),
-            proposition_d: deleteField()
+            proposition_d: deleteField(),
+            correct_index: deleteField()
           }
         : {};
 
@@ -797,14 +797,16 @@ async function cgsync007WriteQuestion(questionId, patch, options = {}) {
     };
 
     if (normalizeQr) {
+      delete afterCloud.proposition_a;
       delete afterCloud.proposition_b;
       delete afterCloud.proposition_c;
       delete afterCloud.proposition_d;
+      delete afterCloud.correct_index;
     }
 
     transaction.update(questionRef, {
       ...clean,
-      ...qrLegacyDeletes,
+      ...legacyFieldDeletes,
       ...writer,
       cg_revision: nextRevision,
       cg_base_revision: cloudRevision,
@@ -1112,11 +1114,11 @@ async function cgdedup001ResolvePair(options = {}) {
       ? {
           ...patch,
           answer,
-          proposition_a:answer,
-          correct_index:1,
+          proposition_a:deleteField(),
           proposition_b:deleteField(),
           proposition_c:deleteField(),
-          proposition_d:deleteField()
+          proposition_d:deleteField(),
+          correct_index:deleteField()
         }
       : patch;
 
@@ -1408,11 +1410,12 @@ window.CGWEB010_API = {
     clean.answer = answer;
 
     /*
-     * Seul le noyau Web fabrique le pont Android.
+     * CGWEB136 · PURE_QR_WRITE001
+     *
+     * Nouveau document :
+     * aucun proposition_[A-D],
+     * aucun correct_index.
      */
-    clean.proposition_a = answer;
-    clean.correct_index = 1;
-
     // CGSYNC007_CREATE_REVISION
     const writer = cgsync007WriterMeta("CGWEB010_CREATE");
     await setDoc(ref,{

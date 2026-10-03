@@ -7,6 +7,8 @@ if (!getApps().length) initializeApp();
 const REGION = 'europe-west1';
 
 // CGWEB134_BACKEND_QR_FIELDS001
+// CGWEB136_PURE_QR_WRITE001
+// CGWEB136_LEGACY_READ_ONLY001
 const CONTENT_FIELDS = [
   'megatheme','theme','question','detail','answer',
   'url_quizypedia','url_internet',
@@ -117,18 +119,17 @@ exports.cgweb022History = onRequest({region:REGION,timeoutSeconds:540,memory:'1G
           restoredAnswer ||
           FieldValue.delete();
 
-        restore.proposition_a=
-          restoredAnswer ||
-          FieldValue.delete();
-
-        restore.correct_index=
-          restoredAnswer
-            ? 1
-            : FieldValue.delete();
-
+        /*
+         * CGWEB136 · restauration Q/R pure.
+         *
+         * Même un snapshot historique QCM est restauré
+         * sous la forme canonique answer.
+         */
+        restore.proposition_a=FieldValue.delete();
         restore.proposition_b=FieldValue.delete();
         restore.proposition_c=FieldValue.delete();
         restore.proposition_d=FieldValue.delete();
+        restore.correct_index=FieldValue.delete();
 
         const nextRev=(currentRev===null?Number(h.revision_before||0):currentRev)+1;
         const payload={...restore,cg_revision:nextRev,cg_base_revision:currentRev??Number(h.revision_before||0),cg_updated_at:FieldValue.serverTimestamp(),cg_updated_by:'web',cg_writer_id:'cgweb022',cg_writer_label:'Web · CGWEB022',cg_update_source:'CGWEB022_RESTORE'};
