@@ -58,6 +58,9 @@ const CGPLAY004_UNSEEN_FIRST_VERSION='CGPLAY004_FIX2_UNSEEN_FIRST001';
 const CGPLAY004_OLDEST_PLAYED_FIRST_VERSION='CGPLAY004_FIX2_OLDEST_PLAYED_FIRST001';
 const CGWEB_HISTORY_BINDING_VERSION='CGWEB_HISTORY_QUESTION_BINDING_FIX001';
 const CGWEB126_HISTORY_RESULT_TRUTH_VERSION='CGWEB126_HISTORY_RESULT_TRUTH001_ANDROID_MENTAL_COMPAT001_HISTORY_RETRO_READ001';
+
+const CGWEB130_HISTORY_QR_NORMALIZE001=
+  'CGWEB130_HISTORY_QR_NORMALIZE001_ANSWER_RESOLUTION001_QCM_SNAPSHOT_HIDE001_LEGACY_HISTORY_COMPAT001';
 // CGWEB_HISTORY_QUESTION_BINDING_FIX001
 // CGPLAY004_FIX2_UNSEEN_FIRST001_OLDEST_PLAYED_FIRST001
 // CGPLAY004_FIX1_LONG_SESSION_RANDOMIZE001_THEME_DIVERSITY001
@@ -102,68 +105,240 @@ async function requireUser(req){
   }
   return getAuth().verifyIdToken(h.slice(7));
 }
+/*
+ * CGWEB130
+ * HISTORY_QR_NORMALIZE001
+ * ANSWER_RESOLUTION001
+ * QCM_SNAPSHOT_HIDE001
+ * LEGACY_HISTORY_COMPAT001
+ *
+ * Aucun document play_history n'est modifié.
+ *
+ * Les anciennes structures QCM sont lues uniquement comme
+ * source de compatibilité afin de reconstruire UNE réponse.
+ *
+ * Priorité :
+ * 1. play_history.correct_answer
+ * 2. play_history.answer
+ * 3. question_snapshot.answer
+ * 4. question_snapshot.correct_answer
+ * 5. proposition_[A-D] + correct_index historique
+ *
+ * Les propositions historiques ne sont jamais renvoyées
+ * au navigateur.
+ */
 function eventFromDoc(doc){
-  const x=doc.data()||{};
-  const snap=x.question_snapshot&&typeof x.question_snapshot==='object'?x.question_snapshot:{};
 
-  const explicitQuestionId=one(x.question_id);
-  const snapshotQuestionId=one(snap.question_id);
-  const legacyQuestionId=one(x.question_row_number);
-  const questionId=explicitQuestionId||snapshotQuestionId||legacyQuestionId||doc.id;
+  const x =
+    doc.data() || {};
 
-  const bindingSource=
-    explicitQuestionId?'question_id':
-    snapshotQuestionId?'question_snapshot.question_id':
-    legacyQuestionId?'question_row_number':
-    'history_document_id';
+  const snap =
+    x.question_snapshot &&
+    typeof x.question_snapshot === 'object'
+      ? x.question_snapshot
+      : {};
 
-  const bindingMismatch=Boolean(
-    explicitQuestionId&&snapshotQuestionId&&explicitQuestionId!==snapshotQuestionId
-  );
 
-  const selectedIndex=num(x.selected_index);
-  const correctIndex=num(x.correct_index)||num(snap.correct_index);
+  const explicitQuestionId =
+    one(x.question_id);
 
-  const options=[
+  const snapshotQuestionId =
+    one(snap.question_id);
+
+  const legacyQuestionId =
+    one(x.question_row_number);
+
+
+  const questionId =
+    explicitQuestionId ||
+    snapshotQuestionId ||
+    legacyQuestionId ||
+    doc.id;
+
+
+  const bindingSource =
+    explicitQuestionId
+      ? 'question_id'
+      : snapshotQuestionId
+        ? 'question_snapshot.question_id'
+        : legacyQuestionId
+          ? 'question_row_number'
+          : 'history_document_id';
+
+
+  const bindingMismatch =
+    Boolean(
+      explicitQuestionId &&
+      snapshotQuestionId &&
+      explicitQuestionId !== snapshotQuestionId
+    );
+
+
+  /*
+   * Les index et propositions restent locaux à cette fonction.
+   * Ils servent uniquement à lire les anciens historiques.
+   */
+  const correctIndex =
+    num(x.correct_index) ||
+    num(snap.correct_index);
+
+
+  const legacyOptions = [
     one(snap.proposition_a),
     one(snap.proposition_b),
     one(snap.proposition_c),
     one(snap.proposition_d)
   ];
 
-  const snapCorrectAnswer=
-    correctIndex>=1&&correctIndex<=4
-      ?options[correctIndex-1]
-      :'';
 
+  const legacyCorrectAnswer =
+    correctIndex >= 1 &&
+    correctIndex <= legacyOptions.length
+      ? legacyOptions[correctIndex - 1]
+      : '';
+
+
+  const answerCandidates = [
+    {
+      value: one(x.correct_answer),
+      source: 'play_history.correct_answer'
+    },
+    {
+      value: one(x.answer),
+      source: 'play_history.answer'
+    },
+    {
+      value: one(snap.answer),
+      source: 'question_snapshot.answer'
+    },
+    {
+      value: one(snap.correct_answer),
+      source: 'question_snapshot.correct_answer'
+    },
+    {
+      value: legacyCorrectAnswer,
+      source: 'legacy_qcm_snapshot'
+    }
+  ];
+
+
+  const resolved =
+    answerCandidates.find(
+      candidate =>
+        Boolean(candidate.value)
+    ) || {
+      value: '',
+      source: ''
+    };
+
+
+  /*
+   * IMPORTANT :
+   *
+   * Aucun :
+   * - selected_index
+   * - correct_index
+   * - proposition_a/b/c/d
+   * - snapshotOptions
+   *
+   * n'est exposé dans la réponse HTTP.
+   */
   return {
-    id:doc.id,
-    attemptId:one(x.attempt_id),
-    attemptRevision:num(x.attempt_revision)||1,
-    isCorrection:x.is_correction===true,
+
+    id:
+      doc.id,
+
+    attemptId:
+      one(x.attempt_id),
+
+    attemptRevision:
+      num(x.attempt_revision) || 1,
+
+    isCorrection:
+      x.is_correction === true,
+
     questionId,
-    row:num(x.question_row_number||questionId),
-    playedAtMs:num(x.client_played_at_ms)||tsMs(x.played_at),
-    playType:one(x.play_type),
-    gameMode:one(x.game_mode),
-    result:one(x.result),
-    isCorrect:typeof x.is_correct==='boolean'?x.is_correct:null,
-    responseTimeMs:num(x.response_time_ms),
-    domain:one(x.domain||snap.domain),
-    theme:one(x.theme||snap.theme),
-    question:one(snap.question),
-    detail:one(snap.detail),
-    selectedIndex,
-    correctIndex,
-    selectedAnswer:one(x.selected_answer),
-    correctAnswer:one(x.correct_answer)||snapCorrectAnswer,
+
+    row:
+      num(
+        x.question_row_number ||
+        questionId
+      ),
+
+    playedAtMs:
+      num(x.client_played_at_ms) ||
+      tsMs(x.played_at),
+
+    /*
+     * Conservé pour les statistiques historiques internes.
+     * Le frontend le normalise visuellement en Q/R.
+     */
+    playType:
+      one(x.play_type),
+
+    gameMode:
+      one(x.game_mode),
+
+    result:
+      one(x.result),
+
+    isCorrect:
+      typeof x.is_correct === 'boolean'
+        ? x.is_correct
+        : null,
+
+    responseTimeMs:
+      num(x.response_time_ms),
+
+    domain:
+      one(
+        x.domain ||
+        snap.domain
+      ),
+
+    theme:
+      one(
+        x.theme ||
+        snap.theme
+      ),
+
+    question:
+      one(
+        snap.question ||
+        x.question
+      ),
+
+    detail:
+      one(
+        snap.detail ||
+        x.detail
+      ),
+
+    /*
+     * Champ public Q/R.
+     */
+    correctAnswer:
+      resolved.value,
+
+    answerSource:
+      resolved.source,
+
+    qrMode:
+      true,
+
     snapshotQuestionId,
-    snapshotOptions:options,
+
     bindingSource,
     bindingMismatch,
-    historyBindingVersion:CGWEB_HISTORY_BINDING_VERSION
+
+    historyBindingVersion:
+      CGWEB_HISTORY_BINDING_VERSION,
+
+    historyQrVersion:
+      CGWEB130_HISTORY_QR_NORMALIZE001
   };
 }
+
 /*
  * CGANDROID011 · ANSWER_REVISION001
  */

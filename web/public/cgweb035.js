@@ -1,4 +1,8 @@
-const CGWEB035_VERSION='CGWEB126_HISTORY_RESULT_TRUTH001_ANDROID_MENTAL_COMPAT001_HISTORY_RETRO_READ001';
+const CGWEB035_VERSION='CGWEB130_HISTORY_QR_NORMALIZE001_ANSWER_RESOLUTION001_QCM_SNAPSHOT_HIDE001_LEGACY_HISTORY_COMPAT001';
+// CGWEB130_HISTORY_QR_NORMALIZE001
+// ANSWER_RESOLUTION001
+// QCM_SNAPSHOT_HIDE001
+// LEGACY_HISTORY_COMPAT001
 // CGWEB114_HISTORY_CARD_CLICK001_HISTORY_RESULT_BORDER001_HISTORY_MIDDLE_EXPAND001
 // CGWEB113_FIX3_AUTH_BOOT_RETRY001_HISTORY_BOOT_RELIABLE001
 // CGWEB113_FIX2_HISTORY_FAST_PAGE001_HISTORY_COLD_START001
@@ -97,63 +101,267 @@ async function cg35Overview(){
 // Le backend fournit e.positive après normalisation des générations Android.
 // L'interface ne doit plus recalculer la réussite depuis l'ancien mot
 // « assimilated », sous peine de transformer correct -> À revoir.
+/*
+ * CGWEB130
+ *
+ * Tous les modes pédagogiques historiques sont désormais
+ * présentés selon le même vocabulaire Q/R.
+ *
+ * challenge_choice reste exploité en interne par le backend
+ * afin de ne perdre aucune statistique ancienne.
+ *
+ * Il n'est plus présenté comme « QCM ».
+ */
 function cg35HistoryResult(e){
-  if(e.playType==='revision_reveal')return 'Révélation';
 
-  if(e.playType==='challenge_choice'){
-    if(e.positive===true)return 'Juste';
-    if(e.positive===false)return 'Faux';
-    return e.result||'—';
+  if(
+    e.playType === 'revision_reveal'
+  ){
+    return 'Révélation';
   }
 
-  if(e.playType==='challenge_mental'){
-    if(e.positive===true)return 'Assimilée';
-    if(e.positive===false)return 'À revoir';
-    return e.result||'—';
+
+  if(
+    e.positive === true
+  ){
+    return 'Correct';
   }
 
-  return e.result||'—';
+
+  if(
+    e.positive === false
+  ){
+    return 'À revoir';
+  }
+
+
+  const raw =
+    String(
+      e.result || ''
+    )
+      .trim()
+      .toLowerCase();
+
+
+  if(
+    raw === 'correct' ||
+    raw === 'assimilated'
+  ){
+    return 'Correct';
+  }
+
+
+  if(
+    raw === 'wrong' ||
+    raw === 'review'
+  ){
+    return 'À revoir';
+  }
+
+
+  return (
+    e.result ||
+    '—'
+  );
 }
-function cg35HistoryType(e){if(e.playType==='challenge_choice')return 'QCM';if(e.playType==='challenge_mental')return 'Mental';if(e.playType==='revision_reveal')return 'Révision';return e.playType||'Événement'}
-function cg35HistoryCard(e){
-  const qcm=e.playType==='challenge_choice';
-  const attemptMeta=CG35.historyAttemptMeta?.[e.id]||null;
-  const attempt=attemptMeta?.attemptTotal>1
-    ? `<span class="cg35-history-attempt" data-cg35-attempt="${cg35Esc(e.id)}">Tentative ${attemptMeta.attemptNumber}/${attemptMeta.attemptTotal}</span>`
-    : `<span class="cg35-history-attempt" data-cg35-attempt="${cg35Esc(e.id)}" hidden></span>`;
 
-  const resultClass=
-    e.positive===true
+
+function cg35HistoryType(e){
+
+  if(
+    e.playType === 'challenge_choice' ||
+    e.playType === 'challenge_mental'
+  ){
+    return 'Question / Réponse';
+  }
+
+  if(
+    e.playType === 'revision_reveal'
+  ){
+    return 'Révision';
+  }
+
+  return 'Question / Réponse';
+}
+
+
+function cg35HistoryCard(e){
+
+  const attemptMeta =
+    CG35.historyAttemptMeta?.[e.id] ||
+    null;
+
+
+  const attempt =
+    attemptMeta?.attemptTotal > 1
+
+      ? `<span
+           class="cg35-history-attempt"
+           data-cg35-attempt="${cg35Esc(e.id)}"
+         >
+           Tentative ${attemptMeta.attemptNumber}/${attemptMeta.attemptTotal}
+         </span>`
+
+      : `<span
+           class="cg35-history-attempt"
+           data-cg35-attempt="${cg35Esc(e.id)}"
+           hidden
+         ></span>`;
+
+
+  const resultClass =
+    e.positive === true
       ? 'cg114-result-good'
-      : e.positive===false
+      : e.positive === false
         ? 'cg114-result-bad'
         : 'cg114-result-neutral';
 
-  const openClass=e.questionId?' cg114-history-clickable':'';
-  const openAttr=e.questionId
-    ? ` data-open="${cg35Esc(e.questionId)}" title="Ouvrir la question"`
-    : '';
 
-  const right=qcm
-    ? `<div class="cg35-history-answer"><span>Réponse donnée</span><b>${cg35Esc(e.selectedAnswer||'—')}</b></div>
-       <div class="cg35-history-answer"><span>Bonne réponse au moment du jeu</span><b>${cg35Esc(e.correctAnswer||'—')}</b></div>
-       ${e.bindingMismatch?'<div class="cg35-history-warning">⚠ incohérence ID historique/snapshot</div>':''}`
-    : `<div class="cg35-history-answer"><span>Résultat</span><b>${cg35Esc(cg35HistoryResult(e))}</b></div>`;
+  const openClass =
+    e.questionId
+      ? ' cg114-history-clickable'
+      : '';
 
-  const time=e.responseTimeMs>0
-    ? `<div class="cg35-result cg114-history-time">${cg35Time(e.responseTimeMs)}</div>`
-    : '';
 
-  return `<article class="cg35-event cg35-history-card cg113-history-card cg114-history-card ${resultClass}${openClass}"${openAttr}>
-    <div class="cg35-history-left">
-      <header><b>${cg35Date(e.playedAtMs)}</b>${attempt}</header>
-      <small>${cg35Esc(cg35Path(e.domain,e.theme))}</small>
-      <h3>${cg35Esc(e.question||'(question sans texte)')}</h3>
-      ${time}
+  const openAttr =
+    e.questionId
+
+      ? ` data-open="${cg35Esc(e.questionId)}"
+           title="Ouvrir la question"`
+
+      : '';
+
+
+  /*
+   * HISTORY_QR_NORMALIZE001
+   *
+   * Une seule réponse est visible.
+   *
+   * Sont volontairement absents :
+   * - réponse A/B/C/D ;
+   * - réponse donnée dans l'ancien QCM ;
+   * - correct_index ;
+   * - lettre de bonne réponse ;
+   * - quatre propositions historiques.
+   */
+  const right = `
+
+    <div class="cg35-history-answer cg130-history-answer">
+
+      <span>Réponse</span>
+
+      <b>
+        ${cg35Esc(
+          e.correctAnswer ||
+          '—'
+        )}
+      </b>
+
     </div>
-    <div class="cg113-history-detail cg114-history-detail"><p>${cg35Esc(e.detail||'—')}</p></div>
-    <div class="cg35-history-right">${right}</div>
-  </article>`;
+
+
+    <div class="cg35-history-answer cg130-history-result">
+
+      <span>Résultat</span>
+
+      <b>
+        ${cg35Esc(
+          cg35HistoryResult(e)
+        )}
+      </b>
+
+    </div>
+
+
+    ${
+      e.bindingMismatch
+        ? `<div class="cg35-history-warning">
+             ⚠ incohérence ID historique/snapshot
+           </div>`
+        : ''
+    }
+  `;
+
+
+  const time =
+    e.responseTimeMs > 0
+
+      ? `<div class="cg35-result cg114-history-time">
+           ${cg35Time(e.responseTimeMs)}
+         </div>`
+
+      : '';
+
+
+  return `
+
+    <article
+      class="
+        cg35-event
+        cg35-history-card
+        cg113-history-card
+        cg114-history-card
+        ${resultClass}${openClass}
+      "
+      ${openAttr}
+    >
+
+      <div class="cg35-history-left">
+
+        <header>
+
+          <b>
+            ${cg35Date(e.playedAtMs)}
+          </b>
+
+          ${attempt}
+
+        </header>
+
+
+        <small>
+          ${cg35Esc(
+            cg35Path(
+              e.domain,
+              e.theme
+            )
+          )}
+        </small>
+
+
+        <h3>
+          ${cg35Esc(
+            e.question ||
+            '(question sans texte)'
+          )}
+        </h3>
+
+
+        ${time}
+
+      </div>
+
+
+      <div class="cg113-history-detail cg114-history-detail">
+
+        <p>
+          ${cg35Esc(
+            e.detail ||
+            '—'
+          )}
+        </p>
+
+      </div>
+
+
+      <div class="cg35-history-right">
+
+        ${right}
+
+      </div>
+
+    </article>
+  `;
 }
 
 
