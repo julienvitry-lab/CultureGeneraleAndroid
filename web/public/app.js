@@ -8,7 +8,7 @@ import {
 import {
   collection, getDocs, getFirestore, doc, writeBatch, getCountFromServer, serverTimestamp, query, orderBy, documentId, limit, startAfter, getDoc, where, updateDoc,
   startAt, endAt,
-  setDoc, deleteDoc, runTransaction
+  setDoc, deleteDoc, deleteField, runTransaction
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
 // Configuration publique du projet Firebase CultureGeneraleSync.
@@ -397,6 +397,7 @@ function cgindex001Tokens(data) {
     data?.theme,
     data?.question,
     data?.detail,
+    data?.answer,
     data?.proposition_a,
     data?.proposition_b,
     data?.proposition_c,
@@ -498,9 +499,13 @@ window.CGINDEX001_API = {
 };
 // CGINDEX001_HELPERS_END
 
+// CGWEB131_DIRECTORY_QR_NORMALIZE001
+// QUESTION_DETAIL_ANSWER001
+// EDITOR_QR001
+// LEGACY_CATALOG_COMPAT001
 // CGSYNC007_CONFLICT_ENGINE_START
 const CGSYNC007_EDITABLE_FIELDS = new Set([
-  "megatheme", "theme", "question", "detail",
+  "megatheme", "theme", "question", "detail", "answer",
   "proposition_a", "proposition_b", "proposition_c", "proposition_d",
   "correct_index", "url_quizypedia", "url_internet", "image_file", "image_thumb_file", "image_source_url", "image_mime",
       "image_width", "image_height", "image_bytes", "image_sha256",
@@ -558,7 +563,7 @@ function cgsync007ExpectedRevision(options, cloudRevision) {
 
 function cgsync007HistorySnapshot(data = {}) {
   const fields = [
-    "megatheme","theme","question","detail",
+    "megatheme","theme","question","detail","answer",
     "proposition_a","proposition_b","proposition_c","proposition_d",
     "correct_index","url_quizypedia","url_internet",
     "image_file","image_thumb_file","image_source_url","image_mime",
@@ -627,13 +632,47 @@ async function cgsync007WriteQuestion(questionId, patch, options = {}) {
     }
 
     const nextRevision = cloudRevision + 1;
+
+    /*
+     * CGWEB131 · LEGACY_CATALOG_COMPAT001
+     *
+     * Une ancienne fiche reste lisible tant qu'elle n'est pas modifiée.
+     *
+     * Dès qu'un éditeur Q/R l'enregistre avec normalizeQr=true :
+     * proposition_b/c/d disparaissent physiquement de Firestore.
+     */
+    const normalizeQr =
+      options?.normalizeQr === true;
+
+    const qrLegacyDeletes =
+      normalizeQr
+        ? {
+            proposition_b: deleteField(),
+            proposition_c: deleteField(),
+            proposition_d: deleteField()
+          }
+        : {};
+
+    const afterCloud = {
+      ...cloud,
+      ...clean
+    };
+
+    if (normalizeQr) {
+      delete afterCloud.proposition_b;
+      delete afterCloud.proposition_c;
+      delete afterCloud.proposition_d;
+    }
+
     transaction.update(questionRef, {
       ...clean,
+      ...qrLegacyDeletes,
       ...writer,
       cg_revision: nextRevision,
       cg_base_revision: cloudRevision,
       cg_updated_at: serverTimestamp()
     });
+
     // CGWEB019_HISTORY_UPDATE
     transaction.set(historyRef, {
       question_id: id,
@@ -641,8 +680,9 @@ async function cgsync007WriteQuestion(questionId, patch, options = {}) {
       revision_before: cloudRevision,
       revision_after: nextRevision,
       patch: clean,
+      qr_normalized: normalizeQr,
       before_snapshot: cgsync007HistorySnapshot(cloud),
-      after_snapshot: cgsync007HistorySnapshot({ ...cloud, ...clean }),
+      after_snapshot: cgsync007HistorySnapshot(afterCloud),
       writer_id: writer.cg_writer_id,
       writer_label: writer.cg_writer_label,
       source: writer.cg_update_source,
@@ -824,7 +864,7 @@ window.CGSYNC007_API = {
 
 // CGDEDUP001_API_START
 const CGDEDUP001_FIELDS = new Set([
-  "megatheme", "theme", "question", "detail",
+  "megatheme", "theme", "question", "detail", "answer",
   "proposition_a", "proposition_b", "proposition_c", "proposition_d",
   "correct_index", "url_quizypedia", "url_internet",
   "image_file", "image_thumb_file", "image_source_url", "image_mime",
@@ -1099,7 +1139,7 @@ window.CGWEB009_API = {
   prefixField: async (field, prefix, maxResults = 100) => {
     const u = auth.currentUser;
     if (!u) throw new Error("Utilisateur Firebase non connecté.");
-    const allowed = new Set(["question","detail","proposition_a","proposition_b","proposition_c","proposition_d"]);
+    const allowed = new Set(["question","detail","answer","proposition_a","proposition_b","proposition_c","proposition_d"]);
     if (!allowed.has(field)) throw new Error("Champ de recherche non autorisé.");
     const text = String(prefix || "").trim();
     if (!text) return [];

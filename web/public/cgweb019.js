@@ -1,16 +1,73 @@
-const CGWEB019_VERSION="CGWEB106";
-const CGWEB106_VERSION="CGWEB106_HISTORY_CATALOG_TRUTH001_QUESTION_DETAIL_NULLSAFE001_IMAGE_DETAIL_RESTORE001";
-// CGWEB106_HISTORY_CATALOG_TRUTH001
+const CGWEB019_VERSION="CGWEB131";
+const CGWEB131_VERSION="CGWEB131_DIRECTORY_QR_NORMALIZE001_QUESTION_DETAIL_ANSWER001_EDITOR_QR001_LEGACY_CATALOG_COMPAT001";
+// CGWEB131_QUESTION_DETAIL_ANSWER001
+// CGWEB131_EDITOR_QR001
+// CGWEB131_LEGACY_CATALOG_COMPAT001
 const cg19$=id=>document.getElementById(id);
 const cg19Esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
 function cg19SetText(id,value){const e=cg19$(id);if(e)e.textContent=String(value??"");return e}
 function cg19SetHtml(id,value){const e=cg19$(id);if(e)e.innerHTML=String(value??"");return e}
-function cg19CorrectLabel(r){
-  const n=cg19CorrectIndex(r);
-  const p=[r?.proposition_a,r?.proposition_b,r?.proposition_c,r?.proposition_d];
-  if(!Number.isInteger(n)||n<1||n>4)return "—";
-  return `${String.fromCharCode(64+n)} — ${String(p[n-1]??"")}`;
+/*
+ * CGWEB131 · LEGACY_CATALOG_COMPAT001
+ *
+ * Ordre de vérité :
+ *   1. answer
+ *   2. correct_answer éventuel
+ *   3. ancien correct_index + proposition_[A-D]
+ *
+ * Les mauvaises propositions ne sont jamais affichées.
+ */
+function cg19ResolveAnswer(r){
+
+  const direct =
+    String(
+      r?.answer ??
+      ""
+    ).trim();
+
+  if(direct){
+    return direct;
+  }
+
+
+  const alternate =
+    String(
+      r?.correct_answer ??
+      ""
+    ).trim();
+
+  if(alternate){
+    return alternate;
+  }
+
+
+  const n =
+    cg19CorrectIndex(r);
+
+  const legacy = [
+    r?.proposition_a,
+    r?.proposition_b,
+    r?.proposition_c,
+    r?.proposition_d
+  ];
+
+
+  if(
+    Number.isInteger(n) &&
+    n >= 1 &&
+    n <= 4
+  ){
+
+    return String(
+      legacy[n - 1] ??
+      ""
+    ).trim();
+  }
+
+
+  return "";
 }
+
 const CG19={id:"",record:null,list:[],editing:false};
 function cg19Date(v){if(!v)return"—";try{const d=typeof v?.toDate==="function"?v.toDate():v?.seconds?new Date(v.seconds*1000):new Date(v);return Number.isNaN(d.getTime())?"—":d.toLocaleString("fr-FR")}catch(_){return"—"}}
 function cg19Status(t,type=""){const e=cg19$("cg19Status");if(e){e.textContent=t;e.className=`cg19-status${type?" cg19-"+type:""}`}}
@@ -47,41 +104,512 @@ async function cg19Image(record){
     cg19SetHtml("cg19AndroidImage","");
   }
 }
+function cg19HistoryPatchLabels(patch){
+
+  const keys =
+    Object.keys(
+      patch || {}
+    );
+
+  const hidden =
+    new Set([
+      "proposition_b",
+      "proposition_c",
+      "proposition_d"
+    ]);
+
+  const labels = {
+    megatheme:"Mégathème",
+    theme:"Thème",
+    question:"Question",
+    detail:"Détail",
+    answer:"Réponse",
+    proposition_a:"Réponse",
+    correct_index:"Réponse",
+    status:"Statut",
+    image_file:"Image",
+    image_source_url:"Source image",
+    url_quizypedia:"Quizypedia",
+    url_internet:"Source Internet"
+  };
+
+  const visible = [];
+
+  for(const key of keys){
+
+    if(hidden.has(key)){
+      continue;
+    }
+
+    const label =
+      labels[key] ||
+      key;
+
+    if(
+      !visible.includes(label)
+    ){
+      visible.push(label);
+    }
+  }
+
+  return visible;
+}
+
+
 async function cg19History(id){
-  const box=cg19$("cg19History");if(!box)return;box.innerHTML="Chargement…";
-  try{const rows=await window.CGWEB019_DATA_API?.history?.(id,30)||[];box.innerHTML=rows.length?rows.map(h=>`<article><div><strong>${cg19Esc(h.operation||"update")}</strong><span>rév. ${cg19Esc(h.revision_after??h.revision_before??"—")}</span></div><small>${cg19Date(h.created_at)} · ${cg19Esc(h.writer_label||h.writer_id||"")}</small><div class="cg19-patch">${cg19Esc(Object.keys(h.patch||{}).join(", ")||"—")}</div></article>`).join(""):`<div class="cg19-empty">Aucun historique CGWEB019 encore enregistré. Révision actuelle : ${cg19Esc(CG19.record?.cg_revision??0)}.</div>`}catch(error){box.innerHTML=`<div class="cg19-error">${cg19Esc(error?.message||String(error))}</div>`}
+
+  const box =
+    cg19$("cg19History");
+
+  if(!box){
+    return;
+  }
+
+  box.innerHTML =
+    "Chargement…";
+
+  try{
+
+    const rows =
+      await window
+        .CGWEB019_DATA_API
+        ?.history?.(
+          id,
+          30
+        ) || [];
+
+
+    box.innerHTML =
+      rows.length
+
+        ? rows.map(h=>{
+
+            const fields =
+              cg19HistoryPatchLabels(
+                h.patch
+              );
+
+            return `
+              <article>
+
+                <div>
+                  <strong>
+                    ${cg19Esc(
+                      h.operation ||
+                      "update"
+                    )}
+                  </strong>
+
+                  <span>
+                    rév.
+                    ${cg19Esc(
+                      h.revision_after ??
+                      h.revision_before ??
+                      "—"
+                    )}
+                  </span>
+                </div>
+
+                <small>
+                  ${cg19Date(h.created_at)}
+                  ·
+                  ${cg19Esc(
+                    h.writer_label ||
+                    h.writer_id ||
+                    ""
+                  )}
+                </small>
+
+                <div class="cg19-patch">
+                  ${cg19Esc(
+                    fields.join(", ") ||
+                    "—"
+                  )}
+                </div>
+
+              </article>
+            `;
+          }).join("")
+
+        : `<div class="cg19-empty">
+             Aucun historique CGWEB019 encore enregistré.
+             Révision actuelle :
+             ${cg19Esc(
+               CG19.record?.cg_revision ??
+               0
+             )}.
+           </div>`;
+
+  }catch(error){
+
+    box.innerHTML =
+      `<div class="cg19-error">
+         ${cg19Esc(
+           error?.message ||
+           String(error)
+         )}
+       </div>`;
+  }
 }
-function cg19Props(r,cls=""){
-  const correct=cg19CorrectIndex(r);return ["a","b","c","d"].map((letter,i)=>{const v=r?.[`proposition_${letter}`];if(v===undefined||v===null||String(v)==="")return"";return `<div class="${cls} ${correct===i+1?"correct":""}"><b>${String.fromCharCode(65+i)}.</b> ${cg19Esc(v)}</div>`}).join("")
-}
+
+
 function cg19Render(record){
-  if(!record||!record.id){cg19Status("Fiche question invalide ou incomplète.","error");return}
-  CG19.record=record;CG19.id=String(record.id);
-  cg19SetText("cg19Id",`#${record.original_id??record.id}`);
-  cg19SetText("cg19Path",`${record.megatheme||""}${record.theme?" › "+record.theme:""}`);
-  cg19SetText("cg19Question",record.question||"");
-  cg19SetText("cg19Detail",record.detail||"");
-  cg19SetHtml("cg19Props",cg19Props(record,"cg19-prop"));
-  const truth=cg19CorrectLabel(record);
-  cg19SetHtml("cg19Meta",
-    `<span>Statut : <b>${cg19Esc(record.status??"—")}</b></span>`+
-    `<span>Révision : <b>${cg19Esc(record.cg_revision??0)}</b></span>`+
-    `<span>Image : <b>${Number(record.is_image||0)===1?"oui":"non"}</b></span>`+
-    `<span>Introuvable : <b>${Number(record.non_trouve||0)===1?"oui":"non"}</b></span>`+
-    `<span>Bonne réponse catalogue : <b>${cg19Esc(truth)}</b></span>`+
-    `<span>Mise à jour : <b>${cg19Date(record.cg_updated_at||record.updated_at)}</b></span>`);
-  cg19SetHtml("cg19Sources",[cg19SourceLink(record.url_quizypedia,"Quizypedia"),cg19SourceLink(record.url_internet,"Source Internet"),cg19SourceLink(record.image_source_url,"Source image")].filter(Boolean).join(" · ")||"Aucun lien source");
-  cg19SetText("cg19AndroidTheme",record.theme||record.megatheme||"Culture générale");
-  cg19SetText("cg19AndroidQuestion",record.question||"");
-  cg19SetHtml("cg19AndroidProps",cg19Props(record,"cg19-android-prop"));
-  cg19FillForm(record);cg19Image(record);cg19History(record.id);cg19NavState();
+
+  if(
+    !record ||
+    !record.id
+  ){
+
+    cg19Status(
+      "Fiche question invalide ou incomplète.",
+      "error"
+    );
+
+    return;
+  }
+
+
+  CG19.record =
+    record;
+
+  CG19.id =
+    String(record.id);
+
+
+  const answer =
+    cg19ResolveAnswer(
+      record
+    );
+
+
+  cg19SetText(
+    "cg19Id",
+    `#${record.original_id ?? record.id}`
+  );
+
+
+  cg19SetText(
+    "cg19Path",
+    `${record.megatheme || ""}${
+      record.theme
+        ? " › " + record.theme
+        : ""
+    }`
+  );
+
+
+  cg19SetText(
+    "cg19Question",
+    record.question || ""
+  );
+
+
+  cg19SetText(
+    "cg19Detail",
+    record.detail || ""
+  );
+
+
+  /*
+   * QUESTION_DETAIL_ANSWER001
+   * Une seule réponse visible.
+   */
+  cg19SetHtml(
+    "cg19Answer",
+    `<span>Réponse</span>
+     <b>${cg19Esc(answer || "—")}</b>`
+  );
+
+
+  cg19SetHtml(
+    "cg19Meta",
+
+    `<span>
+       Statut :
+       <b>${cg19Esc(record.status ?? "—")}</b>
+     </span>` +
+
+    `<span>
+       Révision :
+       <b>${cg19Esc(record.cg_revision ?? 0)}</b>
+     </span>` +
+
+    `<span>
+       Image :
+       <b>${Number(record.is_image || 0) === 1 ? "oui" : "non"}</b>
+     </span>` +
+
+    `<span>
+       Introuvable :
+       <b>${Number(record.non_trouve || 0) === 1 ? "oui" : "non"}</b>
+     </span>` +
+
+    `<span>
+       Mise à jour :
+       <b>${cg19Date(
+         record.cg_updated_at ||
+         record.updated_at
+       )}</b>
+     </span>`
+  );
+
+
+  cg19SetHtml(
+    "cg19Sources",
+
+    [
+      cg19SourceLink(
+        record.url_quizypedia,
+        "Quizypedia"
+      ),
+
+      cg19SourceLink(
+        record.url_internet,
+        "Source Internet"
+      ),
+
+      cg19SourceLink(
+        record.image_source_url,
+        "Source image"
+      )
+    ]
+      .filter(Boolean)
+      .join(" · ") ||
+
+      "Aucun lien source"
+  );
+
+
+  /*
+   * Aperçu Android désormais lui aussi Q/R.
+   */
+  cg19SetText(
+    "cg19AndroidTheme",
+    record.theme ||
+    record.megatheme ||
+    "Culture générale"
+  );
+
+
+  cg19SetText(
+    "cg19AndroidQuestion",
+    record.question || ""
+  );
+
+
+  cg19SetHtml(
+    "cg19AndroidAnswer",
+    `<span>Réponse</span>
+     <b>${cg19Esc(answer || "—")}</b>`
+  );
+
+
+  cg19FillForm(record);
+  cg19Image(record);
+  cg19History(record.id);
+  cg19NavState();
 }
-function cg19FillForm(r){for(const [id,key] of [["Mega","megatheme"],["Theme","theme"],["Question","question"],["Detail","detail"],["A","proposition_a"],["B","proposition_b"],["C","proposition_c"],["D","proposition_d"],["Correct","correct_index"],["StatusEdit","status"]]){const e=cg19$(`cg19Edit${id}`);if(e)e.value=r?.[key]??""}}
-function cg19ToggleEdit(force){CG19.editing=force??!CG19.editing;const e=cg19$("cg19Editor");if(e)e.classList.toggle("cg19-hidden",!CG19.editing);cg19SetText("cg19EditBtn",CG19.editing?"Fermer l'édition":"Modifier")}
+function cg19FillForm(r){
+
+  const fields = [
+    ["Mega","megatheme"],
+    ["Theme","theme"],
+    ["Question","question"],
+    ["Detail","detail"],
+    ["StatusEdit","status"]
+  ];
+
+
+  for(
+    const [id,key]
+    of fields
+  ){
+
+    const e =
+      cg19$(
+        `cg19Edit${id}`
+      );
+
+    if(e){
+      e.value =
+        r?.[key] ??
+        "";
+    }
+  }
+
+
+  const answer =
+    cg19$("cg19EditAnswer");
+
+  if(answer){
+    answer.value =
+      cg19ResolveAnswer(r);
+  }
+}
+
+
+function cg19ToggleEdit(force){
+
+  CG19.editing =
+    force ??
+    !CG19.editing;
+
+  const e =
+    cg19$("cg19Editor");
+
+  if(e){
+    e.classList.toggle(
+      "cg19-hidden",
+      !CG19.editing
+    );
+  }
+
+  cg19SetText(
+    "cg19EditBtn",
+    CG19.editing
+      ? "Fermer l'édition"
+      : "Modifier"
+  );
+}
+
+
 async function cg19Save(){
-  const raw=cg19$("cg19EditCorrect").value.trim();const n=raw===""?null:Number(raw);const patch={megatheme:cg19$("cg19EditMega").value.trim(),theme:cg19$("cg19EditTheme").value.trim(),question:cg19$("cg19EditQuestion").value.trim(),detail:cg19$("cg19EditDetail").value,proposition_a:cg19$("cg19EditA").value,proposition_b:cg19$("cg19EditB").value,proposition_c:cg19$("cg19EditC").value,proposition_d:cg19$("cg19EditD").value,correct_index:Number.isFinite(n)?n:raw,status:cg19$("cg19EditStatusEdit").value.trim()};
-  cg19Status("Enregistrement…");try{const result=await window.CGWEB006_API.update(CG19.id,patch,{expectedRevision:Number(CG19.record.cg_revision||0),source:"CGWEB019_EDITOR"});if(result?.conflict)throw new Error("Conflit de révision : recharge la fiche avant d'enregistrer.");const fresh=await window.CGWEB006_API.byId(CG19.id);cg19Render(fresh);cg19ToggleEdit(false);cg19Status("✅ Question enregistrée.","ok");window.CGWEB018_API?.reload?.()}catch(error){cg19Status(error?.message||String(error),"error")}
+
+  const answer =
+    cg19$("cg19EditAnswer")
+      .value
+      .trim();
+
+
+  if(!answer){
+
+    cg19Status(
+      "La réponse est obligatoire.",
+      "error"
+    );
+
+    return;
+  }
+
+
+  /*
+   * EDITOR_QR001
+   *
+   * answer = donnée canonique.
+   *
+   * proposition_a + correct_index=1 =
+   * pont temporaire Android.
+   *
+   * normalizeQr=true demande au moteur CGSYNC007
+   * de supprimer proposition_b/c/d du document.
+   */
+  const patch = {
+
+    megatheme:
+      cg19$("cg19EditMega")
+        .value
+        .trim(),
+
+    theme:
+      cg19$("cg19EditTheme")
+        .value
+        .trim(),
+
+    question:
+      cg19$("cg19EditQuestion")
+        .value
+        .trim(),
+
+    detail:
+      cg19$("cg19EditDetail")
+        .value,
+
+    answer,
+
+    proposition_a:
+      answer,
+
+    correct_index:
+      1,
+
+    status:
+      cg19$("cg19EditStatusEdit")
+        .value
+        .trim()
+  };
+
+
+  cg19Status(
+    "Enregistrement…"
+  );
+
+
+  try{
+
+    const result =
+      await window
+        .CGWEB006_API
+        .update(
+          CG19.id,
+          patch,
+          {
+            expectedRevision:
+              Number(
+                CG19.record.cg_revision ||
+                0
+              ),
+
+            source:
+              "CGWEB019_EDITOR_QR",
+
+            normalizeQr:
+              true
+          }
+        );
+
+
+    if(result?.conflict){
+
+      throw new Error(
+        "Conflit de révision : recharge la fiche avant d'enregistrer."
+      );
+    }
+
+
+    const fresh =
+      await window
+        .CGWEB006_API
+        .byId(
+          CG19.id
+        );
+
+
+    cg19Render(fresh);
+    cg19ToggleEdit(false);
+
+
+    cg19Status(
+      "✅ Question Q/R enregistrée.",
+      "ok"
+    );
+
+
+    window
+      .CGWEB018_API
+      ?.reload?.();
+
+
+  }catch(error){
+
+    cg19Status(
+      error?.message ||
+      String(error),
+      "error"
+    );
+  }
 }
+
+
 function cg19NavState(){const i=CG19.list.indexOf(CG19.id),p=cg19$("cg19Prev"),n=cg19$("cg19Next");if(p)p.disabled=i<=0;if(n)n.disabled=i<0||i>=CG19.list.length-1}
 async function cg19Go(delta){const i=CG19.list.indexOf(CG19.id);const id=CG19.list[i+delta];if(id)await cg19Open(id,CG19.list)}
 async function cg19Open(id,listIds=[]){
@@ -90,12 +618,252 @@ async function cg19Open(id,listIds=[]){
 }
 function cg19Close(){cg19$("cgweb019Drawer")?.classList.add("cg19-hidden");document.body.classList.remove("cg19-open")}
 function cg19Ensure(){
-  if(cg19$("cgweb019Drawer"))return;const drawer=document.createElement("div");drawer.id="cgweb019Drawer";drawer.className="cg19-drawer cg19-hidden";drawer.innerHTML=`
-  <div class="cg19-sheet"><header class="cg19-head"><div><div class="cg19-kicker">CGWEB019 · QUESTION001</div><h2 id="cg19Id">Question</h2><div id="cg19Path"></div></div><div class="cg19-head-actions"><button id="cg19Prev">←</button><button id="cg19Next">→</button><button id="cg19EditBtn">Modifier</button><button id="cg19Close">×</button></div></header>
-  <main class="cg19-main"><section class="cg19-content"><div id="cg19Question" class="cg19-question"></div><div id="cg19Detail" class="cg19-detail"></div><div id="cg19Image" class="cg19-image"></div><div id="cg19Props" class="cg19-props"></div><div id="cg19Meta" class="cg19-meta"></div><div id="cg19Sources" class="cg19-sources"></div>
-  <section id="cg19Editor" class="cg19-editor cg19-hidden"><h3>Modification</h3><div class="cg19-form"><label>Mégathème<input id="cg19EditMega"></label><label>Thème<input id="cg19EditTheme"></label><label class="wide">Question<textarea id="cg19EditQuestion"></textarea></label><label class="wide">Détail<textarea id="cg19EditDetail"></textarea></label><label>A<input id="cg19EditA"></label><label>B<input id="cg19EditB"></label><label>C<input id="cg19EditC"></label><label>D<input id="cg19EditD"></label><label>Correct index<input id="cg19EditCorrect"></label><label>Statut<input id="cg19EditStatusEdit"></label></div><button id="cg19Save" class="cg19-primary">Enregistrer</button></section></section>
-  <aside class="cg19-side"><h3>Aperçu Android</h3><div class="cg19-phone"><div id="cg19AndroidTheme" class="cg19-phone-theme"></div><div id="cg19AndroidQuestion" class="cg19-phone-question"></div><div id="cg19AndroidImage" class="cg19-phone-image"></div><div id="cg19AndroidProps" class="cg19-phone-props"></div></div><h3>Historique</h3><div id="cg19History" class="cg19-history"></div></aside></main><footer id="cg19Status" class="cg19-status"></footer></div>`;
-  document.body.appendChild(drawer);cg19$("cg19Close").onclick=cg19Close;cg19$("cg19EditBtn").onclick=()=>cg19ToggleEdit();cg19$("cg19Save").onclick=cg19Save;cg19$("cg19Prev").onclick=()=>cg19Go(-1);cg19$("cg19Next").onclick=()=>cg19Go(1);drawer.onclick=e=>{if(e.target===drawer)cg19Close()};
+
+  if(
+    cg19$("cgweb019Drawer")
+  ){
+    return;
+  }
+
+
+  const drawer =
+    document.createElement(
+      "div"
+    );
+
+
+  drawer.id =
+    "cgweb019Drawer";
+
+  drawer.className =
+    "cg19-drawer cg19-hidden";
+
+
+  drawer.innerHTML = `
+
+    <div class="cg19-sheet">
+
+      <header class="cg19-head">
+
+        <div>
+
+          <div class="cg19-kicker">
+            CGWEB131 · QUESTION / RÉPONSE
+          </div>
+
+          <h2 id="cg19Id">
+            Question
+          </h2>
+
+          <div id="cg19Path"></div>
+
+        </div>
+
+
+        <div class="cg19-head-actions">
+
+          <button id="cg19Prev">
+            ←
+          </button>
+
+          <button id="cg19Next">
+            →
+          </button>
+
+          <button id="cg19EditBtn">
+            Modifier
+          </button>
+
+          <button id="cg19Close">
+            ×
+          </button>
+
+        </div>
+
+      </header>
+
+
+      <main class="cg19-main">
+
+        <section class="cg19-content">
+
+          <div
+            id="cg19Question"
+            class="cg19-question"
+          ></div>
+
+          <div
+            id="cg19Detail"
+            class="cg19-detail"
+          ></div>
+
+          <div
+            id="cg19Image"
+            class="cg19-image"
+          ></div>
+
+          <div
+            id="cg19Answer"
+            class="cg19-answer"
+          ></div>
+
+          <div
+            id="cg19Meta"
+            class="cg19-meta"
+          ></div>
+
+          <div
+            id="cg19Sources"
+            class="cg19-sources"
+          ></div>
+
+
+          <section
+            id="cg19Editor"
+            class="cg19-editor cg19-hidden"
+          >
+
+            <h3>
+              Modification
+            </h3>
+
+
+            <div class="cg19-form">
+
+              <label>
+                Mégathème
+                <input id="cg19EditMega">
+              </label>
+
+              <label>
+                Thème
+                <input id="cg19EditTheme">
+              </label>
+
+              <label class="wide">
+                Question
+                <textarea id="cg19EditQuestion"></textarea>
+              </label>
+
+              <label class="wide">
+                Détail
+                <textarea id="cg19EditDetail"></textarea>
+              </label>
+
+              <label class="wide">
+                Réponse
+                <textarea
+                  id="cg19EditAnswer"
+                  required
+                ></textarea>
+              </label>
+
+              <label>
+                Statut
+                <input id="cg19EditStatusEdit">
+              </label>
+
+            </div>
+
+
+            <button
+              id="cg19Save"
+              class="cg19-primary"
+            >
+              Enregistrer
+            </button>
+
+          </section>
+
+        </section>
+
+
+        <aside class="cg19-side">
+
+          <h3>
+            Aperçu Q/R
+          </h3>
+
+
+          <div class="cg19-phone">
+
+            <div
+              id="cg19AndroidTheme"
+              class="cg19-phone-theme"
+            ></div>
+
+            <div
+              id="cg19AndroidQuestion"
+              class="cg19-phone-question"
+            ></div>
+
+            <div
+              id="cg19AndroidImage"
+              class="cg19-phone-image"
+            ></div>
+
+            <div
+              id="cg19AndroidAnswer"
+              class="cg19-phone-answer"
+            ></div>
+
+          </div>
+
+
+          <h3>
+            Historique
+          </h3>
+
+          <div
+            id="cg19History"
+            class="cg19-history"
+          ></div>
+
+        </aside>
+
+      </main>
+
+
+      <footer
+        id="cg19Status"
+        class="cg19-status"
+      ></footer>
+
+    </div>
+  `;
+
+
+  document.body.appendChild(
+    drawer
+  );
+
+
+  cg19$("cg19Close").onclick =
+    cg19Close;
+
+  cg19$("cg19EditBtn").onclick =
+    ()=>cg19ToggleEdit();
+
+  cg19$("cg19Save").onclick =
+    cg19Save;
+
+  cg19$("cg19Prev").onclick =
+    ()=>cg19Go(-1);
+
+  cg19$("cg19Next").onclick =
+    ()=>cg19Go(1);
+
+
+  drawer.onclick =
+    e=>{
+
+      if(
+        e.target === drawer
+      ){
+        cg19Close();
+      }
+    };
 }
+
 window.CGWEB019_API={open:cg19Open,close:cg19Close};
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",cg19Ensure);else cg19Ensure();
