@@ -24,7 +24,7 @@
    */
 
   const VERSION =
-    "CGWEB138_FIX1_VISIBLE_SMOKE_PANEL001_CREATE_TAB_MOUNT001";
+    "CGWEB138_FIX3_SMOKE_PANEL_RETIRE001_TEST_HARNESS_PRESERVE001";
 
   const HISTORY_ENDPOINT =
     "https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb022History";
@@ -1189,284 +1189,46 @@
 
 
   /*
-   * CGWEB138 FIX1
-   * VISIBLE_SMOKE_PANEL001 / CREATE_TAB_MOUNT001
+   * CGWEB138 FIX3
+   * SMOKE_PANEL_RETIRE001
+   * TEST_HARNESS_PRESERVE001
+   * PRODUCTION_UI_CLEANUP001
    *
-   * Le shell moderne CGWEB016 est créé dynamiquement
-   * en dehors de l'ancien <main>.
+   * Le smoke test réel a été validé avec succès.
    *
-   * Le panneau CGWEB138 doit donc vivre dans
-   * l'onglet visible "Création de questions".
+   * Il n'est donc plus affiché dans l'interface CGWEB.
+   *
+   * Le moteur de test reste volontairement chargé afin
+   * de permettre un diagnostic futur sans réinstaller
+   * tout le lot.
+   *
+   * Utilisation manuelle :
+   *
+   *   await window.CGWEB138_API.run()
+   *
+   * Aucun test n'est exécuté automatiquement.
    */
-  function mountPanelInCreateTab(){
+
+  function retireLegacyPanel(){
 
     const panel =
       document.getElementById(
         "cg138Panel"
       );
 
-    const createPage =
-      document.getElementById(
-        "cg16PageCreate"
-      );
-
-    if(
-      !panel ||
-      !createPage
-    ){
-      return false;
+    if(panel){
+      panel.remove();
     }
-
-
-    if(
-      panel.parentElement !==
-      createPage
-    ){
-      createPage.appendChild(
-        panel
-      );
-    }
-
-
-    /*
-     * Le smoke test est un outil temporaire de validation.
-     * On l'ouvre par défaut afin qu'il soit immédiatement visible.
-     */
-    panel.open = true;
-
-    panel.dataset.cg138Mount =
-      "create-tab";
 
     return true;
   }
 
 
-  function installPanel(){
-
-    if(
-      document.getElementById(
-        "cg138Panel"
-      )
-    ){
-      return;
-    }
-
-
-    const style =
-      document.createElement(
-        "style"
-      );
-
-    style.textContent = `
-      #cg138Panel{
-        width:100%;
-        box-sizing:border-box;
-        margin:18px 0 0;
-        border:1px solid rgba(125,211,252,.34);
-        border-radius:12px;
-        padding:12px 14px;
-        background:rgba(5,25,46,.42);
-      }
-
-      #cg138Panel summary{
-        cursor:pointer;
-        font-weight:700;
-      }
-
-      .cg138-body{
-        margin-top:12px;
-      }
-
-      .cg138-actions{
-        display:flex;
-        gap:10px;
-        align-items:center;
-        flex-wrap:wrap;
-        margin:10px 0;
-      }
-
-      #cg138Run{
-        padding:8px 14px;
-        cursor:pointer;
-      }
-
-      #cg138Run:disabled{
-        opacity:.55;
-        cursor:wait;
-      }
-
-      #cg138State{
-        font-weight:700;
-      }
-
-      #cg138Log{
-        margin-top:10px;
-        max-height:320px;
-        overflow:auto;
-        white-space:pre-wrap;
-        font-family:monospace;
-        font-size:.9em;
-        line-height:1.45;
-      }
-
-      .cg138-line{
-        padding:2px 0;
-      }
-
-      .cg138-ok,
-      .cg138-success{
-        font-weight:700;
-      }
-
-      .cg138-error{
-        font-weight:700;
-      }
-
-      .cg138-note{
-        opacity:.82;
-        margin:8px 0;
-      }
-    `;
-
-    document.head.appendChild(
-      style
-    );
-
-
-    const panel =
-      document.createElement(
-        "details"
-      );
-
-    panel.id =
-      "cg138Panel";
-
-
-    panel.innerHTML = `
-      <summary>
-        CGWEB138 · Smoke test Q/R
-      </summary>
-
-      <div class="cg138-body">
-
-        <p>
-          Test réel et temporaire :
-          création → modification → historique →
-          restauration → suppression.
-        </p>
-
-        <p class="cg138-note">
-          Une question de test est créée dans votre compte puis supprimée.
-          Les journaux d’audit et le tombstone sont conservés comme preuve
-          du test. Aucun scan massif du catalogue n’est effectué.
-        </p>
-
-        <div class="cg138-actions">
-
-          <button
-            id="cg138Run"
-            type="button"
-          >
-            Lancer le smoke test Q/R
-          </button>
-
-          <span id="cg138State">
-            Prêt
-          </span>
-
-        </div>
-
-        <div
-          id="cg138Log"
-          aria-live="polite"
-        ></div>
-
-      </div>
-    `;
-
-
-    /*
-     * Montage de secours immédiatement dans le body.
-     *
-     * Si CGWEB016 n'est pas encore construit,
-     * le MutationObserver ci-dessous déplacera
-     * le panneau dès que #cg16PageCreate apparaîtra.
-     */
-    document.body.appendChild(
-      panel
-    );
-
-
-    mountPanelInCreateTab();
-
-
-    document
-      .getElementById(
-        "cg138Run"
-      )
-      ?.addEventListener(
-        "click",
-        async()=>{
-
-          try{
-            await run();
-          }catch(error){
-            console.error(
-              "CGWEB138",
-              error
-            );
-          }
-        }
-      );
-  }
-
-
   /*
-   * Le shell CGWEB016 peut être créé après CGWEB138.
-   * Observation très courte et idempotente :
-   * dès que la cible existe, on monte le panneau
-   * puis on coupe l'observateur.
+   * Garde-fou pour un rechargement à chaud depuis
+   * une ancienne version ayant déjà créé le panneau.
    */
-  let mountObserver = null;
-
-
-  function ensureVisibleMount(){
-
-    if(
-      mountPanelInCreateTab()
-    ){
-
-      if(mountObserver){
-        mountObserver.disconnect();
-        mountObserver = null;
-      }
-
-      return true;
-    }
-
-    return false;
-  }
-
-
-  if(
-    !ensureVisibleMount()
-  ){
-
-    mountObserver =
-      new MutationObserver(
-        ()=>{
-          ensureVisibleMount();
-        }
-      );
-
-    mountObserver.observe(
-      document.documentElement,
-      {
-        childList:true,
-        subtree:true
-      }
-    );
-  }
+  retireLegacyPanel();
 
 
   root.CGWEB138_API =
@@ -1474,27 +1236,8 @@
       version:VERSION,
       run,
       legacyFallbackProbe,
-      legacyFieldsOf,
-      mountPanelInCreateTab
+      legacyFieldsOf
     });
 
-
-  if(
-    document.readyState ===
-    "loading"
-  ){
-
-    document.addEventListener(
-      "DOMContentLoaded",
-      installPanel,
-      {
-        once:true
-      }
-    );
-
-  }else{
-
-    installPanel();
-  }
 
 })(window);

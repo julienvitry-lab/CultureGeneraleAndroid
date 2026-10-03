@@ -111,7 +111,7 @@ jobs:
           grep -Fq 'cgimport009fix4.js' web/public/index.html
           grep -Fq 'cgweb109.js' web/public/index.html
           grep -Fq 'cgqr001.js?v=' web/public/index.html
-          grep -Fq 'cgweb138.js?v=CGWEB138_FIX1_VISIBLE_SMOKE_PANEL001' web/public/index.html
+          grep -Fq 'cgweb138.js?v=CGWEB138_FIX3_TEST_HARNESS_PRESERVE001' web/public/index.html
           grep -Fq 'cgweb016fix2.js?v=' web/public/index.html
           grep -Fq 'cgweb016fix2.css?v=' web/public/index.html
           grep -Fq 'cgimport002Quizypedia' web/functions/index.js
@@ -228,7 +228,7 @@ jobs:
 
             curl --fail --silent --show-error --location               --header 'Cache-Control: no-cache'               "https://culturegeneralesync.web.app/?cgdeploy=${STAMP}"               -o /tmp/cg-live.html || true
 
-            if test -s /tmp/cg-live.html               && grep -Fq 'cgimport009fix4.js' /tmp/cg-live.html               && grep -Fq 'cgweb109.js' /tmp/cg-live.html               && grep -Fq 'cgimage001.js?v=CGIMAGE001_1' /tmp/cg-live.html               && grep -Fq 'cgimage002.js?v=CGIMAGE002_1' /tmp/cg-live.html               && grep -Fq 'cgimage005.js?v=CGIMAGE005_1' /tmp/cg-live.html               && grep -Fq 'cgimage006.js?v=CGIMAGE006_1' /tmp/cg-live.html               && grep -Fq 'cgimage007.js?v=CGIMAGE007_1' /tmp/cg-live.html               && grep -Fq 'cgweb138.js?v=CGWEB138_FIX1_VISIBLE_SMOKE_PANEL001' /tmp/cg-live.html
+            if test -s /tmp/cg-live.html               && grep -Fq 'cgimport009fix4.js' /tmp/cg-live.html               && grep -Fq 'cgweb109.js' /tmp/cg-live.html               && grep -Fq 'cgimage001.js?v=CGIMAGE001_1' /tmp/cg-live.html               && grep -Fq 'cgimage002.js?v=CGIMAGE002_1' /tmp/cg-live.html               && grep -Fq 'cgimage005.js?v=CGIMAGE005_1' /tmp/cg-live.html               && grep -Fq 'cgimage006.js?v=CGIMAGE006_1' /tmp/cg-live.html               && grep -Fq 'cgimage007.js?v=CGIMAGE007_1' /tmp/cg-live.html               && grep -Fq 'cgweb138.js?v=CGWEB138_FIX3_TEST_HARNESS_PRESERVE001' /tmp/cg-live.html
             then
               if curl --fail --silent --show-error --location                 --header 'Cache-Control: no-cache'                 "https://culturegeneralesync.web.app/cgimage007.js?cgdeploy=${STAMP}"                 -o /tmp/cgimage007-live.js                 && grep -Fq 'CGIMAGE007_1' /tmp/cgimage007-live.js
               then
@@ -257,8 +257,22 @@ jobs:
             -o /tmp/cgweb138-live.js
 
           grep -Fq \
-            'CGWEB138_FIX1_VISIBLE_SMOKE_PANEL001_CREATE_TAB_MOUNT001' \
+            'CGWEB138_FIX3_SMOKE_PANEL_RETIRE001_TEST_HARNESS_PRESERVE001' \
+            /tmp/cgweb138-live.js
+
+          if grep -Fq 'function installPanel(){' /tmp/cgweb138-live.js; then
+            echo "❌ CGWEB138 : installPanel encore présent en production."
+            exit 1
+          fi
+
+          if grep -Fq 'new MutationObserver(' /tmp/cgweb138-live.js; then
+            echo "❌ CGWEB138 : MutationObserver UI encore présent."
+            exit 1
+          fi
+
+          grep -Fq \
+            'root.CGWEB138_API' \
             /tmp/cgweb138-live.js
 
           echo "✅ Quizypedia + CGIMAGE001/2/5/6/7 sont servis par culturegeneralesync.web.app"
-          echo "✅ CGWEB138 FIX1 est réellement servi par Hosting"\n
+          echo "✅ CGWEB138 FIX1 est réellement servi par Hosting"
