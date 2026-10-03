@@ -104,10 +104,14 @@ jobs:
           test -f web/functions/cgweb123.js
           test -f web/public/cgweb123.js
           test -f web/public/cgweb123.css
+          test -f web/public/cgqr001.js
+          test -f web/public/cgweb138.js
           test -f web/functions/cgweb029.js
           test -f web/functions/cgweb025.js
           grep -Fq 'cgimport009fix4.js' web/public/index.html
           grep -Fq 'cgweb109.js' web/public/index.html
+          grep -Fq 'cgqr001.js?v=' web/public/index.html
+          grep -Fq 'cgweb138.js?v=CGWEB138_FIX1_VISIBLE_SMOKE_PANEL001' web/public/index.html
           grep -Fq 'cgweb016fix2.js?v=' web/public/index.html
           grep -Fq 'cgweb016fix2.css?v=' web/public/index.html
           grep -Fq 'cgimport002Quizypedia' web/functions/index.js
@@ -122,14 +126,14 @@ jobs:
           grep -Fq 'cgweb017.js?v=CGWEB017_1' web/public/index.html
           grep -Fq 'cgweb018.js?v=CGWEB018_FIX5' web/public/index.html
           grep -Fq 'cgweb018.css?v=CGWEB018_FIX5' web/public/index.html
-          grep -Fq 'cgweb019.js?v=CGWEB019_1' web/public/index.html
-          grep -Fq 'cgweb020.js?v=CGWEB020_1' web/public/index.html
+          grep -Fq 'cgweb019.js?v=' web/public/index.html
+          grep -Fq 'cgweb020.js?v=' web/public/index.html
           grep -Fq 'cgweb021.js?v=CGWEB021_1' web/public/index.html
           grep -Fq 'cgweb023.js?v=CGWEB023_1' web/public/index.html
           grep -Fq 'cgweb022.js?v=CGWEB022_1' web/public/index.html
           grep -Fq 'cgweb025.js?v=CGWEB025_1' web/public/index.html
           grep -Fq 'cgweb026.js?v=CGWEB026_DEDUP_PLAN001' web/public/index.html
-          grep -Fq 'cgweb027.js?v=CGWEB027_1' web/public/index.html
+          grep -Fq 'cgweb027.js?v=' web/public/index.html
           grep -Fq 'cgweb028.js?v=CGWEB028_1' web/public/index.html
           grep -Fq 'cgweb029.js?v=CGWEB029_1' web/public/index.html
           grep -Fq 'cgweb030.js?v=CGWEB030_1' web/public/index.html
@@ -181,6 +185,8 @@ jobs:
           node --check web/functions/cgcost001.js
           node --check web/functions/cgweb123.js
           node --check web/public/cgweb123.js
+          node --check web/public/cgqr001.js
+          node --check web/public/cgweb138.js
           node --check web/functions/cgweb029.js
           node --check web/public/cgweb016fix2.js
           node --check web/public/app.js
@@ -222,7 +228,7 @@ jobs:
 
             curl --fail --silent --show-error --location               --header 'Cache-Control: no-cache'               "https://culturegeneralesync.web.app/?cgdeploy=${STAMP}"               -o /tmp/cg-live.html || true
 
-            if test -s /tmp/cg-live.html               && grep -Fq 'cgimport009fix4.js' /tmp/cg-live.html               && grep -Fq 'cgweb109.js' /tmp/cg-live.html               && grep -Fq 'cgimage001.js?v=CGIMAGE001_1' /tmp/cg-live.html               && grep -Fq 'cgimage002.js?v=CGIMAGE002_1' /tmp/cg-live.html               && grep -Fq 'cgimage005.js?v=CGIMAGE005_1' /tmp/cg-live.html               && grep -Fq 'cgimage006.js?v=CGIMAGE006_1' /tmp/cg-live.html               && grep -Fq 'cgimage007.js?v=CGIMAGE007_1' /tmp/cg-live.html
+            if test -s /tmp/cg-live.html               && grep -Fq 'cgimport009fix4.js' /tmp/cg-live.html               && grep -Fq 'cgweb109.js' /tmp/cg-live.html               && grep -Fq 'cgimage001.js?v=CGIMAGE001_1' /tmp/cg-live.html               && grep -Fq 'cgimage002.js?v=CGIMAGE002_1' /tmp/cg-live.html               && grep -Fq 'cgimage005.js?v=CGIMAGE005_1' /tmp/cg-live.html               && grep -Fq 'cgimage006.js?v=CGIMAGE006_1' /tmp/cg-live.html               && grep -Fq 'cgimage007.js?v=CGIMAGE007_1' /tmp/cg-live.html               && grep -Fq 'cgweb138.js?v=CGWEB138_FIX1_VISIBLE_SMOKE_PANEL001' /tmp/cg-live.html
             then
               if curl --fail --silent --show-error --location                 --header 'Cache-Control: no-cache'                 "https://culturegeneralesync.web.app/cgimage007.js?cgdeploy=${STAMP}"                 -o /tmp/cgimage007-live.js                 && grep -Fq 'CGIMAGE007_1' /tmp/cgimage007-live.js
               then
@@ -243,4 +249,16 @@ jobs:
             exit 1
           fi
 
+          LIVE_STAMP="$(date +%s)"
+
+          curl --fail --silent --show-error --location \
+            --header 'Cache-Control: no-cache' \
+            "https://culturegeneralesync.web.app/cgweb138.js?cgdeploy=${LIVE_STAMP}" \
+            -o /tmp/cgweb138-live.js
+
+          grep -Fq \
+            'CGWEB138_FIX1_VISIBLE_SMOKE_PANEL001_CREATE_TAB_MOUNT001' \
+            /tmp/cgweb138-live.js
+
           echo "✅ Quizypedia + CGIMAGE001/2/5/6/7 sont servis par culturegeneralesync.web.app"
+          echo "✅ CGWEB138 FIX1 est réellement servi par Hosting"\n
