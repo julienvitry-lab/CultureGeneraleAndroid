@@ -24,7 +24,7 @@
    */
 
   const VERSION =
-    "CGWEB138_PURE_QR_SMOKE_TEST001";
+    "CGWEB138_FIX1_VISIBLE_SMOKE_PANEL001_CREATE_TAB_MOUNT001";
 
   const HISTORY_ENDPOINT =
     "https://europe-west1-culturegeneralesync.cloudfunctions.net/cgweb022History";
@@ -1188,6 +1188,59 @@
   }
 
 
+  /*
+   * CGWEB138 FIX1
+   * VISIBLE_SMOKE_PANEL001 / CREATE_TAB_MOUNT001
+   *
+   * Le shell moderne CGWEB016 est créé dynamiquement
+   * en dehors de l'ancien <main>.
+   *
+   * Le panneau CGWEB138 doit donc vivre dans
+   * l'onglet visible "Création de questions".
+   */
+  function mountPanelInCreateTab(){
+
+    const panel =
+      document.getElementById(
+        "cg138Panel"
+      );
+
+    const createPage =
+      document.getElementById(
+        "cg16PageCreate"
+      );
+
+    if(
+      !panel ||
+      !createPage
+    ){
+      return false;
+    }
+
+
+    if(
+      panel.parentElement !==
+      createPage
+    ){
+      createPage.appendChild(
+        panel
+      );
+    }
+
+
+    /*
+     * Le smoke test est un outil temporaire de validation.
+     * On l'ouvre par défaut afin qu'il soit immédiatement visible.
+     */
+    panel.open = true;
+
+    panel.dataset.cg138Mount =
+      "create-tab";
+
+    return true;
+  }
+
+
   function installPanel(){
 
     if(
@@ -1206,10 +1259,13 @@
 
     style.textContent = `
       #cg138Panel{
-        margin:18px 0;
-        border:1px solid rgba(128,128,128,.28);
+        width:100%;
+        box-sizing:border-box;
+        margin:18px 0 0;
+        border:1px solid rgba(125,211,252,.34);
         border-radius:12px;
         padding:12px 14px;
+        background:rgba(5,25,46,.42);
       }
 
       #cg138Panel summary{
@@ -1329,12 +1385,19 @@
     `;
 
 
-    (
-      document.querySelector("main") ||
-      document.body
-    ).appendChild(
+    /*
+     * Montage de secours immédiatement dans le body.
+     *
+     * Si CGWEB016 n'est pas encore construit,
+     * le MutationObserver ci-dessous déplacera
+     * le panneau dès que #cg16PageCreate apparaîtra.
+     */
+    document.body.appendChild(
       panel
     );
+
+
+    mountPanelInCreateTab();
 
 
     document
@@ -1358,12 +1421,61 @@
   }
 
 
+  /*
+   * Le shell CGWEB016 peut être créé après CGWEB138.
+   * Observation très courte et idempotente :
+   * dès que la cible existe, on monte le panneau
+   * puis on coupe l'observateur.
+   */
+  let mountObserver = null;
+
+
+  function ensureVisibleMount(){
+
+    if(
+      mountPanelInCreateTab()
+    ){
+
+      if(mountObserver){
+        mountObserver.disconnect();
+        mountObserver = null;
+      }
+
+      return true;
+    }
+
+    return false;
+  }
+
+
+  if(
+    !ensureVisibleMount()
+  ){
+
+    mountObserver =
+      new MutationObserver(
+        ()=>{
+          ensureVisibleMount();
+        }
+      );
+
+    mountObserver.observe(
+      document.documentElement,
+      {
+        childList:true,
+        subtree:true
+      }
+    );
+  }
+
+
   root.CGWEB138_API =
     Object.freeze({
       version:VERSION,
       run,
       legacyFallbackProbe,
-      legacyFieldsOf
+      legacyFieldsOf,
+      mountPanelInCreateTab
     });
 
 
