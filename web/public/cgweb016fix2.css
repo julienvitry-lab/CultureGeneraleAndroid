@@ -615,3 +615,25 @@ body.cg16-installed #cg16PageCreate .cg112-create-form .cg16-wide{
     grid-template-columns:1fr;
   }
 }
+
+/* ==================================================================
+   CGWEB129
+   MANUAL_CREATE_QR001 / SINGLE_ANSWER_FIELD001
+   ================================================================== */
+
+body.cg16-installed #cg16PageCreate .cg129-row-answer{
+  grid-template-columns:1fr;
+}
+
+body.cg16-installed #cg16PageCreate .cg129-field-answer{
+  width:100%;
+}
+
+body.cg16-installed #cg16PageCreate #cg16CreateAnswer{
+  width:100%;
+  min-height:74px;
+  height:74px;
+  line-height:1.35;
+  resize:vertical;
+  box-sizing:border-box;
+}

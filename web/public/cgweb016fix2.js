@@ -6,6 +6,12 @@
 // Couche d'agencement uniquement : conserve les moteurs CGWEB/CGIMPORT existants.
 
 (() => {
+
+  // CGWEB129_MANUAL_CREATE_QR001
+  // SINGLE_ANSWER_FIELD001
+  // WRONG_OPTIONS_RETIRE002
+  // LEGACY_QR_COMPAT002
+
   "use strict";
 
   const $ = (id) => document.getElementById(id);
@@ -152,28 +158,15 @@
                 </label>
               </div>
 
-              <div class="cg112-create-row cg112-row-answers">
-                <label>Proposition A
-                  <input id="cg16CreateA">
-                </label>
-                <label>Proposition B
-                  <input id="cg16CreateB">
-                </label>
-                <label>Proposition C
-                  <input id="cg16CreateC">
-                </label>
-                <label>Proposition D
-                  <input id="cg16CreateD">
-                </label>
-
-                <label class="cg112-field-correct">Bonne réponse
-                  <select id="cg16CreateCorrect" aria-label="Bonne réponse">
-                    <option value=""></option>
-                    <option value="1">A</option>
-                    <option value="2">B</option>
-                    <option value="3">C</option>
-                    <option value="4">D</option>
-                  </select>
+              <!-- CGWEB129 · modèle Question / Réponse -->
+              <div class="cg112-create-row cg129-row-answer">
+                <label class="cg129-field-answer">Réponse
+                  <textarea
+                    id="cg16CreateAnswer"
+                    rows="2"
+                    required
+                    placeholder="Bonne réponse attendue"
+                  ></textarea>
                 </label>
               </div>
 
@@ -480,9 +473,10 @@ move("cgimage002Panel", "cg16ImportImagesMount");
     $("cg16CreateMega").value = mega;
     $("cg16CreateTheme").value = theme;
     for (const id of [
-      "cg16CreateQuestion", "cg16CreateDetail",
-      "cg16CreateA", "cg16CreateB", "cg16CreateC", "cg16CreateD",
-      "cg16CreateCorrect", "cg16CreateStatus"
+      "cg16CreateQuestion",
+      "cg16CreateDetail",
+      "cg16CreateAnswer",
+      "cg16CreateStatus"
     ]) {
       if ($(id)) $(id).value = "";
     }
@@ -511,18 +505,36 @@ move("cgimage002Panel", "cg16ImportImagesMount");
       return;
     }
 
-    const rawCorrect = $("cg16CreateCorrect").value.trim();
+    const answer =
+      $("cg16CreateAnswer").value.trim();
+
+    if (!answer) {
+      state.textContent = "❌ La réponse est obligatoire.";
+      return;
+    }
+
+    /*
+     * CGWEB129
+     *
+     * answer devient le champ canonique Q/R.
+     *
+     * proposition_a + correct_index=1 :
+     * compatibilité temporaire avec Android.
+     *
+     * proposition_b/c/d ne sont plus créées.
+     */
     const payload = {
       requested_id: $("cg16CreateId").value.trim(),
       megatheme: $("cg16CreateMega").value.trim(),
       theme: $("cg16CreateTheme").value.trim(),
       question,
       detail: $("cg16CreateDetail").value,
-      proposition_a: $("cg16CreateA").value,
-      proposition_b: $("cg16CreateB").value,
-      proposition_c: $("cg16CreateC").value,
-      proposition_d: $("cg16CreateD").value,
-      correct_index: rawCorrect === "" ? null : Number(rawCorrect),
+
+      answer,
+
+      proposition_a: answer,
+      correct_index: 1,
+
       status: $("cg16CreateStatus").value.trim(),
       image_file: "",
       is_image: 0
