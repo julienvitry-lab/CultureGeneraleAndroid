@@ -526,13 +526,7 @@ async function cg19Save(){
 
     answer,
 
-    proposition_a:
-      answer,
-
-    correct_index:
-      1,
-
-    status:
+status:
       cg19$("cg19EditStatusEdit")
         .value
         .trim()

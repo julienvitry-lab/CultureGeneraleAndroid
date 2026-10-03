@@ -516,12 +516,10 @@ move("cgimage002Panel", "cg16ImportImagesMount");
     /*
      * CGWEB129
      *
-     * answer devient le champ canonique Q/R.
+     * answer est l'unique champ réponse envoyé par l'interface.
      *
-     * proposition_a + correct_index=1 :
-     * compatibilité temporaire avec Android.
-     *
-     * proposition_b/c/d ne sont plus créées.
+     * Le pont Android est désormais produit exclusivement
+     * par le noyau app.js.
      */
     const payload = {
       requested_id: $("cg16CreateId").value.trim(),
@@ -531,9 +529,6 @@ move("cgimage002Panel", "cg16ImportImagesMount");
       detail: $("cg16CreateDetail").value,
 
       answer,
-
-      proposition_a: answer,
-      correct_index: 1,
 
       status: $("cg16CreateStatus").value.trim(),
       image_file: "",

@@ -983,13 +983,10 @@ async function importSelected(arg={}){
        * CGWEB128
        * Stockage Question / Réponse.
        *
-       * answer = champ canonique Q/R.
+       * answer = unique donnée réponse transmise.
        *
-       * proposition_a + correct_index=1 :
-       * pont temporaire avec l'APK Android actuelle.
-       *
-       * proposition_b/c/d :
-       * volontairement absentes.
+       * Le pont Android temporaire est fabriqué
+       * exclusivement par app.js.
        */
 
       await create.create({
@@ -1011,15 +1008,6 @@ async function importSelected(arg={}){
 
         answer:
           q.answer,
-
-        /*
-         * LEGACY_QR_COMPAT001
-         */
-        proposition_a:
-          q.answer,
-
-        correct_index:
-          1,
 
         url_quizypedia:
           q.url_quizypedia,

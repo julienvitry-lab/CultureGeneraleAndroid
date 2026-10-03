@@ -333,13 +333,7 @@ async function save(){
 
     answer,
 
-    proposition_a:
-      answer,
-
-    correct_index:
-      1,
-
-    status:
+status:
       $("cg6EditStatus")
         .value
         .trim()

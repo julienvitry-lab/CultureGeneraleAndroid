@@ -212,8 +212,7 @@ window.CGWEB001 = {
 
     const allowed = [
       "megatheme", "theme", "question", "detail", "answer",
-      "proposition_a", "proposition_b", "proposition_c", "proposition_d",
-      "correct_index", "url_quizypedia", "url_internet", "image_file", "image_thumb_file", "image_source_url", "image_mime",
+      "url_quizypedia", "url_internet", "image_file", "image_thumb_file", "image_source_url", "image_mime",
       "image_width", "image_height", "image_bytes", "image_sha256",
       "image_schema", "image_origin", "image_original_name", "image_updated_ms",
       "non_trouve", "is_image"
@@ -405,6 +404,9 @@ window.CGSYNC005_API = {
 };
 // CGSYNC005_API_END
 
+// CGWEB135_POST_QR_AUDIT001
+// CGWEB135_ACTIVE_RESIDUAL_ZEROING001
+// CGWEB135_ANDROID_BRIDGE_BOUNDARY001
 // CGINDEX001_HELPERS_START
 function cgindex001Normalize(text) {
   return String(text || "")
@@ -423,24 +425,81 @@ const CGINDEX001_STOP = new Set([
   "pas","plus","the","of","and","to","in","is","are","an"
 ]);
 
+/*
+ * CGWEB135 · frontière de lecture legacy.
+ *
+ * Le Web considère answer comme seule donnée Q/R canonique.
+ * Les anciens champs ne sont consultés qu'en fallback.
+ */
+function cgqr001AnswerOf(data) {
+
+  const direct =
+    String(
+      data?.answer ??
+      data?.correct_answer ??
+      ""
+    ).trim();
+
+  if (direct) {
+    return direct;
+  }
+
+  const n =
+    Number(
+      data?.correct_index
+    );
+
+  if (
+    Number.isInteger(n) &&
+    n >= 1 &&
+    n <= 4
+  ) {
+    return String(
+      data?.[
+        `proposition_${String.fromCharCode(96+n)}`
+      ] ??
+      ""
+    ).trim();
+  }
+
+  if (n === 0) {
+    return String(
+      data?.proposition_a ??
+      ""
+    ).trim();
+  }
+
+  return "";
+}
+
+
 function cgindex001Tokens(data) {
+
+  /*
+   * Aucune mauvaise proposition n'entre plus
+   * dans l'index de recherche Web.
+   */
   const text = [
     data?.megatheme,
     data?.theme,
     data?.question,
     data?.detail,
-    data?.answer,
-    data?.proposition_a,
-    data?.proposition_b,
-    data?.proposition_c,
-    data?.proposition_d
-  ].filter(Boolean).join(" ");
+    cgqr001AnswerOf(data)
+  ]
+    .filter(Boolean)
+    .join(" ");
 
-  return [...new Set(
-    cgindex001Normalize(text)
-      .split(/\s+/)
-      .filter(token => token.length >= 2 && !CGINDEX001_STOP.has(token))
-  )];
+  return [
+    ...new Set(
+      cgindex001Normalize(text)
+        .split(/\s+/)
+        .filter(
+          token =>
+            token.length >= 2 &&
+            !CGINDEX001_STOP.has(token)
+        )
+    )
+  ];
 }
 
 async function cgindex001SyncQuestion(questionId) {
@@ -536,12 +595,19 @@ window.CGINDEX001_API = {
 // EDITOR_QR001
 // LEGACY_CATALOG_COMPAT001
 // CGSYNC007_CONFLICT_ENGINE_START
+const CGWEB135_ANDROID_BRIDGE_FIELDS = Object.freeze([
+  "proposition_a",
+  "correct_index"
+]);
+
 const CGSYNC007_EDITABLE_FIELDS = new Set([
   "megatheme", "theme", "question", "detail", "answer",
-  "proposition_a", "proposition_b", "proposition_c", "proposition_d",
-  "correct_index", "url_quizypedia", "url_internet", "image_file", "image_thumb_file", "image_source_url", "image_mime",
-      "image_width", "image_height", "image_bytes", "image_sha256",
-      "image_schema", "image_origin", "image_original_name", "image_updated_ms",
+  "url_quizypedia", "url_internet",
+  "image_file", "image_thumb_file",
+  "image_source_url", "image_mime",
+  "image_width", "image_height", "image_bytes", "image_sha256",
+  "image_schema", "image_origin", "image_original_name",
+  "image_updated_ms",
   "non_trouve", "is_image", "status",
   "updated_at", "updated_from", "cloud_schema"
 ]);
@@ -594,19 +660,33 @@ function cgsync007ExpectedRevision(options, cloudRevision) {
 }
 
 function cgsync007HistorySnapshot(data = {}) {
+
   const fields = [
     "megatheme","theme","question","detail","answer",
-    "proposition_a","proposition_b","proposition_c","proposition_d",
-    "correct_index","url_quizypedia","url_internet",
-    "image_file","image_thumb_file","image_source_url","image_mime",
+    "url_quizypedia","url_internet",
+    "image_file","image_thumb_file",
+    "image_source_url","image_mime",
     "image_width","image_height","image_bytes","image_sha256",
-    "image_schema","image_origin","image_original_name","image_updated_ms",
+    "image_schema","image_origin","image_original_name",
+    "image_updated_ms",
     "non_trouve","status","is_image"
   ];
+
   const out = {};
+
   for (const field of fields) {
-    if (data[field] !== undefined) out[field] = data[field];
+    if (data[field] !== undefined) {
+      out[field] = data[field];
+    }
   }
+
+  const answer =
+    cgqr001AnswerOf(data);
+
+  if (answer) {
+    out.answer = answer;
+  }
+
   return out;
 }
 
@@ -618,7 +698,32 @@ async function cgsync007WriteQuestion(questionId, patch, options = {}) {
   if (!id) throw new Error("ID manquant.");
 
   const clean = cgsync007CleanPatch(patch);
-  if (!Object.keys(clean).length) throw new Error("Modification vide.");
+
+  if (!Object.keys(clean).length) {
+    throw new Error("Modification vide.");
+  }
+
+  /*
+   * ANDROID_BRIDGE_BOUNDARY001
+   *
+   * Les écrans n'écrivent que answer.
+   * Le pont Android est généré ici et seulement ici
+   * pour les mises à jour CGSYNC007.
+   */
+  const hasCanonicalAnswer =
+    Object.prototype.hasOwnProperty.call(
+      clean,
+      "answer"
+    );
+
+  if (hasCanonicalAnswer) {
+    const answer =
+      String(clean.answer ?? "").trim();
+
+    clean.answer = answer;
+    clean.proposition_a = answer;
+    clean.correct_index = 1;
+  }
 
   const questionRef = doc(db, "users", u.uid, "questions", id);
   const conflictRef = doc(collection(db, "users", u.uid, "question_conflicts"));
@@ -640,8 +745,8 @@ async function cgsync007WriteQuestion(questionId, patch, options = {}) {
         status: "open",
         expected_revision: expectedRevision,
         cloud_revision: cloudRevision,
-        attempted_patch: clean,
-        cloud_snapshot: cloud,
+        attempted_patch: cgsync007HistorySnapshot(clean),
+        cloud_snapshot: cgsync007HistorySnapshot(cloud),
         cloud_updated_at: cloud.cg_updated_at || null,
         writer_id: writer.cg_writer_id,
         writer_label: writer.cg_writer_label,
@@ -674,7 +779,8 @@ async function cgsync007WriteQuestion(questionId, patch, options = {}) {
      * proposition_b/c/d disparaissent physiquement de Firestore.
      */
     const normalizeQr =
-      options?.normalizeQr === true;
+      options?.normalizeQr === true ||
+      hasCanonicalAnswer;
 
     const qrLegacyDeletes =
       normalizeQr
@@ -788,7 +894,7 @@ async function cgsync007DeleteQuestion(questionId, options = {}) {
         status: "open",
         expected_revision: expectedRevision,
         cloud_revision: cloudRevision,
-        cloud_snapshot: cloud,
+        cloud_snapshot: cgsync007HistorySnapshot(cloud),
         cloud_updated_at: cloud.cg_updated_at || null,
         writer_id: writer.cg_writer_id,
         writer_label: writer.cg_writer_label,
@@ -1252,7 +1358,7 @@ window.CGWEB009_API = {
   prefixField: async (field, prefix, maxResults = 100) => {
     const u = auth.currentUser;
     if (!u) throw new Error("Utilisateur Firebase non connecté.");
-    const allowed = new Set(["question","detail","answer","proposition_a","proposition_b","proposition_c","proposition_d"]);
+    const allowed = new Set(["question","detail","answer"]);
     if (!allowed.has(field)) throw new Error("Champ de recherche non autorisé.");
     const text = String(prefix || "").trim();
     if (!text) return [];
@@ -1276,25 +1382,36 @@ window.CGWEB010_API = {
     delete clean.requested_id;
 
     /*
-     * CGWEB133 · LEGACY_CREATE_QR001
+     * CGWEB135 · frontière Android.
+     *
+     * Aucun appelant ne choisit directement
+     * les anciennes propriétés.
      */
-    if (
-      Object.prototype.hasOwnProperty.call(
-        clean,
-        "answer"
-      )
-    ) {
-      const answer =
-        String(clean.answer ?? "").trim();
+    delete clean.proposition_a;
+    delete clean.proposition_b;
+    delete clean.proposition_c;
+    delete clean.proposition_d;
+    delete clean.correct_index;
 
-      clean.answer = answer;
-      clean.proposition_a = answer;
-      clean.correct_index = 1;
+    const answer =
+      String(
+        clean.answer ??
+        ""
+      ).trim();
 
-      delete clean.proposition_b;
-      delete clean.proposition_c;
-      delete clean.proposition_d;
+    if (!answer) {
+      throw new Error(
+        "La réponse Q/R est obligatoire."
+      );
     }
+
+    clean.answer = answer;
+
+    /*
+     * Seul le noyau Web fabrique le pont Android.
+     */
+    clean.proposition_a = answer;
+    clean.correct_index = 1;
 
     // CGSYNC007_CREATE_REVISION
     const writer = cgsync007WriterMeta("CGWEB010_CREATE");
