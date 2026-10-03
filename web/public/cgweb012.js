@@ -25,6 +25,43 @@ function cgxEsc(v) {
     .replaceAll('"', '&quot;');
 }
 
+// CGWEB133_LEGACY_CREATE_QR001
+function cgxAnswer(row){
+
+  const direct =
+    String(
+      row?.answer ??
+      row?.correct_answer ??
+      ""
+    ).trim();
+
+  if(direct){
+    return direct;
+  }
+
+  const n =
+    Number(
+      row?.correct_index
+    );
+
+  if(
+    Number.isInteger(n) &&
+    n >= 1 &&
+    n <= 4
+  ){
+    const key =
+      `proposition_${String.fromCharCode(96+n)}`;
+
+    return String(
+      row?.[key] ??
+      ""
+    ).trim();
+  }
+
+  return "";
+}
+
+
 function cgxNormalize(text) {
   return String(text || '')
     .normalize('NFD')
@@ -58,13 +95,12 @@ function cgindex001RowMatches(row, tokens) {
     row?.theme,
     row?.question,
     row?.detail,
-    row?.proposition_a,
-    row?.proposition_b,
-    row?.proposition_c,
-    row?.proposition_d
+    cgxAnswer(row)
   ].filter(Boolean).join(" "));
 
-  return (tokens || []).every(token => text.includes(token));
+  return (tokens || []).every(
+    token => text.includes(token)
+  );
 }
 // CGINDEX001_ROW_MATCH_END
 
@@ -113,6 +149,7 @@ async function cgxPrefixField(field, text) {
 }
 
 async function cgxStructuredSearch(term, mode) {
+
   if (mode === 'id') {
     const api = window.CGWEB006_API;
     if (!api) throw new Error('Pont CGWEB006 indisponible.');
@@ -120,23 +157,25 @@ async function cgxStructuredSearch(term, mode) {
     return row ? [row] : [];
   }
 
-  if (mode === 'question') return cgxPrefixField('question', term);
-  if (mode === 'detail') return cgxPrefixField('detail', term);
+  if (mode === 'question') {
+    return cgxPrefixField('question', term);
+  }
 
-  if (mode === 'propositions') {
-    const groups = await Promise.all(
-      ['proposition_a','proposition_b','proposition_c','proposition_d']
-        .map(field => cgxPrefixField(field, term))
-    );
-    return cgxDedup(groups.flat()).slice(0, 100);
+  if (mode === 'detail') {
+    return cgxPrefixField('detail', term);
+  }
+
+  if (mode === 'answer') {
+    return cgxPrefixField('answer', term);
   }
 
   if (mode === 'allprefix') {
     const groups = await Promise.all(
-      ['question','detail','proposition_a','proposition_b','proposition_c','proposition_d']
+      ['question','detail','answer']
         .map(field => cgxPrefixField(field, term))
     );
-    return cgxDedup(groups.flat()).slice(0, 100);
+
+    return cgxDedup(groups.flat()).slice(0,100);
   }
 
   return [];
@@ -180,114 +219,244 @@ async function cgxSearch() {
 }
 
 function cgxInstallSearchModes() {
+
   const mode = cgx$('cg6SearchMode');
   const input = cgx$('cg6Search');
   const button = cgx$('cg6SearchBtn');
-  if (!mode || !input || !button) throw new Error('Zone de recherche CGWEB006 introuvable.');
+
+  if (!mode || !input || !button) {
+    throw new Error(
+      'Zone de recherche CGWEB006 introuvable.'
+    );
+  }
 
   mode.innerHTML = `
     <option value="id">ID exact</option>
     <option value="question">Question commence par</option>
     <option value="detail">Détail commence par</option>
-    <option value="propositions">Propositions commencent par</option>
-    <option value="allprefix">Tous les champs commencent par</option>
+    <option value="answer">Réponse commence par</option>
+    <option value="allprefix">Question / détail / réponse commencent par</option>
     <option value="fulltext">Plein texte — contient les mots</option>
   `;
 
   button.onclick = cgxSearch;
-  input.onkeydown = e => { if (e.key === 'Enter') cgxSearch(); };
+
+  input.onkeydown =
+    e => {
+      if (e.key === 'Enter') {
+        cgxSearch();
+      }
+    };
 }
 
 // ---------------- CGWEB010 : ajout/suppression ----------------
 function cgxEnsureCreateDialog() {
-  if (cgx$('cg10Modal')) return;
 
-  const modal = document.createElement('div');
-  modal.id = 'cg10Modal';
-  modal.className = 'cg6-modal cg6-hidden';
+  if (cgx$('cg10Modal')) {
+    return;
+  }
+
+  const modal =
+    document.createElement('div');
+
+  modal.id =
+    'cg10Modal';
+
+  modal.className =
+    'cg6-modal cg6-hidden';
+
   modal.innerHTML = `
     <div class="cg6-modal-card">
+
       <div class="cg6-modal-head">
-        <div><div class="cg6-kicker">CGWEB010</div><h3>Nouvelle question</h3></div>
+        <div>
+          <div class="cg6-kicker">CGWEB010 · Q/R</div>
+          <h3>Nouvelle question</h3>
+        </div>
         <button id="cg10Close" class="cg6-close">×</button>
       </div>
+
       <div class="cg6-editor">
-        <label>ID <input id="cg10Id" placeholder="vide = ID automatique"></label>
-        <label>Mégathème <input id="cg10Mega"></label>
-        <label class="cg6-wide">Thème <input id="cg10Theme"></label>
-        <label class="cg6-wide">Question <textarea id="cg10Question"></textarea></label>
-        <label class="cg6-wide">Détail <textarea id="cg10Detail"></textarea></label>
-        <label>Proposition A <input id="cg10A"></label>
-        <label>Proposition B <input id="cg10B"></label>
-        <label>Proposition C <input id="cg10C"></label>
-        <label>Proposition D <input id="cg10D"></label>
-        <label>Correct index <input id="cg10Correct" inputmode="numeric"></label>
-        <label>Statut <input id="cg10Status"></label>
+        <label>
+          ID
+          <input id="cg10Id" placeholder="vide = ID automatique">
+        </label>
+
+        <label>
+          Mégathème
+          <input id="cg10Mega">
+        </label>
+
+        <label class="cg6-wide">
+          Thème
+          <input id="cg10Theme">
+        </label>
+
+        <label class="cg6-wide">
+          Question
+          <textarea id="cg10Question"></textarea>
+        </label>
+
+        <label class="cg6-wide">
+          Détail
+          <textarea id="cg10Detail"></textarea>
+        </label>
+
+        <label class="cg6-wide">
+          Réponse
+          <textarea id="cg10Answer"></textarea>
+        </label>
+
+        <label>
+          Statut
+          <input id="cg10Status">
+        </label>
       </div>
-      <div class="cg10-hint">ID automatique : horodatage milliseconde unique, sans parcourir les 217 576 documents.</div>
+
+      <div class="cg10-hint">
+        ID automatique : horodatage milliseconde unique,
+        sans parcourir le catalogue.
+      </div>
+
       <div class="cg6-actions">
         <span id="cg10SaveState" class="cg6-save-state"></span>
         <button id="cg10Cancel" class="cg6-btn">Annuler</button>
         <button id="cg10Save" class="cg6-btn cg6-primary">Créer</button>
       </div>
+
     </div>`;
 
   document.body.appendChild(modal);
-  cgx$('cg10Close').onclick = () => modal.classList.add('cg6-hidden');
-  cgx$('cg10Cancel').onclick = () => modal.classList.add('cg6-hidden');
-  modal.onclick = e => { if (e.target === modal) modal.classList.add('cg6-hidden'); };
-  cgx$('cg10Save').onclick = cgxCreateQuestion;
+
+  cgx$('cg10Close').onclick =
+    () => modal.classList.add('cg6-hidden');
+
+  cgx$('cg10Cancel').onclick =
+    () => modal.classList.add('cg6-hidden');
+
+  modal.onclick =
+    e => {
+      if (e.target === modal) {
+        modal.classList.add('cg6-hidden');
+      }
+    };
+
+  cgx$('cg10Save').onclick =
+    cgxCreateQuestion;
 }
 
 function cgxOpenCreate() {
+
   cgxEnsureCreateDialog();
+
   cgx$('cg10Id').value = '';
   cgx$('cg10Mega').value = cgx$('cg6Mega')?.value || '';
   cgx$('cg10Theme').value = cgx$('cg6Theme')?.value || '';
-  for (const id of ['cg10Question','cg10Detail','cg10A','cg10B','cg10C','cg10D','cg10Correct','cg10Status']) {
+
+  for (
+    const id of [
+      'cg10Question',
+      'cg10Detail',
+      'cg10Answer',
+      'cg10Status'
+    ]
+  ) {
     cgx$(id).value = '';
   }
+
   cgx$('cg10SaveState').textContent = '';
-  cgx$('cg10Modal').classList.remove('cg6-hidden');
+
+  cgx$('cg10Modal')
+    .classList
+    .remove('cg6-hidden');
 }
 
 async function cgxCreateQuestion() {
-  const api = window.CGWEB010_API;
-  if (!api) return;
 
-  const raw = cgx$('cg10Correct').value.trim();
-  const num = raw === '' ? null : Number(raw);
-  const payload = {
-    requested_id: cgx$('cg10Id').value.trim(),
-    megatheme: cgx$('cg10Mega').value.trim(),
-    theme: cgx$('cg10Theme').value.trim(),
-    question: cgx$('cg10Question').value.trim(),
-    detail: cgx$('cg10Detail').value,
-    proposition_a: cgx$('cg10A').value,
-    proposition_b: cgx$('cg10B').value,
-    proposition_c: cgx$('cg10C').value,
-    proposition_d: cgx$('cg10D').value,
-    correct_index: Number.isFinite(num) ? num : raw,
-    status: cgx$('cg10Status').value.trim()
-  };
+  const api =
+    window.CGWEB010_API;
 
-  if (!payload.question) {
-    cgx$('cg10SaveState').textContent = '❌ La question est obligatoire.';
+  if (!api) {
     return;
   }
 
+  const payload = {
+    requested_id:
+      cgx$('cg10Id').value.trim(),
+
+    megatheme:
+      cgx$('cg10Mega').value.trim(),
+
+    theme:
+      cgx$('cg10Theme').value.trim(),
+
+    question:
+      cgx$('cg10Question').value.trim(),
+
+    detail:
+      cgx$('cg10Detail').value,
+
+    answer:
+      cgx$('cg10Answer').value.trim(),
+
+    status:
+      cgx$('cg10Status').value.trim()
+  };
+
+
+  if (!payload.question) {
+    cgx$('cg10SaveState').textContent =
+      '❌ La question est obligatoire.';
+    return;
+  }
+
+
+  if (!payload.answer) {
+    cgx$('cg10SaveState').textContent =
+      '❌ La réponse est obligatoire.';
+    return;
+  }
+
+
   cgx$('cg10Save').disabled = true;
   cgx$('cg10SaveState').textContent = 'Création…';
+
+
   try {
-    const id = await api.create(payload);
-    cgx$('cg10SaveState').textContent = `✅ Question ${id} créée.`;
-    setTimeout(async () => {
-      cgx$('cg10Modal').classList.add('cg6-hidden');
-      if (typeof window.CGWEB006_reload === 'function') await window.CGWEB006_reload(true);
-    }, 450);
+
+    const id =
+      await api.create(payload);
+
+    cgx$('cg10SaveState').textContent =
+      `✅ Question ${id} créée.`;
+
+    setTimeout(
+      async () => {
+
+        cgx$('cg10Modal')
+          .classList
+          .add('cg6-hidden');
+
+        if (
+          typeof window.CGWEB006_reload === 'function'
+        ) {
+          await window.CGWEB006_reload(true);
+        }
+      },
+      450
+    );
+
   } catch (error) {
-    cgx$('cg10SaveState').textContent = '❌ ' + (error?.message || String(error));
+
+    cgx$('cg10SaveState').textContent =
+      '❌ ' +
+      (
+        error?.message ||
+        String(error)
+      );
+
   } finally {
+
     cgx$('cg10Save').disabled = false;
   }
 }

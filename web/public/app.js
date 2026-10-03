@@ -26,6 +26,10 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// CGWEB133_ACTIVE_QCM_WRITER_RETIRE001
+// LEGACY_CREATE_QR001
+// QUESTION_HISTORY_QR001
+// QCM_UI_TEXT_CLEAN001
 // CGCLOUD002_SHARED_CONTEXT_BRIDGE_START
 // Contexte Firebase unique partagé par CGWEB001 / CGCLOUD002 / CGWEB004 / CGWEB005.
 
@@ -207,7 +211,7 @@ window.CGWEB001 = {
     if (!patch || typeof patch !== "object") throw new Error("Modification vide.");
 
     const allowed = [
-      "megatheme", "theme", "question", "detail",
+      "megatheme", "theme", "question", "detail", "answer",
       "proposition_a", "proposition_b", "proposition_c", "proposition_d",
       "correct_index", "url_quizypedia", "url_internet", "image_file", "image_thumb_file", "image_source_url", "image_mime",
       "image_width", "image_height", "image_bytes", "image_sha256",
@@ -218,15 +222,43 @@ window.CGWEB001 = {
     for (const key of allowed) {
       if (Object.prototype.hasOwnProperty.call(patch, key)) clean[key] = patch[key];
     }
+    /*
+     * CGWEB133 · ACTIVE_QCM_WRITER_RETIRE001
+     */
+    const normalizeQr =
+      Object.prototype.hasOwnProperty.call(
+        clean,
+        "answer"
+      );
+
+    if (normalizeQr) {
+      const answer =
+        String(clean.answer ?? "").trim();
+
+      clean.answer = answer;
+      clean.proposition_a = answer;
+      clean.correct_index = 1;
+
+      delete clean.proposition_b;
+      delete clean.proposition_c;
+      delete clean.proposition_d;
+    }
+
     clean.updated_at = serverTimestamp();
     clean.updated_from = "CGWEB005";
     clean.cloud_schema = 1;
 
     const ref = doc(db, "users", user.uid, "questions", String(questionId));
+
     // CGSYNC007_LEGACY_UPDATE
-    await cgsync007WriteQuestion(questionId, clean, {
-      source: "CGWEB005"
-    });
+    await cgsync007WriteQuestion(
+      questionId,
+      clean,
+      {
+        source:"CGWEB005_QR",
+        normalizeQr
+      }
+    );
     const fresh = await getDoc(ref);
     return fresh.exists() ? { id: fresh.id, ...fresh.data() } : null;
   },
@@ -1161,6 +1193,28 @@ window.CGWEB010_API = {
     if (existing.exists()) throw new Error("Cet ID existe déjà.");
     const clean = {...(payload||{})};
     delete clean.requested_id;
+
+    /*
+     * CGWEB133 · LEGACY_CREATE_QR001
+     */
+    if (
+      Object.prototype.hasOwnProperty.call(
+        clean,
+        "answer"
+      )
+    ) {
+      const answer =
+        String(clean.answer ?? "").trim();
+
+      clean.answer = answer;
+      clean.proposition_a = answer;
+      clean.correct_index = 1;
+
+      delete clean.proposition_b;
+      delete clean.proposition_c;
+      delete clean.proposition_d;
+    }
+
     // CGSYNC007_CREATE_REVISION
     const writer = cgsync007WriterMeta("CGWEB010_CREATE");
     await setDoc(ref,{

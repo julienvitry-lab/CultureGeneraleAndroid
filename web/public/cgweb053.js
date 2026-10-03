@@ -1,15 +1,21 @@
 (() => {
   "use strict";
 
-  const VERSION = "QUESTION_HISTORY002";
+  const VERSION = "CGWEB133_QUESTION_HISTORY_QR001";
+
   const FIELDS = {
-    megatheme: "Mégathème", theme: "Thème", question: "Question", detail: "Détail",
-    proposition_a: "Proposition A", proposition_b: "Proposition B",
-    proposition_c: "Proposition C", proposition_d: "Proposition D",
-    correct_index: "Bonne réponse", status: "Statut",
-    is_image: "Image", image_file: "Fichier image", image_source_url: "Source image",
-    url_quizypedia: "Quizypedia", url_internet: "Source Internet",
-    non_trouve: "Introuvable"
+    megatheme:"Mégathème",
+    theme:"Thème",
+    question:"Question",
+    detail:"Détail",
+    answer:"Réponse",
+    status:"Statut",
+    is_image:"Image",
+    image_file:"Fichier image",
+    image_source_url:"Source image",
+    url_quizypedia:"Quizypedia",
+    url_internet:"Source Internet",
+    non_trouve:"Introuvable"
   };
 
   const norm = (v) => String(v ?? "").replace(/\s+/g, " ").trim();
@@ -27,6 +33,117 @@
 
   let state = { id: "", rows: [], current: null };
 
+  // CGWEB133 · QUESTION_HISTORY_QR001
+  function resolveAnswer(obj){
+
+    if (!obj || typeof obj !== "object") {
+      return "";
+    }
+
+    const direct =
+      norm(
+        obj.answer ??
+        obj.correct_answer ??
+        ""
+      );
+
+    if (direct) {
+      return direct;
+    }
+
+    const n =
+      Number(
+        obj.correct_index
+      );
+
+    if (
+      Number.isInteger(n) &&
+      n >= 1 &&
+      n <= 4
+    ) {
+      const key =
+        `proposition_${String.fromCharCode(96+n)}`;
+
+      return norm(
+        obj[key]
+      );
+    }
+
+    return "";
+  }
+
+
+  function canonicalSnapshot(obj){
+
+    if (!obj || typeof obj !== "object") {
+      return {};
+    }
+
+    const out = {};
+
+    for (
+      const key of Object.keys(FIELDS)
+    ) {
+      if (
+        Object.prototype.hasOwnProperty.call(
+          obj,
+          key
+        )
+      ) {
+        out[key] = obj[key];
+      }
+    }
+
+    const answer =
+      resolveAnswer(obj);
+
+    if (answer) {
+      out.answer = answer;
+    }
+
+    return out;
+  }
+
+
+  function canonicalHistoryRow(row){
+
+    const out = {
+      ...(row || {})
+    };
+
+    if (
+      out.before_snapshot &&
+      typeof out.before_snapshot === "object"
+    ) {
+      out.before_snapshot =
+        canonicalSnapshot(
+          out.before_snapshot
+        );
+    }
+
+    if (
+      out.after_snapshot &&
+      typeof out.after_snapshot === "object"
+    ) {
+      out.after_snapshot =
+        canonicalSnapshot(
+          out.after_snapshot
+        );
+    }
+
+    if (
+      out.patch &&
+      typeof out.patch === "object"
+    ) {
+      out.patch =
+        canonicalSnapshot(
+          out.patch
+        );
+    }
+
+    return out;
+  }
+
   function currentId() {
     const ctx = window.CGWEB038?.context?.();
     if (norm(ctx?.id)) return norm(ctx.id);
@@ -43,22 +160,80 @@
     return String(v);
   }
 
-  function rowChanges(row) {
-    const before = row?.before_snapshot && typeof row.before_snapshot === "object" ? row.before_snapshot : null;
-    const after = row?.after_snapshot && typeof row.after_snapshot === "object" ? row.after_snapshot : null;
-    const patch = row?.patch && typeof row.patch === "object" ? row.patch : {};
-    const keys = new Set([
-      ...Object.keys(patch || {}),
-      ...Object.keys(before || {}),
-      ...Object.keys(after || {})
-    ]);
+  function rowChanges(rawRow) {
+
+    const row =
+      canonicalHistoryRow(
+        rawRow
+      );
+
+    const before =
+      row?.before_snapshot &&
+      typeof row.before_snapshot === "object"
+        ? row.before_snapshot
+        : null;
+
+    const after =
+      row?.after_snapshot &&
+      typeof row.after_snapshot === "object"
+        ? row.after_snapshot
+        : null;
+
+    const patch =
+      row?.patch &&
+      typeof row.patch === "object"
+        ? row.patch
+        : {};
+
+    const keys =
+      new Set([
+        ...Object.keys(patch || {}),
+        ...Object.keys(before || {}),
+        ...Object.keys(after || {})
+      ]);
+
     return [...keys]
-      .filter((key) => FIELDS[key] || Object.prototype.hasOwnProperty.call(patch, key))
-      .map((key) => {
-        const a = before ? before[key] : undefined;
-        const b = after ? after[key] : (Object.prototype.hasOwnProperty.call(patch, key) ? patch[key] : undefined);
-        if (before && after && valueText(a) === valueText(b)) return null;
-        return { key, label: FIELDS[key] || key, before: a, after: b };
+      .filter(
+        key =>
+          Boolean(FIELDS[key]) ||
+          Object.prototype.hasOwnProperty.call(
+            patch,
+            key
+          )
+      )
+      .map(key=>{
+
+        const a =
+          before
+            ? before[key]
+            : undefined;
+
+        const b =
+          after
+            ? after[key]
+            : (
+                Object.prototype.hasOwnProperty.call(
+                  patch,
+                  key
+                )
+                  ? patch[key]
+                  : undefined
+              );
+
+        if (
+          before &&
+          after &&
+          valueText(a) === valueText(b)
+        ) {
+          return null;
+        }
+
+        return {
+          key,
+          label:FIELDS[key] || key,
+          before:a,
+          after:b
+        };
       })
       .filter(Boolean);
   }
@@ -79,40 +254,120 @@
   }
 
   function prepareEditor(row) {
-    const id = state.id || currentId();
-    if (!id) return alert("Aucune question courante.");
-    const payload = row?.after_snapshot && typeof row.after_snapshot === "object"
-      ? row.after_snapshot
-      : (row?.patch && typeof row.patch === "object" ? row.patch : null);
-    if (!payload || !Object.keys(payload).length) {
-      return alert("Cette entrée historique ne contient aucun état réutilisable.");
+
+    const id =
+      state.id ||
+      currentId();
+
+    if (!id) {
+      return alert(
+        "Aucune question courante."
+      );
     }
 
-    window.CGWEB019_API?.open?.(id, [id]);
-    setTimeout(() => {
-      if (editorIsHidden()) document.getElementById("cg19EditBtn")?.click();
+    const rawPayload =
+      row?.after_snapshot &&
+      typeof row.after_snapshot === "object"
+        ? row.after_snapshot
+        : (
+            row?.patch &&
+            typeof row.patch === "object"
+              ? row.patch
+              : null
+          );
 
-      const map = {
-        megatheme:"cg19EditMega", theme:"cg19EditTheme", question:"cg19EditQuestion",
-        detail:"cg19EditDetail", proposition_a:"cg19EditA", proposition_b:"cg19EditB",
-        proposition_c:"cg19EditC", proposition_d:"cg19EditD",
-        correct_index:"cg19EditCorrect", status:"cg19EditStatusEdit"
-      };
-      let count = 0;
-      for (const [key, idField] of Object.entries(map)) {
-        if (!Object.prototype.hasOwnProperty.call(payload, key)) continue;
-        const el = document.getElementById(idField);
-        if (!el) continue;
-        el.value = payload[key] ?? "";
-        el.dispatchEvent(new Event("input", { bubbles: true }));
-        el.dispatchEvent(new Event("change", { bubbles: true }));
-        count++;
-      }
-      alert(
-        `${count} champ(s) préparé(s) dans l'éditeur.\n\n` +
-        `AUCUNE donnée n'a été enregistrée. Vérifie le formulaire puis utilise toi-même « Enregistrer » si tu le souhaites.`
+    if (
+      !rawPayload ||
+      !Object.keys(rawPayload).length
+    ) {
+      return alert(
+        "Cette entrée historique ne contient aucun état réutilisable."
       );
-    }, 350);
+    }
+
+    const payload =
+      canonicalSnapshot(
+        rawPayload
+      );
+
+    window.CGWEB019_API
+      ?.open?.(
+        id,
+        [id]
+      );
+
+    setTimeout(
+      () => {
+
+        if (editorIsHidden()) {
+          document
+            .getElementById("cg19EditBtn")
+            ?.click();
+        }
+
+        const map = {
+          megatheme:"cg19EditMega",
+          theme:"cg19EditTheme",
+          question:"cg19EditQuestion",
+          detail:"cg19EditDetail",
+          answer:"cg19EditAnswer",
+          status:"cg19EditStatusEdit"
+        };
+
+        let count = 0;
+
+        for (
+          const [key,idField]
+          of Object.entries(map)
+        ) {
+
+          if (
+            !Object.prototype.hasOwnProperty.call(
+              payload,
+              key
+            )
+          ) {
+            continue;
+          }
+
+          const el =
+            document.getElementById(
+              idField
+            );
+
+          if (!el) {
+            continue;
+          }
+
+          el.value =
+            payload[key] ??
+            "";
+
+          el.dispatchEvent(
+            new Event(
+              "input",
+              {bubbles:true}
+            )
+          );
+
+          el.dispatchEvent(
+            new Event(
+              "change",
+              {bubbles:true}
+            )
+          );
+
+          count++;
+        }
+
+        alert(
+          `${count} champ(s) préparé(s) dans l'éditeur Q/R.\n\n` +
+          `AUCUNE donnée n'a été enregistrée. Vérifie le formulaire puis utilise toi-même « Enregistrer » si tu le souhaites.`
+        );
+
+      },
+      350
+    );
   }
 
   function ensureModal() {
@@ -144,7 +399,11 @@
       const copy = ev.target.closest("[data-cg53-copy]");
       if (copy) {
         const row = state.rows[Number(copy.dataset.cg53Copy)];
-        if (row) copyJson(row);
+        if (row) {
+          copyJson(
+            canonicalHistoryRow(row)
+          );
+        }
       }
       const prep = ev.target.closest("[data-cg53-prepare]");
       if (prep) {
@@ -231,11 +490,11 @@
 
   function exportJson() {
     const data = {
-      schema: "cgweb053-question-history-v1",
+      schema: "cgweb053-question-history-qr-v2",
       exportedAt: new Date().toISOString(),
       questionId: state.id,
-      current: state.current,
-      history: state.rows
+      current: canonicalSnapshot(state.current || {}),
+      history: state.rows.map(canonicalHistoryRow)
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
     const a = Object.assign(document.createElement("a"), {

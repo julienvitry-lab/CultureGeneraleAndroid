@@ -2744,7 +2744,7 @@ async function cg35GenerateSmartLegacy(){
           '</div>'+
 
           '<div class="cg35-learning-truth-detail">'+
-            'A/R/P/T ignorés · mode cible QCM'+
+            'A/R/P/T ignorés · mode cible Q/R'+
             (
               lm.legacyHistoryPreserved
                 ? ' · ancien historique conservé'

@@ -192,11 +192,7 @@ cg45Overlay.innerHTML = `
         <label><span>Thème</span><input id="cg45-e-theme" type="text"></label>
         <label class="wide"><span>Question</span><textarea id="cg45-e-question"></textarea></label>
         <label class="wide"><span>Détail</span><textarea id="cg45-e-detail"></textarea></label>
-        <label><span>Proposition A</span><input id="cg45-e-a" type="text"></label>
-        <label><span>Proposition B</span><input id="cg45-e-b" type="text"></label>
-        <label><span>Proposition C</span><input id="cg45-e-c" type="text"></label>
-        <label><span>Proposition D</span><input id="cg45-e-d" type="text"></label>
-        <label><span>Bonne réponse</span><select id="cg45-e-correct"><option value="1">A</option><option value="2">B</option><option value="3">C</option><option value="4">D</option></select></label>
+        <label class="wide"><span>Réponse</span><textarea id="cg45-e-answer"></textarea></label>
         <label><span>Statut (lecture seule)</span><input id="cg45-e-status" type="text" readonly></label>
         <label class="wide"><span>URL Quizypedia</span><input id="cg45-e-url-q" type="text"></label>
         <label class="wide"><span>URL Internet</span><input id="cg45-e-url-i" type="text"></label>
@@ -217,6 +213,42 @@ document.body.appendChild(cg45Overlay);
 const cg45$ = id => document.getElementById(id);
 function cg45Bridge(){ return window.CGWEB001 || null; }
 function cg45Esc(v){ return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// CGWEB133_QR_WRITER001
+function cg45Answer(item){
+
+  const direct =
+    String(
+      item?.answer ??
+      item?.correct_answer ??
+      ""
+    ).trim();
+
+  if(direct){
+    return direct;
+  }
+
+  const n =
+    Number(
+      item?.correct_index
+    );
+
+  if(
+    Number.isInteger(n) &&
+    n >= 1 &&
+    n <= 4
+  ){
+    const key =
+      `proposition_${String.fromCharCode(96+n)}`;
+
+    return String(
+      item?.[key] ??
+      ""
+    ).trim();
+  }
+
+  return "";
+}
 function cg45Status(msg, ok=true){ cg45$('cg45-status').textContent = msg; cg45$('cg45-status').style.color = ok ? '#8ff0b5' : '#ffb0b0'; }
 function cg45EditStatus(msg, ok=true){ cg45$('cg45-edit-status').textContent = msg; cg45$('cg45-edit-status').style.color = ok ? '#8ff0b5' : '#ffb0b0'; }
 
@@ -284,22 +316,33 @@ function cg45Render(items){
 // CGWEB · CORRECT_INDEX_DISPLAY_FIX001
 // correct_index 1..4 => tableau JS [correct_index-1].
 function cg45DetailRows(item){
-  const correct = Number(item.correct_index || 0);
-  const props = [item.proposition_a,item.proposition_b,item.proposition_c,item.proposition_d];
+
+  const answer =
+    cg45Answer(item);
+
   return [
-    ['Document ID', item.id], ['Original ID', item.original_id], ['Row number', item.row_number],
-    ['Mégathème', item.megatheme], ['Thème', item.theme], ['Question', item.question], ['Détail', item.detail],
-    ['Proposition A', props[0]], ['Proposition B', props[1]], ['Proposition C', props[2]], ['Proposition D', props[3]],
-    ['Bonne réponse', correct >= 1 && correct <= 4 ? `${String.fromCharCode(64+correct)} — ${props[correct-1] || ''}` : item.correct_index],
-    ['Statut', item.status], ['URL Quizypedia', item.url_quizypedia], ['URL Internet', item.url_internet],
-    ['Image', item.image_file], ['Non trouvé', item.non_trouve], ['Question image', item.is_image], ['Schéma Cloud', item.cloud_schema]
+    ['Document ID', item.id],
+    ['Original ID', item.original_id],
+    ['Row number', item.row_number],
+    ['Mégathème', item.megatheme],
+    ['Thème', item.theme],
+    ['Question', item.question],
+    ['Détail', item.detail],
+    ['Réponse', answer],
+    ['Statut', item.status],
+    ['URL Quizypedia', item.url_quizypedia],
+    ['URL Internet', item.url_internet],
+    ['Image', item.image_file],
+    ['Non trouvé', item.non_trouve],
+    ['Question image', item.is_image],
+    ['Schéma Cloud', item.cloud_schema]
   ];
 }
 
 function cg45RenderDetail(item){
   cg45$('cg45-detail-title').textContent = item.question || `Question ${item.original_id || item.id || ''}`;
   cg45$('cg45-detail-grid').innerHTML = cg45DetailRows(item).map(([k,v]) => {
-    const value = (k === 'Bonne réponse') ? `<span class="cg45-prop-ok">${cg45Esc(v)}</span>` : cg45Esc(v);
+    const value = (k === 'Réponse') ? `<span class="cg45-prop-ok">${cg45Esc(v)}</span>` : cg45Esc(v);
     return `<div class="k">${cg45Esc(k)}</div><div class="v">${value || '—'}</div>`;
   }).join('');
 }
@@ -309,17 +352,16 @@ function cg45FillEditForm(item){
   cg45$('cg45-e-theme').value = item.theme || '';
   cg45$('cg45-e-question').value = item.question || '';
   cg45$('cg45-e-detail').value = item.detail || '';
-  cg45$('cg45-e-a').value = item.proposition_a || '';
-  cg45$('cg45-e-b').value = item.proposition_b || '';
-  cg45$('cg45-e-c').value = item.proposition_c || '';
-  cg45$('cg45-e-d').value = item.proposition_d || '';
-  cg45$('cg45-e-correct').value = String(Number(item.correct_index || 1));
+  cg45$('cg45-e-answer').value = cg45Answer(item);
   cg45$('cg45-e-status').value = item.status || '';
   cg45$('cg45-e-url-q').value = item.url_quizypedia || '';
   cg45$('cg45-e-url-i').value = item.url_internet || '';
   cg45$('cg45-e-image').value = item.image_file || '';
   cg45$('cg45-e-not-found').value = item.non_trouve ?? '';
-  cg45$('cg45-e-is-image').checked = Number(item.is_image || 0) === 1 || item.is_image === true;
+  cg45$('cg45-e-is-image').checked =
+    Number(item.is_image || 0) === 1 ||
+    item.is_image === true;
+
   cg45EditStatus('');
 }
 
@@ -362,11 +404,7 @@ function cg45BuildPatch(){
     theme: cg45$('cg45-e-theme').value.trim(),
     question: cg45$('cg45-e-question').value.trim(),
     detail: cg45$('cg45-e-detail').value.trim(),
-    proposition_a: cg45$('cg45-e-a').value.trim(),
-    proposition_b: cg45$('cg45-e-b').value.trim(),
-    proposition_c: cg45$('cg45-e-c').value.trim(),
-    proposition_d: cg45$('cg45-e-d').value.trim(),
-    correct_index: Number(cg45$('cg45-e-correct').value),
+    answer: cg45$('cg45-e-answer').value.trim(),
     url_quizypedia: cg45$('cg45-e-url-q').value.trim(),
     url_internet: cg45$('cg45-e-url-i').value.trim(),
     image_file: cg45$('cg45-e-image').value.trim(),
@@ -388,6 +426,11 @@ cg45$('cg45-save').addEventListener('click', async () => {
   }
   if (!patch.theme) {
     cg45EditStatus('Le thème ne peut pas être vide.', false);
+    return;
+  }
+
+  if (!patch.answer) {
+    cg45EditStatus('La réponse ne peut pas être vide.', false);
     return;
   }
 
