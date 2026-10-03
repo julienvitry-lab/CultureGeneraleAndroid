@@ -430,44 +430,7 @@ const CGINDEX001_STOP = new Set([
  * Les anciens champs ne sont consultés qu'en fallback.
  */
 function cgqr001AnswerOf(data) {
-
-  const direct =
-    String(
-      data?.answer ??
-      data?.correct_answer ??
-      ""
-    ).trim();
-
-  if (direct) {
-    return direct;
-  }
-
-  const n =
-    Number(
-      data?.correct_index
-    );
-
-  if (
-    Number.isInteger(n) &&
-    n >= 1 &&
-    n <= 4
-  ) {
-    return String(
-      data?.[
-        `proposition_${String.fromCharCode(96+n)}`
-      ] ??
-      ""
-    ).trim();
-  }
-
-  if (n === 0) {
-    return String(
-      data?.proposition_a ??
-      ""
-    ).trim();
-  }
-
-  return "";
+  return window.CGQR001.resolveAnswer(data);
 }
 
 
@@ -1014,34 +977,7 @@ const CGDEDUP001_FIELDS = new Set([
 ]);
 
 function cgdedup001AnswerOf(data) {
-  const direct =
-    String(
-      data?.answer ??
-      data?.correct_answer ??
-      ""
-    ).trim();
-
-  if (direct) return direct;
-
-  const n =
-    Number(data?.correct_index);
-
-  if (
-    Number.isInteger(n) &&
-    n >= 1 &&
-    n <= 4
-  ) {
-    return String(
-      data?.[`proposition_${String.fromCharCode(96+n)}`] ??
-      ""
-    ).trim();
-  }
-
-  if (n === 0) {
-    return String(data?.proposition_a ?? "").trim();
-  }
-
-  return "";
+  return window.CGQR001.resolveAnswer(data);
 }
 
 function cgdedup001CanonicalSnapshot(data) {

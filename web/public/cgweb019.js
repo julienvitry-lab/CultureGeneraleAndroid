@@ -10,68 +10,17 @@ function cg19SetHtml(id,value){const e=cg19$(id);if(e)e.innerHTML=String(value??
 /*
  * CGWEB131 · LEGACY_CATALOG_COMPAT001
  *
- * Ordre de vérité :
- *   1. answer
- *   2. correct_answer éventuel
- *   3. ancien correct_index + proposition_[A-D]
- *
- * Les mauvaises propositions ne sont jamais affichées.
+ * answer est prioritaire.
+ * Le fallback historique est centralisé dans CGQR001.
+ * Les anciennes mauvaises propositions ne sont jamais affichées.
  */
 function cg19ResolveAnswer(r){
-
-  const direct =
-    String(
-      r?.answer ??
-      ""
-    ).trim();
-
-  if(direct){
-    return direct;
-  }
-
-
-  const alternate =
-    String(
-      r?.correct_answer ??
-      ""
-    ).trim();
-
-  if(alternate){
-    return alternate;
-  }
-
-
-  const n =
-    cg19CorrectIndex(r);
-
-  const legacy = [
-    r?.proposition_a,
-    r?.proposition_b,
-    r?.proposition_c,
-    r?.proposition_d
-  ];
-
-
-  if(
-    Number.isInteger(n) &&
-    n >= 1 &&
-    n <= 4
-  ){
-
-    return String(
-      legacy[n - 1] ??
-      ""
-    ).trim();
-  }
-
-
-  return "";
+  return window.CGQR001.resolveAnswer(r);
 }
 
 const CG19={id:"",record:null,list:[],editing:false};
 function cg19Date(v){if(!v)return"—";try{const d=typeof v?.toDate==="function"?v.toDate():v?.seconds?new Date(v.seconds*1000):new Date(v);return Number.isNaN(d.getTime())?"—":d.toLocaleString("fr-FR")}catch(_){return"—"}}
 function cg19Status(t,type=""){const e=cg19$("cg19Status");if(e){e.textContent=t;e.className=`cg19-status${type?" cg19-"+type:""}`}}
-function cg19CorrectIndex(r){const n=Number(r?.correct_index);return Number.isFinite(n)?n:null}
 function cg19SourceLink(url,label){const u=String(url||"").trim();return /^https?:\/\//i.test(u)?`<a href="${cg19Esc(u)}" target="_blank" rel="noopener">${label}</a>`:""}
 async function cg19Image(record){
   const box=cg19$("cg19Image"), phone=cg19$("cg19AndroidImage");
@@ -106,26 +55,12 @@ async function cg19Image(record){
 }
 function cg19HistoryPatchLabels(patch){
 
-  const keys =
-    Object.keys(
-      patch || {}
-    );
-
-  const hidden =
-    new Set([
-      "proposition_b",
-      "proposition_c",
-      "proposition_d"
-    ]);
-
   const labels = {
     megatheme:"Mégathème",
     theme:"Thème",
     question:"Question",
     detail:"Détail",
     answer:"Réponse",
-    proposition_a:"Réponse",
-    correct_index:"Réponse",
     status:"Statut",
     image_file:"Image",
     image_source_url:"Source image",
@@ -135,15 +70,15 @@ function cg19HistoryPatchLabels(patch){
 
   const visible = [];
 
-  for(const key of keys){
-
-    if(hidden.has(key)){
-      continue;
-    }
+  for(
+    const key
+    of Object.keys(patch || {})
+  ){
 
     const label =
-      labels[key] ||
-      key;
+      window.CGQR001.isLegacyField(key)
+        ? "Réponse"
+        : labels[key] || key;
 
     if(
       !visible.includes(label)
@@ -497,11 +432,9 @@ async function cg19Save(){
    *
    * answer = donnée canonique.
    *
-   * proposition_a + correct_index=1 =
-   * pont temporaire Android.
-   *
-   * normalizeQr=true demande au moteur CGSYNC007
-   * de supprimer proposition_b/c/d du document.
+   * L'éditeur écrit uniquement la réponse Q/R.
+   * La normalisation retire les anciens champs
+   * encore présents sur une fiche historique.
    */
   const patch = {
 

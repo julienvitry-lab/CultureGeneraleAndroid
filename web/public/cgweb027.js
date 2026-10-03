@@ -35,35 +35,7 @@ let REVEALED=false;
  * Compatibilité catalogue historique.
  */
 function answerOf(q){
-
-  const direct=
-    String(
-      q?.answer ??
-      q?.correct_answer ??
-      ''
-    ).trim();
-
-  if(direct)return direct;
-
-  const n=
-    Number(q?.correct_index);
-
-  if(
-    Number.isInteger(n) &&
-    n>=1 &&
-    n<=4
-  ){
-    return String(
-      q?.[`proposition_${String.fromCharCode(96+n)}`] ??
-      ''
-    ).trim();
-  }
-
-  if(n===0){
-    return String(q?.proposition_a??'').trim();
-  }
-
-  return '';
+  return window.CGQR001.resolveAnswer(q);
 }
 
 

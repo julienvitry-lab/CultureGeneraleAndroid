@@ -23,29 +23,7 @@
   ];
 
   function answerOf(row) {
-    const direct =
-      String(
-        row?.answer ??
-        row?.correct_answer ??
-        ""
-      ).trim();
-
-    if (direct) return direct;
-
-    const n = Number(row?.correct_index);
-
-    if (Number.isInteger(n) && n >= 1 && n <= 4) {
-      return String(
-        row?.[`proposition_${String.fromCharCode(96+n)}`] ??
-        ""
-      ).trim();
-    }
-
-    if (n === 0) {
-      return String(row?.proposition_a ?? "").trim();
-    }
-
-    return "";
+    return window.CGQR001.resolveAnswer(row);
   }
 
   function fieldValue(row, key) {

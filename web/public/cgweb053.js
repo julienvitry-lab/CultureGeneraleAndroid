@@ -35,41 +35,7 @@
 
   // CGWEB133 · QUESTION_HISTORY_QR001
   function resolveAnswer(obj){
-
-    if (!obj || typeof obj !== "object") {
-      return "";
-    }
-
-    const direct =
-      norm(
-        obj.answer ??
-        obj.correct_answer ??
-        ""
-      );
-
-    if (direct) {
-      return direct;
-    }
-
-    const n =
-      Number(
-        obj.correct_index
-      );
-
-    if (
-      Number.isInteger(n) &&
-      n >= 1 &&
-      n <= 4
-    ) {
-      const key =
-        `proposition_${String.fromCharCode(96+n)}`;
-
-      return norm(
-        obj[key]
-      );
-    }
-
-    return "";
+    return window.CGQR001.resolveAnswer(obj);
   }
 
 

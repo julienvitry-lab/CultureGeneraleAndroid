@@ -216,39 +216,9 @@ function cg45Esc(v){ return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp
 
 // CGWEB133_QR_WRITER001
 function cg45Answer(item){
-
-  const direct =
-    String(
-      item?.answer ??
-      item?.correct_answer ??
-      ""
-    ).trim();
-
-  if(direct){
-    return direct;
-  }
-
-  const n =
-    Number(
-      item?.correct_index
-    );
-
-  if(
-    Number.isInteger(n) &&
-    n >= 1 &&
-    n <= 4
-  ){
-    const key =
-      `proposition_${String.fromCharCode(96+n)}`;
-
-    return String(
-      item?.[key] ??
-      ""
-    ).trim();
-  }
-
-  return "";
+  return window.CGQR001.resolveAnswer(item);
 }
+
 function cg45Status(msg, ok=true){ cg45$('cg45-status').textContent = msg; cg45$('cg45-status').style.color = ok ? '#8ff0b5' : '#ffb0b0'; }
 function cg45EditStatus(msg, ok=true){ cg45$('cg45-edit-status').textContent = msg; cg45$('cg45-edit-status').style.color = ok ? '#8ff0b5' : '#ffb0b0'; }
 
@@ -313,8 +283,8 @@ function cg45Render(items){
   });
 }
 
-// CGWEB · CORRECT_INDEX_DISPLAY_FIX001
-// correct_index 1..4 => tableau JS [correct_index-1].
+// CGWEB137 · ANSWER_DISPLAY001
+// La réponse historique éventuelle est résolue par CGQR001.
 function cg45DetailRows(item){
 
   const answer =

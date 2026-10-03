@@ -27,38 +27,7 @@ function cgxEsc(v) {
 
 // CGWEB133_LEGACY_CREATE_QR001
 function cgxAnswer(row){
-
-  const direct =
-    String(
-      row?.answer ??
-      row?.correct_answer ??
-      ""
-    ).trim();
-
-  if(direct){
-    return direct;
-  }
-
-  const n =
-    Number(
-      row?.correct_index
-    );
-
-  if(
-    Number.isInteger(n) &&
-    n >= 1 &&
-    n <= 4
-  ){
-    const key =
-      `proposition_${String.fromCharCode(96+n)}`;
-
-    return String(
-      row?.[key] ??
-      ""
-    ).trim();
-  }
-
-  return "";
+  return window.CGQR001.resolveAnswer(row);
 }
 
 

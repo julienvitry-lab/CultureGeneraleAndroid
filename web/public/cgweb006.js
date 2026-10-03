@@ -5,42 +5,7 @@ const fmt=n=>new Intl.NumberFormat("fr-FR").format(Number(n||0));
 
 // CGWEB131_LEGACY_EDITOR_QR001
 function cg6ResolveAnswer(r){
-
-  const direct =
-    String(
-      r?.answer ??
-      ""
-    ).trim();
-
-  if(direct){
-    return direct;
-  }
-
-  const n =
-    Number(
-      r?.correct_index
-    );
-
-  const legacy = [
-    r?.proposition_a,
-    r?.proposition_b,
-    r?.proposition_c,
-    r?.proposition_d
-  ];
-
-  if(
-    Number.isInteger(n) &&
-    n >= 1 &&
-    n <= 4
-  ){
-
-    return String(
-      legacy[n - 1] ??
-      ""
-    ).trim();
-  }
-
-  return "";
+  return window.CGQR001.resolveAnswer(r);
 }
 
 const api=()=>window.CGWEB006_API||null;
@@ -218,8 +183,6 @@ function cg7ConflictFields(cloud,patch){
     question:"Question",
     detail:"Détail",
     answer:"Réponse",
-    proposition_a:"Réponse",
-    correct_index:"Réponse",
     status:"Statut"
   };
 
