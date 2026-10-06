@@ -122,15 +122,22 @@
       <section id="cg16PageCreate" class="cg16-page" data-cg16-page-panel="create">
           <div class="cg16-create-panel">
             <!-- CGWEB112_CREATE_FORM_COMPACT001_CREATE_FOUR_ROW_LAYOUT001_CORRECT_LETTER_ONLY001 -->
-            <form id="cg16CreateForm" class="cg16-create-form cg112-create-form">
+            <form id="cg16CreateForm" class="cg16-create-form cg139-create-form">
 
-              <div class="cg112-create-row cg112-row-identity">
-                <label class="cg112-field-id">ID
-                  <input id="cg16CreateId" placeholder="Vide = ID automatique">
-                </label>
+              <!--
+                CGWEB139 · CREATE_TAB_SIMPLIFY001
 
-                <label class="cg112-field-mega">Mégathème
-                  <select id="cg16CreateMega">
+                Création personnelle :
+                Mégathème / Question / Réponse.
+
+                Aucun thème.
+                Aucun détail.
+              -->
+              <div class="cg139-manual-top">
+
+                <label class="cg139-field-mega">
+                  Mégathème
+                  <select id="cg16CreateMega" required>
                     <option value=""></option>
                     <option>Animaux et Plantes</option>
                     <option>Culture Classique</option>
@@ -143,49 +150,108 @@
                   </select>
                 </label>
 
-                <label class="cg112-field-theme">Thème
-                  <input id="cg16CreateTheme">
-                </label>
               </div>
 
-              <div class="cg112-create-row cg112-row-content">
-                <label>Question
-                  <textarea id="cg16CreateQuestion" rows="3" required></textarea>
+              <div class="cg139-manual-content">
+
+                <label>
+                  Question
+                  <textarea
+                    id="cg16CreateQuestion"
+                    rows="4"
+                    required
+                  ></textarea>
                 </label>
 
-                <label>Détail
-                  <textarea id="cg16CreateDetail" rows="3"></textarea>
-                </label>
-              </div>
-
-              <!-- CGWEB129 · modèle Question / Réponse -->
-              <div class="cg112-create-row cg129-row-answer">
-                <label class="cg129-field-answer">Réponse
+                <label>
+                  Réponse
                   <textarea
                     id="cg16CreateAnswer"
-                    rows="2"
+                    rows="4"
                     required
                     placeholder="Bonne réponse attendue"
                   ></textarea>
                 </label>
+
               </div>
 
-              <div class="cg112-create-row cg112-row-media">
-                <label class="cgimg1-create-label cg112-field-image">Image
-                  <input id="cg16CreateImage" type="file" accept="image/*">
-                  <small>Firebase Storage sera la source officielle ; Android conservera uniquement un cache automatique.</small>
-                </label>
+              <div class="cg16-create-actions cg139-manual-actions">
 
-                <label class="cg112-field-status">Statut
-                  <input id="cg16CreateStatus">
-                </label>
+                <span
+                  id="cg16CreateState"
+                  class="cg16-create-state"
+                ></span>
+
+                <button
+                  id="cg16CreateReset"
+                  type="button"
+                  class="cg16-btn cg16-secondary"
+                >
+                  Réinitialiser
+                </button>
+
+                <button
+                  id="cg16CreateSubmit"
+                  type="submit"
+                  class="cg16-btn cg16-primary"
+                >
+                  Créer la question
+                </button>
+
               </div>
 
-              <div class="cg16-create-actions cg112-create-actions">
-                <span id="cg16CreateState" class="cg16-create-state"></span>
-                <button id="cg16CreateReset" type="button" class="cg16-btn cg16-secondary">Réinitialiser</button>
-                <button id="cg16CreateSubmit" type="submit" class="cg16-btn cg16-primary">Créer la question</button>
-              </div>
+
+              <section class="cg139-import">
+
+                <div class="cg139-import-title">
+                  Importer un fichier .txt
+                </div>
+
+                <div class="cg139-import-help">
+                  Une ligne = une question ·
+                  Mégathème ⇥ Question ⇥ Réponse
+                </div>
+
+                <div class="cg139-import-controls">
+
+                  <input
+                    id="cg139TxtFile"
+                    type="file"
+                    accept=".txt,text/plain"
+                  >
+
+                  <button
+                    id="cg139TxtAnalyze"
+                    type="button"
+                    class="cg16-btn cg16-secondary"
+                  >
+                    Analyser
+                  </button>
+
+                  <button
+                    id="cg139TxtImport"
+                    type="button"
+                    class="cg16-btn cg16-primary"
+                    disabled
+                  >
+                    Importer les questions
+                  </button>
+
+                </div>
+
+                <div
+                  id="cg139TxtState"
+                  class="cg139-import-state"
+                ></div>
+
+                <div
+                  id="cg139TxtPreview"
+                  class="cg139-preview"
+                  hidden
+                ></div>
+
+              </section>
+
             </form>
           </div>
         </section>
@@ -461,121 +527,762 @@ move("cgimage002Panel", "cg16ImportImagesMount");
     if (shell) shell.classList.toggle("cg16-auth-hidden", !user || loginVisible);
   }
 
-  function resetCreateForm({ preserveClassification = true } = {}) {
-    const mega = preserveClassification
-      ? ($("cg6Mega")?.value || $("cg16CreateMega")?.value || "")
-      : "";
-    const theme = preserveClassification
-      ? ($("cg6Theme")?.value || $("cg16CreateTheme")?.value || "")
-      : "";
+  // ==================================================================
+  // CGWEB139
+  // CUSTOM_TXT_IMPORT001 / THREE_COLUMN_TSV001
+  // CREATE_TAB_SIMPLIFY001 / CUSTOM_ORIGIN001
+  // ==================================================================
 
-    $("cg16CreateId").value = "";
-    $("cg16CreateMega").value = mega;
-    $("cg16CreateTheme").value = theme;
-    for (const id of [
-      "cg16CreateQuestion",
-      "cg16CreateDetail",
-      "cg16CreateAnswer",
-      "cg16CreateStatus"
-    ]) {
-      if ($(id)) $(id).value = "";
-    }
-    if ($("cg16CreateImage")) $("cg16CreateImage").value = "";
-    if ($("cg16CreateState")) $("cg16CreateState").textContent = "";
+  const CG139_MEGATHEMES = new Set([
+    "Animaux et Plantes",
+    "Culture Classique",
+    "Culture Générale",
+    "Culture Moderne",
+    "Géographie",
+    "Histoire",
+    "Sciences et Techniques",
+    "Sport"
+  ]);
+
+  let cg139TxtRows = [];
+  let cg139TxtErrors = [];
+
+
+  function cg139Escape(value) {
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;");
   }
 
+
+  function cg139ParseTxt(text) {
+
+    const rows = [];
+    const errors = [];
+
+    const source =
+      String(text ?? "")
+        .replace(/^\uFEFF/, "");
+
+    const lines =
+      source.split(/\r?\n/);
+
+
+    lines.forEach(
+      (raw, index) => {
+
+        const lineNumber =
+          index + 1;
+
+        /*
+         * Les lignes réellement vides sont ignorées.
+         */
+        if (!raw.trim()) {
+          return;
+        }
+
+
+        const parts =
+          raw.split("\t");
+
+
+        if (parts.length !== 3) {
+
+          errors.push({
+            line:lineNumber,
+            reason:
+              `3 colonnes tabulées attendues, ${parts.length} trouvée(s)`
+          });
+
+          return;
+        }
+
+
+        const megatheme =
+          parts[0].trim();
+
+        const question =
+          parts[1].trim();
+
+        const answer =
+          parts[2].trim();
+
+
+        if (!megatheme) {
+
+          errors.push({
+            line:lineNumber,
+            reason:"Mégathème vide"
+          });
+
+          return;
+        }
+
+
+        if (!CG139_MEGATHEMES.has(megatheme)) {
+
+          errors.push({
+            line:lineNumber,
+            reason:
+              `Mégathème inconnu : ${megatheme}`
+          });
+
+          return;
+        }
+
+
+        if (!question) {
+
+          errors.push({
+            line:lineNumber,
+            reason:"Question vide"
+          });
+
+          return;
+        }
+
+
+        if (!answer) {
+
+          errors.push({
+            line:lineNumber,
+            reason:"Réponse vide"
+          });
+
+          return;
+        }
+
+
+        rows.push({
+          line:lineNumber,
+          megatheme,
+          question,
+          answer
+        });
+      }
+    );
+
+
+    return {
+      rows,
+      errors,
+      totalLines:lines.length
+    };
+  }
+
+
+  function cg139RenderTxtPreview() {
+
+    const state =
+      $("cg139TxtState");
+
+    const preview =
+      $("cg139TxtPreview");
+
+    const importButton =
+      $("cg139TxtImport");
+
+
+    if (!state || !preview || !importButton) {
+      return;
+    }
+
+
+    importButton.disabled =
+      !cg139TxtRows.length ||
+      cg139TxtErrors.length > 0;
+
+
+    if (
+      !cg139TxtRows.length &&
+      !cg139TxtErrors.length
+    ) {
+
+      state.textContent = "";
+      preview.hidden = true;
+      preview.innerHTML = "";
+      return;
+    }
+
+
+    if (cg139TxtErrors.length) {
+
+      state.textContent =
+        `❌ ${cg139TxtErrors.length} ligne(s) invalide(s) · import bloqué`;
+
+    } else {
+
+      state.textContent =
+        `✅ ${cg139TxtRows.length} question(s) prête(s) à importer`;
+    }
+
+
+    const sample =
+      cg139TxtRows
+        .slice(0, 10)
+        .map(
+          row => `
+            <div class="cg139-preview-row">
+              <strong>${cg139Escape(row.megatheme)}</strong>
+              <span>${cg139Escape(row.question)}</span>
+              <span>${cg139Escape(row.answer)}</span>
+            </div>
+          `
+        )
+        .join("");
+
+
+    const failures =
+      cg139TxtErrors
+        .slice(0, 15)
+        .map(
+          error => `
+            <div class="cg139-preview-error">
+              Ligne ${error.line} · ${cg139Escape(error.reason)}
+            </div>
+          `
+        )
+        .join("");
+
+
+    preview.innerHTML = `
+      ${
+        cg139TxtRows.length
+          ? `<div class="cg139-preview-title">
+               Aperçu · ${Math.min(10, cg139TxtRows.length)}
+               / ${cg139TxtRows.length}
+             </div>${sample}`
+          : ""
+      }
+
+      ${
+        cg139TxtErrors.length
+          ? `<div class="cg139-preview-errors">${failures}</div>`
+          : ""
+      }
+    `;
+
+    preview.hidden = false;
+  }
+
+
+  async function cg139AnalyzeTxt() {
+
+    const input =
+      $("cg139TxtFile");
+
+    const state =
+      $("cg139TxtState");
+
+
+    cg139TxtRows = [];
+    cg139TxtErrors = [];
+
+
+    const file =
+      input?.files?.[0] || null;
+
+
+    if (!file) {
+
+      state.textContent =
+        "❌ Sélectionnez un fichier .txt.";
+
+      cg139RenderTxtPreview();
+      return false;
+    }
+
+
+    if (
+      !String(file.name || "")
+        .toLowerCase()
+        .endsWith(".txt")
+    ) {
+
+      state.textContent =
+        "❌ Le fichier doit être au format .txt.";
+
+      cg139RenderTxtPreview();
+      return false;
+    }
+
+
+    state.textContent =
+      "Analyse du fichier…";
+
+
+    const parsed =
+      cg139ParseTxt(
+        await file.text()
+      );
+
+
+    cg139TxtRows =
+      parsed.rows;
+
+    cg139TxtErrors =
+      parsed.errors;
+
+
+    cg139RenderTxtPreview();
+
+    return (
+      cg139TxtRows.length > 0 &&
+      cg139TxtErrors.length === 0
+    );
+  }
+
+
+  function resetCreateForm(
+    {
+      preserveMegatheme = true
+    } = {}
+  ) {
+
+    const mega =
+      preserveMegatheme
+        ? (
+            $("cg16CreateMega")
+              ?.value || ""
+          )
+        : "";
+
+
+    if ($("cg16CreateMega")) {
+      $("cg16CreateMega").value =
+        mega;
+    }
+
+
+    for (
+      const id
+      of [
+        "cg16CreateQuestion",
+        "cg16CreateAnswer"
+      ]
+    ) {
+
+      if ($(id)) {
+        $(id).value = "";
+      }
+    }
+
+
+    if ($("cg16CreateState")) {
+      $("cg16CreateState").textContent = "";
+    }
+  }
+
+
   async function createQuestion(event) {
+
     event.preventDefault();
 
-    const api = window.CGWEB010_API;
-    const state = $("cg16CreateState");
-    const button = $("cg16CreateSubmit");
-    const question = $("cg16CreateQuestion").value.trim();
+
+    const api =
+      window.CGWEB010_API;
+
+    const state =
+      $("cg16CreateState");
+
+    const button =
+      $("cg16CreateSubmit");
+
 
     if (!window.CGWEB001?.getUser?.()) {
-      state.textContent = "❌ Non connecté.";
+
+      state.textContent =
+        "❌ Non connecté.";
+
       return;
     }
+
+
     if (!api?.create) {
-      state.textContent = "❌ API CGWEB010 indisponible.";
+
+      state.textContent =
+        "❌ API CGWEB010 indisponible.";
+
       return;
     }
-    if (!question) {
-      state.textContent = "❌ La question est obligatoire.";
-      return;
-    }
+
+
+    const megatheme =
+      $("cg16CreateMega")
+        ?.value
+        ?.trim() || "";
+
+    const question =
+      $("cg16CreateQuestion")
+        ?.value
+        ?.trim() || "";
 
     const answer =
-      $("cg16CreateAnswer").value.trim();
+      $("cg16CreateAnswer")
+        ?.value
+        ?.trim() || "";
 
-    if (!answer) {
-      state.textContent = "❌ La réponse est obligatoire.";
+
+    if (!megatheme) {
+
+      state.textContent =
+        "❌ Le mégathème est obligatoire.";
+
       return;
     }
 
-    /*
-     * CGWEB129
-     *
-     * answer est l'unique champ réponse envoyé par l'interface.
-     *
-     * Le pont Android est désormais produit exclusivement
-     * par le noyau app.js.
-     */
-    const payload = {
-      requested_id: $("cg16CreateId").value.trim(),
-      megatheme: $("cg16CreateMega").value.trim(),
-      theme: $("cg16CreateTheme").value.trim(),
-      question,
-      detail: $("cg16CreateDetail").value,
 
+    if (!question) {
+
+      state.textContent =
+        "❌ La question est obligatoire.";
+
+      return;
+    }
+
+
+    if (!answer) {
+
+      state.textContent =
+        "❌ La réponse est obligatoire.";
+
+      return;
+    }
+
+
+    const payload = {
+
+      megatheme,
+
+      /*
+       * CUSTOM QUESTION :
+       * aucun thème et aucun détail.
+       */
+      theme:"",
+      detail:"",
+
+      question,
       answer,
 
-      status: $("cg16CreateStatus").value.trim(),
-      image_file: "",
-      is_image: 0
+      question_origin:
+        "custom_manual",
+
+      status:"",
+      image_file:"",
+      is_image:0
     };
-    const selectedImage = $("cg16CreateImage")?.files?.[0] || null;
+
 
     button.disabled = true;
-    state.textContent = "Création…";
+
+    state.textContent =
+      "Création…";
+
+
     try {
-      const id = await api.create(payload);
-      let imageMessage = "";
-      if (selectedImage) {
-        if (!window.CGIMAGE001?.uploadForQuestion) {
-          imageMessage = " · ⚠ image non envoyée (CGIMAGE001 indisponible)";
-        } else {
-          state.textContent = `Question ${id} créée · envoi de l’image…`;
-          try {
-            await window.CGIMAGE001.uploadForQuestion(id, selectedImage, {expectedRevision: 1, sourceOrigin: "manual_create"});
-            imageMessage = " · image enregistrée";
-          } catch (imageError) {
-            imageMessage = ` · ⚠ image non enregistrée : ${imageError?.message || imageError}`;
-          }
-        }
+
+      const id =
+        await api.create(
+          payload
+        );
+
+
+      state.textContent =
+        `✅ Question ${id} créée.`;
+
+
+      if (
+        typeof window.CGWEB006_reload
+        === "function"
+      ) {
+
+        await window
+          .CGWEB006_reload(true);
       }
-      state.textContent = `✅ Question ${id} créée${imageMessage}.`;
-      if (typeof window.CGWEB006_reload === "function") {
-        await window.CGWEB006_reload(true);
-      }
-      // Conserver mégathème/thème pour les créations en série.
-      const mega = payload.megatheme;
-      const theme = payload.theme;
-      resetCreateForm({ preserveClassification: false });
-      $("cg16CreateMega").value = mega;
-      $("cg16CreateTheme").value = theme;
-      $("cg16CreateState").textContent = `✅ Question ${id} créée${imageMessage}.`;
+
+
+      resetCreateForm({
+        preserveMegatheme:true
+      });
+
+
+      $("cg16CreateState").textContent =
+        `✅ Question ${id} créée.`;
+
+
     } catch (error) {
-      state.textContent = "❌ " + (error?.message || String(error));
+
+      state.textContent =
+        "❌ "
+        + (
+          error?.message ||
+          String(error)
+        );
+
     } finally {
+
       button.disabled = false;
     }
   }
 
-  function wireCreateForm() {
-    $("cg16CreateForm")?.addEventListener("submit", createQuestion);
-    $("cg16CreateReset")?.addEventListener("click", () => resetCreateForm());
+
+  async function cg139ImportTxt() {
+
+    const api =
+      window.CGWEB010_API;
+
+    const state =
+      $("cg139TxtState");
+
+    const button =
+      $("cg139TxtImport");
+
+
+    if (!window.CGWEB001?.getUser?.()) {
+
+      state.textContent =
+        "❌ Non connecté.";
+
+      return;
+    }
+
+
+    if (!api?.create) {
+
+      state.textContent =
+        "❌ API CGWEB010 indisponible.";
+
+      return;
+    }
+
+
+    if (
+      !cg139TxtRows.length ||
+      cg139TxtErrors.length
+    ) {
+
+      const ready =
+        await cg139AnalyzeTxt();
+
+      if (!ready) {
+        return;
+      }
+    }
+
+
+    const rows =
+      [...cg139TxtRows];
+
+
+    button.disabled =
+      true;
+
+
+    let success = 0;
+    const failures = [];
+
+
+    /*
+     * ID numérique :
+     * compatible avec l'ancien row_number Android.
+     *
+     * Date.now()*1000 reste largement sous
+     * Number.MAX_SAFE_INTEGER.
+     */
+    const baseId =
+      Math.trunc(
+        Date.now() * 1000
+      );
+
+
+    for (
+      let index=0;
+      index<rows.length;
+      index++
+    ) {
+
+      const row =
+        rows[index];
+
+
+      state.textContent =
+        `Import ${index + 1}/${rows.length}…`;
+
+
+      try {
+
+        await api.create({
+
+          requested_id:
+            String(
+              baseId + index
+            ),
+
+          megatheme:
+            row.megatheme,
+
+          theme:"",
+
+          question:
+            row.question,
+
+          detail:"",
+
+          answer:
+            row.answer,
+
+          question_origin:
+            "custom_txt",
+
+          status:"",
+
+          image_file:"",
+
+          is_image:0
+        });
+
+
+        success++;
+
+
+      } catch (error) {
+
+        failures.push({
+          line:row.line,
+          reason:
+            error?.message ||
+            String(error)
+        });
+      }
+    }
+
+
+    if (
+      typeof window.CGWEB006_reload
+      === "function"
+    ) {
+
+      await window
+        .CGWEB006_reload(true);
+    }
+
+
+    if (!failures.length) {
+
+      state.textContent =
+        `✅ ${success} question(s) importée(s).`;
+
+      cg139TxtRows = [];
+      cg139TxtErrors = [];
+
+      if ($("cg139TxtFile")) {
+        $("cg139TxtFile").value = "";
+      }
+
+      cg139RenderTxtPreview();
+
+      state.textContent =
+        `✅ ${success} question(s) importée(s).`;
+
+
+    } else {
+
+      state.textContent =
+        `⚠ ${success} importée(s) · ${failures.length} échec(s).`;
+
+      cg139TxtErrors =
+        failures;
+
+      cg139RenderTxtPreview();
+    }
+
+
+    button.disabled =
+      (
+        !cg139TxtRows.length ||
+        cg139TxtErrors.length > 0
+      );
   }
+
+
+  function wireCreateForm() {
+
+    $("cg16CreateForm")
+      ?.addEventListener(
+        "submit",
+        createQuestion
+      );
+
+
+    $("cg16CreateReset")
+      ?.addEventListener(
+        "click",
+        () => resetCreateForm()
+      );
+
+
+    $("cg139TxtFile")
+      ?.addEventListener(
+        "change",
+        () => {
+          cg139AnalyzeTxt()
+            .catch(
+              error => {
+
+                $("cg139TxtState").textContent =
+                  "❌ "
+                  + (
+                    error?.message ||
+                    String(error)
+                  );
+              }
+            );
+        }
+      );
+
+
+    $("cg139TxtAnalyze")
+      ?.addEventListener(
+        "click",
+        () => {
+          cg139AnalyzeTxt()
+            .catch(
+              error => {
+
+                $("cg139TxtState").textContent =
+                  "❌ "
+                  + (
+                    error?.message ||
+                    String(error)
+                  );
+              }
+            );
+        }
+      );
+
+
+    $("cg139TxtImport")
+      ?.addEventListener(
+        "click",
+        () => {
+          cg139ImportTxt()
+            .catch(
+              error => {
+
+                $("cg139TxtState").textContent =
+                  "❌ "
+                  + (
+                    error?.message ||
+                    String(error)
+                  );
+              }
+            );
+        }
+      );
+  }
+
 
   function initialize() {
     buildShell();

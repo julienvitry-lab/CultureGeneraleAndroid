@@ -211,7 +211,7 @@ window.CGWEB001 = {
     if (!patch || typeof patch !== "object") throw new Error("Modification vide.");
 
     const allowed = [
-      "megatheme", "theme", "question", "detail", "answer",
+      "megatheme", "theme", "question", "detail", "answer", "question_origin",
       "url_quizypedia", "url_internet", "image_file", "image_thumb_file", "image_source_url", "image_mime",
       "image_width", "image_height", "image_bytes", "image_sha256",
       "image_schema", "image_origin", "image_original_name", "image_updated_ms",
@@ -562,7 +562,7 @@ window.CGINDEX001_API = {
  * Aucun champ de bridge Android n'est désormais produit par le Web.
  */
 const CGSYNC007_EDITABLE_FIELDS = new Set([
-  "megatheme", "theme", "question", "detail", "answer",
+  "megatheme", "theme", "question", "detail", "answer", "question_origin",
   "url_quizypedia", "url_internet",
   "image_file", "image_thumb_file",
   "image_source_url", "image_mime",
@@ -968,7 +968,7 @@ window.CGSYNC007_API = {
 // CGDEDUP001_API_START
 // CGWEB134_DEDUP_QR_CORE001
 const CGDEDUP001_FIELDS = new Set([
-  "megatheme", "theme", "question", "detail", "answer",
+  "megatheme", "theme", "question", "detail", "answer", "question_origin",
   "url_quizypedia", "url_internet",
   "image_file", "image_thumb_file", "image_source_url", "image_mime",
   "image_width", "image_height", "image_bytes", "image_sha256",

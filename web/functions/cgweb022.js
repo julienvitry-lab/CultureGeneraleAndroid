@@ -10,7 +10,7 @@ const REGION = 'europe-west1';
 // CGWEB136_PURE_QR_WRITE001
 // CGWEB136_LEGACY_READ_ONLY001
 const CONTENT_FIELDS = [
-  'megatheme','theme','question','detail','answer',
+  'megatheme','theme','question','detail','answer','question_origin',
   'url_quizypedia','url_internet',
   'image_file','image_thumb_file','image_source_url','image_mime',
   'image_width','image_height','image_bytes','image_sha256',
