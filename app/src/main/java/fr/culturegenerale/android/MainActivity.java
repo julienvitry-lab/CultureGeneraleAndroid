@@ -237,10 +237,26 @@ public class MainActivity extends Activity {
 
     static class Question {
         long row;
-        String domain, theme, question, detail, imageFile;
+        String domain, theme, question, detail, imageFile, questionOrigin;
         String[] props = new String[]{"", "", "", ""};
         int correct;
         boolean isImage;
+
+        boolean isCustomQuestion() {
+
+            String origin =
+                    questionOrigin == null
+                            ? ""
+                            : questionOrigin
+                                    .trim()
+                                    .toLowerCase(
+                                            java.util.Locale.ROOT
+                                    );
+
+            return origin.startsWith(
+                    "custom_"
+            );
+        }
     }
 
     static class WrongAnswer {
@@ -1965,6 +1981,70 @@ final String currentHash =
         }
     }
 
+    // CGANDROID018 · CUSTOM_ORIGIN_SYNC001
+    private void ensureQuestionOriginColumn(
+            SQLiteDatabase db
+    ) {
+
+        if (db == null) return;
+
+        Cursor cursor = null;
+        boolean found = false;
+
+        try {
+
+            cursor =
+                    db.rawQuery(
+                            "PRAGMA table_info(" + TABLE + ")",
+                            null
+                    );
+
+            int nameIndex =
+                    cursor.getColumnIndex(
+                            "name"
+                    );
+
+            while (
+                    nameIndex >= 0 &&
+                    cursor.moveToNext()
+            ) {
+
+                if (
+                        "question_origin"
+                                .equalsIgnoreCase(
+                                        safe(
+                                                cursor.getString(
+                                                        nameIndex
+                                                )
+                                        )
+                                )
+                ) {
+
+                    found = true;
+                    break;
+                }
+            }
+
+        } finally {
+
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
+
+
+        if (!found) {
+
+            db.execSQL(
+                    "ALTER TABLE "
+                            + TABLE
+                            + " ADD COLUMN question_origin "
+                            + "TEXT NOT NULL DEFAULT ''"
+            );
+        }
+    }
+
+
     // CGDIAG001_FIX2_SQLITE_SHARED_CONNECTION001_START
     private SQLiteDatabase openDb() {
         synchronized (cgSqliteOpenLock) {
@@ -1990,6 +2070,9 @@ final String currentHash =
                     try {
                         db.execSQL("PRAGMA busy_timeout=10000");
                     } catch (Exception ignored) { }
+
+                    // CGANDROID018 · migration non destructive.
+                    ensureQuestionOriginColumn(db);
 
                     // La référence initiale de db reste détenue ici.
                     cgSharedDb = db;
@@ -2793,7 +2876,7 @@ final String currentHash =
             cursor = db.rawQuery(
                     "SELECT row_number, megatheme, theme, question, detail, "
                             + "proposition_a, proposition_b, proposition_c, "
-                            + "proposition_d, correct_index, image_file, is_image "
+                            + "proposition_d, correct_index, image_file, is_image, question_origin "
                             + "FROM "
                             + TABLE
                             + " WHERE row_number=? LIMIT 1",
@@ -2823,6 +2906,15 @@ final String currentHash =
             question.isImage =
                     cursor.getInt(11) == 1
                             || question.imageFile.length() > 0;
+
+            question.questionOrigin =
+                    safe(
+                            cursor.getString(
+                                    cursor.getColumnIndexOrThrow(
+                                            "question_origin"
+                                    )
+                            )
+                    );
 
             return question;
 
@@ -3437,7 +3529,7 @@ final String currentHash =
             c = db.rawQuery(
                     "SELECT row_number, megatheme, theme, question, detail, " +
                             "proposition_a, proposition_b, proposition_c, proposition_d, " +
-                            "correct_index, image_file, is_image FROM " + TABLE +
+                            "correct_index, image_file, is_image, question_origin FROM " + TABLE +
                             " WHERE LOWER(TRIM(megatheme))=LOWER(TRIM(?))" +
                             " AND " + revisionWhereClause() +
                             " ORDER BY " + revisionOrderClause(),
@@ -3903,7 +3995,7 @@ final String currentHash =
             finally { cc.close(); }
             if (count <= 0) return null;
             int offset = random.nextInt(count);
-            String sql = "SELECT row_number, megatheme, theme, question, detail, proposition_a, proposition_b, proposition_c, proposition_d, correct_index, image_file, is_image " +
+            String sql = "SELECT row_number, megatheme, theme, question, detail, proposition_a, proposition_b, proposition_c, proposition_d, correct_index, image_file, is_image, question_origin " +
                     "FROM " + TABLE + " WHERE " + where + " LIMIT 1 OFFSET " + offset;
             Cursor c = db.rawQuery(sql, args);
             try {
@@ -3919,6 +4011,16 @@ final String currentHash =
                 if (q.correct < 1 || q.correct > 4) q.correct = 1;
                 q.imageFile = safe(c.getString(10));
                 q.isImage = c.getInt(11) == 1 || q.imageFile.length() > 0;
+
+                q.questionOrigin =
+                        safe(
+                                c.getString(
+                                        c.getColumnIndexOrThrow(
+                                                "question_origin"
+                                        )
+                                )
+                        );
+
                 return q;
             } finally { c.close(); }
         } finally { db.close(); }
@@ -3929,6 +4031,113 @@ final String currentHash =
     baseFixed();
     addCompactStatsBar();
     addOneMillimeterGap();
+
+    /*
+     * CGANDROID018
+     * CUSTOM_QUESTION_LAYOUT001 / VERTICAL_CENTER001
+     *
+     * Une question custom_* affiche uniquement son
+     * bandeau Question, centré verticalement.
+     */
+    if (
+            current != null &&
+            current.isCustomQuestion()
+    ) {
+
+        LinearLayout center =
+                new LinearLayout(this);
+
+        center.setOrientation(
+                LinearLayout.VERTICAL
+        );
+
+        center.setGravity(
+                Gravity.CENTER
+        );
+
+        center.setPadding(
+                dp(10),
+                dp(20),
+                dp(10),
+                dp(20)
+        );
+
+
+        root.addView(
+                center,
+                new LinearLayout.LayoutParams(
+                        -1,
+                        0,
+                        1f
+                )
+        );
+
+
+        TextView customQuestion =
+                tv(
+                        current.question,
+                        30,
+                        Color.WHITE,
+                        Gravity.CENTER,
+                        true
+                );
+
+        customQuestion.setSingleLine(false);
+        customQuestion.setMaxLines(8);
+
+        customQuestion.setGravity(
+                Gravity.CENTER
+        );
+
+        customQuestion.setTextAlignment(
+                View.TEXT_ALIGNMENT_CENTER
+        );
+
+        customQuestion.setPadding(
+                dp(18),
+                dp(30),
+                dp(18),
+                dp(30)
+        );
+
+        customQuestion.setMinHeight(
+                dp(100)
+        );
+
+        setRoundedBackground(
+                customQuestion,
+                RED,
+                14
+        );
+
+
+        if (
+                Build.VERSION.SDK_INT
+                        >= Build.VERSION_CODES.O
+        ) {
+
+            customQuestion
+                    .setAutoSizeTextTypeUniformWithConfiguration(
+                            14,
+                            30,
+                            1,
+                            TypedValue.COMPLEX_UNIT_SP
+                    );
+        }
+
+
+        center.addView(
+                customQuestion,
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                )
+        );
+
+
+        setQuestionBottomBar();
+        return;
+    }
 
     // Bandeau vert
     upperBand(current.theme, GREEN, Color.WHITE, 25, 48);
@@ -5143,7 +5352,7 @@ final String currentHash =
             c = db.rawQuery(
                     "SELECT row_number, megatheme, theme, question, detail, " +
                             "proposition_a, proposition_b, proposition_c, proposition_d, " +
-                            "correct_index, image_file, is_image " +
+                            "correct_index, image_file, is_image, question_origin " +
                             "FROM " + TABLE +
                             " WHERE (status IS NULL OR TRIM(status)='' OR " +
                             "UPPER(TRIM(status)) NOT IN ('A','P','T','X'))" +
@@ -5168,7 +5377,7 @@ final String currentHash =
             c = db.rawQuery(
                     "SELECT row_number, megatheme, theme, question, detail, " +
                             "proposition_a, proposition_b, proposition_c, proposition_d, " +
-                            "correct_index, image_file, is_image " +
+                            "correct_index, image_file, is_image, question_origin " +
                             "FROM " + TABLE +
                             " WHERE (status IS NULL OR TRIM(status)='' OR " +
                             "UPPER(TRIM(status)) NOT IN ('A','P','T','X')) ORDER BY row_number",
@@ -5200,6 +5409,16 @@ final String currentHash =
         if (q.correct < 1 || q.correct > 4) q.correct = 1;
         q.imageFile = safe(c.getString(10));
         q.isImage = c.getInt(11) == 1 || q.imageFile.length() > 0;
+
+        q.questionOrigin =
+                safe(
+                        c.getString(
+                                c.getColumnIndexOrThrow(
+                                        "question_origin"
+                                )
+                        )
+                );
+
         return q;
     }
 
@@ -5628,6 +5847,7 @@ private void flagAndNext(String status, String msg) {
         cgSync002Put(values, document, "theme");
         cgSync002Put(values, document, "question");
         cgSync002Put(values, document, "detail");
+        cgSync002Put(values, document, "question_origin");
 
         /*
          * CGANDROID017 · SYNC_ANSWER_CANONICAL001

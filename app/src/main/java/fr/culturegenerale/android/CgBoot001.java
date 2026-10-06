@@ -151,6 +151,7 @@ public final class CgBoot001 {
                         "theme TEXT," +
                         "question TEXT," +
                         "detail TEXT," +
+                        "question_origin TEXT NOT NULL DEFAULT ''," +
                         "proposition_a TEXT," +
                         "proposition_b TEXT," +
                         "proposition_c TEXT," +
@@ -323,6 +324,7 @@ public final class CgBoot001 {
         putValue(cv, "theme", doc.get("theme"));
         putValue(cv, "question", doc.get("question"));
         putValue(cv, "detail", doc.get("detail"));
+        putValue(cv, "question_origin", doc.get("question_origin"));
 
         /*
          * CGANDROID017 · ANSWER_CANONICAL_READ001

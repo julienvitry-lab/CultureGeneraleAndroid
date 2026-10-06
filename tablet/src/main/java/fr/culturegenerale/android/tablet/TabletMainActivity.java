@@ -2498,6 +2498,91 @@ public class TabletMainActivity extends Activity {
         addStatsBanner();
 
 
+        /*
+         * CGANDROID018
+         * CUSTOM_QUESTION_LAYOUT001 / VERTICAL_CENTER001
+         */
+        if (
+                q != null &&
+                q.isCustomQuestion()
+        ) {
+
+            LinearLayout center =
+                    new LinearLayout(this);
+
+            center.setOrientation(
+                    LinearLayout.VERTICAL
+            );
+
+            center.setGravity(
+                    Gravity.CENTER
+            );
+
+            center.setPadding(
+                    dp(60),
+                    dp(28),
+                    dp(60),
+                    dp(28)
+            );
+
+
+            root.addView(
+                    center,
+                    new LinearLayout.LayoutParams(
+                            -1,
+                            0,
+                            1f
+                    )
+            );
+
+
+            TextView customQuestion =
+                    cardText(
+                            q.question,
+                            30,
+                            YELLOW,
+                            Color.BLACK
+                    );
+
+            customQuestion.setGravity(
+                    Gravity.CENTER
+            );
+
+            customQuestion.setTextAlignment(
+                    View.TEXT_ALIGNMENT_CENTER
+            );
+
+            customQuestion.setMinHeight(
+                    dp(110)
+            );
+
+            customQuestion.setPadding(
+                    dp(24),
+                    dp(34),
+                    dp(24),
+                    dp(34)
+            );
+
+
+            center.addView(
+                    customQuestion,
+                    new LinearLayout.LayoutParams(
+                            -1,
+                            -2
+                    )
+            );
+
+
+            pumpLocalImagePrefetch();
+
+            installQuestionSplitTouch(
+                    q
+            );
+
+            return;
+        }
+
+
         // CGANDROID017 · MEGATHEME_SCREEN_REMOVE001
         // Le mégathème appartient à l'écran de choix du parcours.
         // Il ne doit jamais être répété sur l'écran Question, image ou texte.
@@ -4985,6 +5070,11 @@ final class CgFirestore {
         q.theme = str(f, "theme");
         q.question = str(f, "question");
         q.detail = str(f, "detail");
+        q.questionOrigin =
+                str(
+                        f,
+                        "question_origin"
+                );
 
         // CGANDROID017 · ANSWER_CANONICAL_READ001
         q.answer = str(f, "answer");
@@ -5527,6 +5617,8 @@ final class CgQuestion {
     String question = "";
     String detail = "";
 
+    String questionOrigin = "";
+
     String answer = "";
 
     /*
@@ -5593,6 +5685,23 @@ final class CgQuestion {
 
             correctIndex = 1;
         }
+    }
+
+
+    boolean isCustomQuestion() {
+
+        String origin =
+                questionOrigin == null
+                        ? ""
+                        : questionOrigin
+                                .trim()
+                                .toLowerCase(
+                                        java.util.Locale.ROOT
+                                );
+
+        return origin.startsWith(
+                "custom_"
+        );
     }
 
 

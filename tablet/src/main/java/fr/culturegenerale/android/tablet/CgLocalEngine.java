@@ -29,7 +29,7 @@ import java.util.Set;
 final class CgLocalEngine extends SQLiteOpenHelper {
 
     private static final String DB_NAME = "cgandroid012_local_learning.db";
-    private static final int DB_VERSION = 2;
+    private static final int DB_VERSION = 3;
     private static final int THEME_COOLDOWN = 8;
     private static final long CATALOG_REFRESH_MS = 6L * 60L * 60L * 1000L;
 
@@ -58,6 +58,7 @@ final class CgLocalEngine extends SQLiteOpenHelper {
                         "theme TEXT NOT NULL DEFAULT ''," +
                         "question_text TEXT NOT NULL DEFAULT ''," +
                         "detail TEXT NOT NULL DEFAULT ''," +
+                        "question_origin TEXT NOT NULL DEFAULT ''," +
                         "option_a TEXT NOT NULL DEFAULT ''," +
                         "option_b TEXT NOT NULL DEFAULT ''," +
                         "option_c TEXT NOT NULL DEFAULT ''," +
@@ -113,6 +114,15 @@ final class CgLocalEngine extends SQLiteOpenHelper {
         if (oldVersion < 2) {
             createAttemptLedger(db);
         }
+
+        if (oldVersion < 3) {
+            db.execSQL(
+                    "ALTER TABLE questions "
+                            + "ADD COLUMN question_origin "
+                            + "TEXT NOT NULL DEFAULT ''"
+            );
+        }
+
         if (newVersion > DB_VERSION) {
             throw new IllegalStateException(
                     "Migration locale inconnue : "
@@ -644,6 +654,7 @@ final class CgLocalEngine extends SQLiteOpenHelper {
                 "SELECT q.id,q.megatheme,q.theme,q.question_text,q.detail," +
                         "q.option_a,q.option_b,q.option_c,q.option_d," +
                         "q.correct_index,q.image_file,q.is_image," +
+                        "q.question_origin," +
                         "COALESCE(l.fail_count,0) AS local_fail " +
                         "FROM questions q " +
                         "LEFT JOIN learning l ON l.question_id=q.id " +
@@ -915,6 +926,10 @@ final class CgLocalEngine extends SQLiteOpenHelper {
             cv.put("theme", safe(q.theme));
             cv.put("question_text", safe(q.question));
             cv.put("detail", safe(q.detail));
+            cv.put(
+                    "question_origin",
+                    safe(q.questionOrigin)
+            );
 
             // CGANDROID017 · LOCAL_QR_STORAGE001
             String answer =
@@ -1173,6 +1188,11 @@ final class CgLocalEngine extends SQLiteOpenHelper {
         q.theme = str(fields, "theme");
         q.question = str(fields, "question");
         q.detail = str(fields, "detail");
+        q.questionOrigin =
+                str(
+                        fields,
+                        "question_origin"
+                );
 
         // ANSWER_CANONICAL_READ001
         q.answer = str(fields, "answer");
@@ -1207,6 +1227,13 @@ final class CgLocalEngine extends SQLiteOpenHelper {
         q.theme = c.getString(c.getColumnIndexOrThrow("theme"));
         q.question = c.getString(c.getColumnIndexOrThrow("question_text"));
         q.detail = c.getString(c.getColumnIndexOrThrow("detail"));
+
+        q.questionOrigin =
+                c.getString(
+                        c.getColumnIndexOrThrow(
+                                "question_origin"
+                        )
+                );
 
         q.options[0] = c.getString(c.getColumnIndexOrThrow("option_a"));
         q.options[1] = c.getString(c.getColumnIndexOrThrow("option_b"));
