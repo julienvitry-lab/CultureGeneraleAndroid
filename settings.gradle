@@ -15,6 +15,14 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = 'CultureGeneraleAndroid'
-include ':app'
 
+/*
+ * CGANDROID018 BUILD2 · LEGACY_APP_RETIRE001
+ *
+ * L'ancien module :app reste archivé dans le dépôt mais n'appartient
+ * plus à la configuration Gradle active.
+ *
+ * Le produit Android utilisateur unique est désormais :tablet,
+ * transformé en application universelle téléphone + tablette.
+ */
 include ':tablet'

@@ -194,9 +194,162 @@ public class TabletMainActivity extends Activity {
 
     // CGANDROID002 FIX1 · BOTTOM_BAR_LAYOUT001
 
+    /*
+     * ================================================================
+     * CGANDROID018 BUILD2
+     * MODERN_APP_UNIFICATION001 / AUTO_DEVICE_PROFILE001
+     * PHONE_RESPONSIVE_UI001 / TABLET_LAYOUT_PRESERVE001
+     * ================================================================
+     *
+     * La classe "TabletMainActivity" conserve son nom historique,
+     * mais elle est désormais l'activité de l'application universelle.
+     *
+     * La classification repose sur smallestScreenWidthDp et non sur
+     * le modèle ou la marque de l'appareil.
+     *
+     * < 600 dp  = PHONE
+     * >= 600 dp = TABLET
+     */
+    private enum CgDeviceProfile {
+        PHONE,
+        TABLET
+    }
+
+
+    private CgDeviceProfile cgDeviceProfile =
+            CgDeviceProfile.TABLET;
+
+    private int cgSmallestWidthDp =
+            600;
+
+
+    private void detectDeviceProfile() {
+
+        android.content.res.Configuration configuration =
+                getResources().getConfiguration();
+
+        int smallest =
+                configuration.smallestScreenWidthDp;
+
+        if (smallest <= 0) {
+
+            int width =
+                    configuration.screenWidthDp;
+
+            int height =
+                    configuration.screenHeightDp;
+
+            if (width > 0 && height > 0) {
+                smallest =
+                        Math.min(
+                                width,
+                                height
+                        );
+            } else {
+                smallest = 600;
+            }
+        }
+
+        cgSmallestWidthDp =
+                smallest;
+
+        cgDeviceProfile =
+                smallest >= 600
+                        ? CgDeviceProfile.TABLET
+                        : CgDeviceProfile.PHONE;
+    }
+
+
+    private boolean isPhoneProfile() {
+
+        return cgDeviceProfile
+                == CgDeviceProfile.PHONE;
+    }
+
+
+    private int responsiveSp(
+            int tabletSp
+    ) {
+
+        if (!isPhoneProfile()) {
+            return tabletSp;
+        }
+
+        float factor;
+
+        if (tabletSp >= 28) {
+            factor = 0.82f;
+        } else if (tabletSp >= 20) {
+            factor = 0.86f;
+        } else {
+            factor = 0.90f;
+        }
+
+        return Math.max(
+                12,
+                Math.round(
+                        tabletSp * factor
+                )
+        );
+    }
+
+
+    private int responsiveHorizontalMarginPx(
+            int requestedPx
+    ) {
+
+        if (!isPhoneProfile()) {
+            return requestedPx;
+        }
+
+        int cap =
+                Math.round(
+                        22f
+                                * getResources()
+                                .getDisplayMetrics()
+                                .density
+                );
+
+        return Math.min(
+                requestedPx,
+                cap
+        );
+    }
+
+
+    private int responsiveGapDp(
+            int tabletDp
+    ) {
+
+        if (!isPhoneProfile()) {
+            return tabletDp;
+        }
+
+        return Math.max(
+                3,
+                Math.round(
+                        tabletDp * 0.72f
+                )
+        );
+    }
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        detectDeviceProfile();
+
+        /*
+         * PHONE : portrait.
+         * TABLET : paysage, comme l'application tablette historique.
+         */
+        setRequestedOrientation(
+                isPhoneProfile()
+                        ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                        : android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        );
+
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         loadFont();
 
@@ -1985,16 +2138,111 @@ public class TabletMainActivity extends Activity {
     }
 
     private LinearLayout domainRow(Button left, Button right) {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER);
 
-        LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(0, dp(76), 1f);
-        LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(0, dp(76), 1f);
-        lp1.setMargins(0, dp(5), dp(5), dp(5));
-        lp2.setMargins(dp(5), dp(5), 0, dp(5));
-        row.addView(left, lp1);
-        row.addView(right, lp2);
+        LinearLayout row =
+                new LinearLayout(this);
+
+        row.setGravity(
+                Gravity.CENTER
+        );
+
+
+        if (isPhoneProfile()) {
+
+            /*
+             * PHONE_RESPONSIVE_UI001 :
+             * une colonne pour préserver la lisibilité des libellés.
+             */
+            row.setOrientation(
+                    LinearLayout.VERTICAL
+            );
+
+            LinearLayout.LayoutParams lp1 =
+                    new LinearLayout.LayoutParams(
+                            -1,
+                            dp(62)
+                    );
+
+            LinearLayout.LayoutParams lp2 =
+                    new LinearLayout.LayoutParams(
+                            -1,
+                            dp(62)
+                    );
+
+            lp1.setMargins(
+                    0,
+                    dp(4),
+                    0,
+                    dp(4)
+            );
+
+            lp2.setMargins(
+                    0,
+                    dp(4),
+                    0,
+                    dp(4)
+            );
+
+            row.addView(
+                    left,
+                    lp1
+            );
+
+            row.addView(
+                    right,
+                    lp2
+            );
+
+            return row;
+        }
+
+
+        /*
+         * TABLET_LAYOUT_PRESERVE001 :
+         * grille historique deux colonnes inchangée.
+         */
+        row.setOrientation(
+                LinearLayout.HORIZONTAL
+        );
+
+        LinearLayout.LayoutParams lp1 =
+                new LinearLayout.LayoutParams(
+                        0,
+                        dp(76),
+                        1f
+                );
+
+        LinearLayout.LayoutParams lp2 =
+                new LinearLayout.LayoutParams(
+                        0,
+                        dp(76),
+                        1f
+                );
+
+        lp1.setMargins(
+                0,
+                dp(5),
+                dp(5),
+                dp(5)
+        );
+
+        lp2.setMargins(
+                dp(5),
+                dp(5),
+                0,
+                dp(5)
+        );
+
+        row.addView(
+                left,
+                lp1
+        );
+
+        row.addView(
+                right,
+                lp2
+        );
+
         return row;
     }
 
@@ -2519,10 +2767,26 @@ public class TabletMainActivity extends Activity {
             );
 
             center.setPadding(
-                    dp(60),
-                    dp(28),
-                    dp(60),
-                    dp(28)
+                    dp(
+                            isPhoneProfile()
+                                    ? 18
+                                    : 60
+                    ),
+                    dp(
+                            isPhoneProfile()
+                                    ? 20
+                                    : 28
+                    ),
+                    dp(
+                            isPhoneProfile()
+                                    ? 18
+                                    : 60
+                    ),
+                    dp(
+                            isPhoneProfile()
+                                    ? 20
+                                    : 28
+                    )
             );
 
 
@@ -2627,7 +2891,11 @@ public class TabletMainActivity extends Activity {
             add(
                     imageArea,
                     -1,
-                    dp(270),
+                    dp(
+                            isPhoneProfile()
+                                    ? 220
+                                    : 270
+                    ),
                     0,
                     0,
                     0,
@@ -2713,10 +2981,26 @@ public class TabletMainActivity extends Activity {
         );
 
         center.setPadding(
-                dp(60),
-                dp(28),
-                dp(60),
-                dp(28)
+                dp(
+                        isPhoneProfile()
+                                ? 18
+                                : 60
+                ),
+                dp(
+                        isPhoneProfile()
+                                ? 20
+                                : 28
+                ),
+                dp(
+                        isPhoneProfile()
+                                ? 18
+                                : 60
+                ),
+                dp(
+                        isPhoneProfile()
+                                ? 20
+                                : 28
+                )
         );
 
 
@@ -4378,10 +4662,34 @@ public class TabletMainActivity extends Activity {
 
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(14), dp(10), dp(14), dp(12));
+
+        if (isPhoneProfile()) {
+
+            root.setPadding(
+                    dp(9),
+                    dp(8),
+                    dp(9),
+                    dp(10)
+            );
+
+        } else {
+
+            /*
+             * TABLET_LAYOUT_PRESERVE001 :
+             * valeurs historiques strictement conservées.
+             */
+            root.setPadding(
+                    dp(14),
+                    dp(10),
+                    dp(14),
+                    dp(12)
+            );
+        }
+
         root.setBackgroundColor(Color.BLACK);
 
         scroll.addView(root, new ScrollView.LayoutParams(-1, -1));
+
         screenFrame =
                 new FrameLayout(this);
 
@@ -4414,7 +4722,11 @@ public class TabletMainActivity extends Activity {
     private TextView text(String value, int sp, int color, int gravity) {
         TextView v = new TextView(this);
         v.setText(value == null ? "" : value);
-        v.setTextSize(sp);
+
+        v.setTextSize(
+                responsiveSp(sp)
+        );
+
         v.setTextColor(color);
         v.setGravity(gravity);
         v.setTypeface(appFont);
@@ -4436,7 +4748,9 @@ public class TabletMainActivity extends Activity {
         e.setHint(hint);
         e.setHintTextColor(LIGHT_GREY);
         e.setTextColor(Color.WHITE);
-        e.setTextSize(17);
+        e.setTextSize(
+                responsiveSp(17)
+        );
         e.setTypeface(appFont);
         e.setInputType(inputType);
         e.setPadding(dp(14), dp(8), dp(14), dp(8));
@@ -4449,7 +4763,11 @@ public class TabletMainActivity extends Activity {
         b.setText(label);
         b.setAllCaps(false);
         b.setTextColor(Color.WHITE);
-        b.setTextSize(sp);
+
+        b.setTextSize(
+                responsiveSp(sp)
+        );
+
         b.setTypeface(appFont);
         b.setGravity(Gravity.CENTER);
         b.setPadding(dp(10), dp(8), dp(10), dp(8));
@@ -4479,14 +4797,62 @@ public class TabletMainActivity extends Activity {
     }
 
     private void add(View v, int w, int h, int ml, int mt, int mr, int mb) {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(w, h);
-        lp.setMargins(ml, mt, mr, mb);
-        root.addView(v, lp);
+
+        /*
+         * Sur téléphone, les grandes marges centrées de la tablette
+         * sont plafonnées afin d'utiliser réellement la largeur utile.
+         *
+         * En profil TABLET aucune valeur n'est modifiée.
+         */
+        if (isPhoneProfile()) {
+
+            ml =
+                    responsiveHorizontalMarginPx(
+                            ml
+                    );
+
+            mr =
+                    responsiveHorizontalMarginPx(
+                            mr
+                    );
+        }
+
+        LinearLayout.LayoutParams lp =
+                new LinearLayout.LayoutParams(
+                        w,
+                        h
+                );
+
+        lp.setMargins(
+                ml,
+                mt,
+                mr,
+                mb
+        );
+
+        root.addView(
+                v,
+                lp
+        );
     }
 
+
     private void gap(int px) {
-        View v = new View(this);
-        root.addView(v, new LinearLayout.LayoutParams(1, dp(px)));
+
+        View v =
+                new View(this);
+
+        root.addView(
+                v,
+                new LinearLayout.LayoutParams(
+                        1,
+                        dp(
+                                responsiveGapDp(
+                                        px
+                                )
+                        )
+                )
+        );
     }
 
     private int dp(int value) {

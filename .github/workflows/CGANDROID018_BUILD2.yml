@@ -1,0 +1,317 @@
+name: CGANDROID018 BUILD2 - Universal APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "tablet/**"
+      - "settings.gradle"
+      - "build.gradle"
+      - "gradle.properties"
+      - "gradle/**"
+      - "gradlew"
+      - ".github/workflows/CGANDROID018_BUILD2.yml"
+
+permissions:
+  contents: read
+
+jobs:
+
+  universal:
+    name: UNIVERSAL_APK001
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Recuperer le depot
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Preparer Gradle
+        run: chmod +x gradlew
+
+      - name: MODERN_APP_UNIFICATION001
+        run: |
+          set -euo pipefail
+
+          MAIN="tablet/src/main/java/fr/culturegenerale/android/tablet/TabletMainActivity.java"
+
+          if grep -Fq "include ':app'" settings.gradle
+          then
+            echo "❌ module legacy :app encore actif"
+            exit 20
+          fi
+
+          grep -Fq \
+            "include ':tablet'" \
+            settings.gradle
+
+          grep -Fq \
+            "applicationId 'fr.culturegenerale.android'" \
+            tablet/build.gradle
+
+          grep -Fq \
+            "versionCode 964" \
+            tablet/build.gradle
+
+          grep -Fq \
+            "versionName '9.6.4-cgandroid018-universal'" \
+            tablet/build.gradle
+
+          grep -Fq \
+            'Button start = button("Démarrer"' \
+            "$MAIN"
+
+          grep -Fq \
+            'addSub("Apprentissage continu"' \
+            "$MAIN"
+
+          if grep -Fq 'Questions aléatoires' "$MAIN"
+          then
+            echo "❌ ancien écran Questions aléatoires détecté"
+            exit 21
+          fi
+
+          if grep -Fq 'IMPORT QUIZYPEDIA' "$MAIN"
+          then
+            echo "❌ ancien écran IMPORT QUIZYPEDIA détecté"
+            exit 22
+          fi
+
+          echo "✓ produit moderne uniquement"
+
+      - name: AUTO_DEVICE_PROFILE001
+        run: |
+          set -euo pipefail
+
+          MAIN="tablet/src/main/java/fr/culturegenerale/android/tablet/TabletMainActivity.java"
+
+          grep -Fq 'CgDeviceProfile' "$MAIN"
+          grep -Fq 'smallest >= 600' "$MAIN"
+          grep -Fq 'SCREEN_ORIENTATION_PORTRAIT' "$MAIN"
+          grep -Fq 'SCREEN_ORIENTATION_LANDSCAPE' "$MAIN"
+          grep -Fq 'responsiveSp' "$MAIN"
+          grep -Fq 'responsiveHorizontalMarginPx' "$MAIN"
+          grep -Fq 'responsiveGapDp' "$MAIN"
+
+          if grep -Fq 'android:screenOrientation=' tablet/src/main/AndroidManifest.xml
+          then
+            echo "❌ orientation statique encore présente"
+            exit 23
+          fi
+
+          echo "✓ PHONE/TABLET automatique"
+
+      - name: COMPILE_VERIFY001
+        run: |
+          set -euo pipefail
+
+          ./gradlew \
+            :tablet:compileReleaseJavaWithJavac \
+            --stacktrace \
+            --no-daemon
+
+          echo "✓ compilation Java release"
+
+      - name: RELEASE_APK_BUILD001
+        run: |
+          set -euo pipefail
+
+          ./gradlew \
+            :tablet:assembleRelease \
+            --stacktrace \
+            --no-daemon
+
+          APK="$(
+            find tablet/build/outputs/apk/release \
+              -maxdepth 1 \
+              -type f \
+              -name '*release-unsigned.apk' \
+              | head -n 1
+          )"
+
+          test -n "$APK"
+          test -s "$APK"
+
+          echo "$APK" > /tmp/universal-apk-path.txt
+
+          if test -d app/build/outputs/apk
+          then
+            echo "❌ un APK legacy :app a été produit"
+            exit 30
+          fi
+
+          echo "✓ APK release moderne non signé produit"
+          ls -lh "$APK"
+
+      - name: Reconstruire SIGN001
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          test -n "${ANDROID_KEYSTORE_BASE64:-}"
+
+          printf '%s' \
+            "$ANDROID_KEYSTORE_BASE64" \
+            | base64 --decode \
+            > "$RUNNER_TEMP/culture-generale-release.jks"
+
+          test -s \
+            "$RUNNER_TEMP/culture-generale-release.jks"
+
+          echo "✓ SIGN001 reconstruite"
+
+      - name: ZIPALIGN_SIGN001
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          test -n "${ANDROID_KEYSTORE_PASSWORD:-}"
+          test -n "${ANDROID_KEY_ALIAS:-}"
+          test -n "${ANDROID_KEY_PASSWORD:-}"
+
+          APK="$(cat /tmp/universal-apk-path.txt)"
+
+          ZIPALIGN="$(
+            find "$ANDROID_HOME/build-tools" \
+              -name zipalign \
+              -type f \
+              | sort -V \
+              | tail -n 1
+          )"
+
+          APKSIGNER="$(
+            find "$ANDROID_HOME/build-tools" \
+              -name apksigner \
+              -type f \
+              | sort -V \
+              | tail -n 1
+          )"
+
+          test -n "$ZIPALIGN"
+          test -n "$APKSIGNER"
+
+          "$ZIPALIGN" \
+            -p \
+            -f \
+            4 \
+            "$APK" \
+            universal-aligned-unsigned.apk
+
+          "$APKSIGNER" sign \
+            --ks "$RUNNER_TEMP/culture-generale-release.jks" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --key-pass env:ANDROID_KEY_PASSWORD \
+            --out CultureGenerale-Universelle-CGANDROID018-BUILD2.apk \
+            universal-aligned-unsigned.apk
+
+          test -s \
+            CultureGenerale-Universelle-CGANDROID018-BUILD2.apk
+
+          echo "✓ zipalign + SIGN001"
+
+      - name: INSTALL_READY001
+        run: |
+          set -euo pipefail
+
+          APK="CultureGenerale-Universelle-CGANDROID018-BUILD2.apk"
+
+          APKSIGNER="$(
+            find "$ANDROID_HOME/build-tools" \
+              -name apksigner \
+              -type f \
+              | sort -V \
+              | tail -n 1
+          )"
+
+          AAPT="$(
+            find "$ANDROID_HOME/build-tools" \
+              -name aapt \
+              -type f \
+              | sort -V \
+              | tail -n 1
+          )"
+
+          ZIPALIGN="$(
+            find "$ANDROID_HOME/build-tools" \
+              -name zipalign \
+              -type f \
+              | sort -V \
+              | tail -n 1
+          )"
+
+          "$ZIPALIGN" \
+            -c \
+            -v \
+            4 \
+            "$APK"
+
+          "$APKSIGNER" \
+            verify \
+            --verbose \
+            --print-certs \
+            "$APK" \
+            | tee universal-signature.txt
+
+          "$AAPT" \
+            dump badging \
+            "$APK" \
+            | tee universal-badging.txt
+
+          grep -Fq \
+            "package: name='fr.culturegenerale.android'" \
+            universal-badging.txt
+
+          grep -Fq \
+            "versionCode='964'" \
+            universal-badging.txt
+
+          grep -Fq \
+            "launchable-activity: name='fr.culturegenerale.android.tablet.TabletMainActivity'" \
+            universal-badging.txt
+
+          sha256sum \
+            "$APK" \
+            | tee universal-sha256.txt
+
+          {
+            echo "CGANDROID018 BUILD2"
+            echo "artifact=universal"
+            echo "source_module=tablet-modern"
+            echo "legacy_module=retired"
+            echo "applicationId=fr.culturegenerale.android"
+            echo "launcher=fr.culturegenerale.android.tablet.TabletMainActivity"
+            echo "versionCode=964"
+            echo "versionName=9.6.4-cgandroid018-universal"
+            echo "phone=<600dp portrait"
+            echo "tablet=>=600dp landscape"
+            echo "signing=SIGN001"
+            echo "commit=$GITHUB_SHA"
+          } > universal-build-info.txt
+
+          echo "✓ APK install-ready"
+
+      - name: Publier APK universel
+        uses: actions/upload-artifact@v4
+        with:
+          name: CultureGenerale-Universelle-CGANDROID018-BUILD2
+          path: |
+            CultureGenerale-Universelle-CGANDROID018-BUILD2.apk
+            universal-sha256.txt
+            universal-signature.txt
+            universal-badging.txt
+            universal-build-info.txt
+          if-no-files-found: error
+          retention-days: 14
