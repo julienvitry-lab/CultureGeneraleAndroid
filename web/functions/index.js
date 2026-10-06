@@ -6250,6 +6250,10 @@ exports.cgweb031Home = require('./cgweb031').cgweb031Home;
 // CGWEB032_EXPORT
 exports.cgweb032Search = require('./cgweb032').cgweb032Search;
 
+// CGWEB140_EXPORT
+exports.cgweb140ExportPage =
+  require('./cgweb140').cgweb140ExportPage;
+
 
 // CGWEB123 FIX1 · AI_QUESTION_FACTORY001
 exports.cgweb123AiQuestionFactory =
@@ -7083,4 +7087,3 @@ exports.cgweb124RawTextExtract = onRequest(
     }
   });
 // ===== CGWEB124 · RAW_TEXT_EXTRACTOR001 · END =====
-

@@ -106,12 +106,15 @@ jobs:
           test -f web/public/cgweb123.css
           test -f web/public/cgqr001.js
           test -f web/public/cgweb138.js
+          test -f web/public/cgweb140.js
+          test -f web/functions/cgweb140.js
           test -f web/functions/cgweb029.js
           test -f web/functions/cgweb025.js
           grep -Fq 'cgimport009fix4.js' web/public/index.html
           grep -Fq 'cgweb109.js' web/public/index.html
           grep -Fq 'cgqr001.js?v=' web/public/index.html
           grep -Fq 'cgweb138.js?v=CGWEB138_FIX3_TEST_HARNESS_PRESERVE001' web/public/index.html
+          grep -Fq 'cgweb140.js?v=CGWEB140_FULL_QR_EXPORT001' web/public/index.html
           grep -Fq 'cgweb016fix2.js?v=' web/public/index.html
           grep -Fq 'cgweb016fix2.css?v=' web/public/index.html
           grep -Fq 'cgimport002Quizypedia' web/functions/index.js
@@ -187,6 +190,8 @@ jobs:
           node --check web/public/cgweb123.js
           node --check web/public/cgqr001.js
           node --check web/public/cgweb138.js
+          node --check web/public/cgweb140.js
+          node --check web/functions/cgweb140.js
           node --check web/functions/cgweb029.js
           node --check web/public/cgweb016fix2.js
           node --check web/public/app.js
@@ -209,7 +214,7 @@ jobs:
         run: |
           set -euo pipefail
           npx --yes firebase-tools@15.28.2 deploy \
-            --only hosting,functions:cgimport002Quizypedia,functions:cgimage005MigrateBatch,functions:cgimage007RecoverFailed,functions:cgimage008SuggestCandidates,functions:cgimage008ApplyCandidate,functions:cgweb018ThemeContains,functions:cgweb020QualityScan,functions:cgweb021Bulk,functions:cgweb022History,functions:cgweb025Duplicates,functions:cgweb026ImageCenter,functions:cgweb028Analytics,functions:cgweb029Restore,functions:cgweb030Lists,functions:cgweb031Home,functions:cgweb032Search,functions:cgweb123AiQuestionFactory,storage \
+            --only hosting,functions:cgimport002Quizypedia,functions:cgimage005MigrateBatch,functions:cgimage007RecoverFailed,functions:cgimage008SuggestCandidates,functions:cgimage008ApplyCandidate,functions:cgweb018ThemeContains,functions:cgweb020QualityScan,functions:cgweb021Bulk,functions:cgweb022History,functions:cgweb025Duplicates,functions:cgweb026ImageCenter,functions:cgweb028Analytics,functions:cgweb029Restore,functions:cgweb030Lists,functions:cgweb031Home,functions:cgweb032Search,functions:cgweb123AiQuestionFactory,functions:cgweb140ExportPage,storage \
             --project culturegeneralesync \
             --non-interactive \
             --force
@@ -228,7 +233,7 @@ jobs:
 
             curl --fail --silent --show-error --location               --header 'Cache-Control: no-cache'               "https://culturegeneralesync.web.app/?cgdeploy=${STAMP}"               -o /tmp/cg-live.html || true
 
-            if test -s /tmp/cg-live.html               && grep -Fq 'cgimport009fix4.js' /tmp/cg-live.html               && grep -Fq 'cgweb109.js' /tmp/cg-live.html               && grep -Fq 'cgimage001.js?v=CGIMAGE001_1' /tmp/cg-live.html               && grep -Fq 'cgimage002.js?v=CGIMAGE002_1' /tmp/cg-live.html               && grep -Fq 'cgimage005.js?v=CGIMAGE005_1' /tmp/cg-live.html               && grep -Fq 'cgimage006.js?v=CGIMAGE006_1' /tmp/cg-live.html               && grep -Fq 'cgimage007.js?v=CGIMAGE007_1' /tmp/cg-live.html               && grep -Fq 'cgweb138.js?v=CGWEB138_FIX3_TEST_HARNESS_PRESERVE001' /tmp/cg-live.html
+            if test -s /tmp/cg-live.html               && grep -Fq 'cgimport009fix4.js' /tmp/cg-live.html               && grep -Fq 'cgweb109.js' /tmp/cg-live.html               && grep -Fq 'cgimage001.js?v=CGIMAGE001_1' /tmp/cg-live.html               && grep -Fq 'cgimage002.js?v=CGIMAGE002_1' /tmp/cg-live.html               && grep -Fq 'cgimage005.js?v=CGIMAGE005_1' /tmp/cg-live.html               && grep -Fq 'cgimage006.js?v=CGIMAGE006_1' /tmp/cg-live.html               && grep -Fq 'cgimage007.js?v=CGIMAGE007_1' /tmp/cg-live.html               && grep -Fq 'cgweb138.js?v=CGWEB138_FIX3_TEST_HARNESS_PRESERVE001' /tmp/cg-live.html               && grep -Fq 'cgweb140.js?v=CGWEB140_FULL_QR_EXPORT001' /tmp/cg-live.html
             then
               if curl --fail --silent --show-error --location                 --header 'Cache-Control: no-cache'                 "https://culturegeneralesync.web.app/cgimage007.js?cgdeploy=${STAMP}"                 -o /tmp/cgimage007-live.js                 && grep -Fq 'CGIMAGE007_1' /tmp/cgimage007-live.js
               then
@@ -274,5 +279,27 @@ jobs:
             'root.CGWEB138_API' \
             /tmp/cgweb138-live.js
 
+          CG140_STAMP="$(date +%s)"
+
+          curl             --fail             --silent             --show-error             --location             --header 'Cache-Control: no-cache'             "https://culturegeneralesync.web.app/cgweb140.js?cgdeploy=${CG140_STAMP}"             -o /tmp/cgweb140-live.js
+
+          grep -Fq             'CGWEB140_FULL_QR_EXPORT001_SERVER_PAGINATION001_PROGRESS_UI001_NON_BLOCKING_EXPORT001_ANSWER_CANONICAL001'             /tmp/cgweb140-live.js
+
+          CG140_HTTP="$(
+            curl               --silent               --show-error               --output /tmp/cgweb140-api.json               --write-out '%{http_code}'               --request POST               --header 'Content-Type: application/json'               --data '{}'               "https://culturegeneralesync.web.app/api/cgweb140"
+          )"
+
+          if [ "$CG140_HTTP" != "401" ]; then
+            echo "❌ CGWEB140 endpoint inattendu : HTTP $CG140_HTTP"
+            cat /tmp/cgweb140-api.json || true
+            exit 1
+          fi
+
+          grep -Fq             'Authentification Firebase requise.'             /tmp/cgweb140-api.json
+
+          echo "✅ CGWEB140 frontend réellement servi"
+          echo "✅ CGWEB140 endpoint paginé réellement servi"
+          echo "✅ CGWEB140 endpoint protégé par Firebase Auth"
+
           echo "✅ Quizypedia + CGIMAGE001/2/5/6/7 sont servis par culturegeneralesync.web.app"
-          echo "✅ CGWEB138 FIX1 est réellement servi par Hosting"
+          echo "✅ CGWEB138 FIX3 est réellement servi par Hosting"
