@@ -107,7 +107,6 @@ jobs:
           test -f web/public/cgqr001.js
           test -f web/public/cgweb138.js
           test -f web/public/cgweb140.js
-          test -f web/public/cgweb141.js
           test -f web/functions/cgweb140.js
           test -f web/functions/cgweb029.js
           test -f web/functions/cgweb025.js
@@ -116,9 +115,14 @@ jobs:
           grep -Fq 'cgqr001.js?v=' web/public/index.html
           grep -Fq 'cgweb138.js?v=CGWEB138_FIX3_TEST_HARNESS_PRESERVE001' web/public/index.html
           grep -Fq 'cgweb140.js?v=CGWEB140_FULL_QR_EXPORT001' web/public/index.html
-          grep -Fq 'cgweb141.js?v=CGWEB141_FIX2_THEME_COMPARE_NORMALIZE001' web/public/index.html
           grep -Fq 'cgweb016fix2.js?v=' web/public/index.html
           grep -Fq 'cgweb016fix2.css?v=' web/public/index.html
+          grep -Fq 'cgweb016fix2.css?v=CGWEB142_CREATE_QR_SYMMETRY001' web/public/index.html
+
+          if grep -Fq 'cgweb141.js?v=' web/public/index.html; then
+            echo 'ERREUR : panneau CGWEB141 encore chargé.'
+            exit 1
+          fi
           grep -Fq 'cgimport002Quizypedia' web/functions/index.js
           grep -Fq '"/api/quizypedia"' web/firebase.json
           grep -Fq 'cgimage001.js?v=CGIMAGE001_1' web/public/index.html
@@ -193,7 +197,6 @@ jobs:
           node --check web/public/cgqr001.js
           node --check web/public/cgweb138.js
           node --check web/public/cgweb140.js
-          node --check web/public/cgweb141.js
           node --check web/functions/cgweb140.js
           node --check web/functions/cgweb029.js
           node --check web/public/cgweb016fix2.js
@@ -236,7 +239,7 @@ jobs:
 
             curl --fail --silent --show-error --location               --header 'Cache-Control: no-cache'               "https://culturegeneralesync.web.app/?cgdeploy=${STAMP}"               -o /tmp/cg-live.html || true
 
-            if test -s /tmp/cg-live.html               && grep -Fq 'cgimport009fix4.js' /tmp/cg-live.html               && grep -Fq 'cgweb109.js' /tmp/cg-live.html               && grep -Fq 'cgimage001.js?v=CGIMAGE001_1' /tmp/cg-live.html               && grep -Fq 'cgimage002.js?v=CGIMAGE002_1' /tmp/cg-live.html               && grep -Fq 'cgimage005.js?v=CGIMAGE005_1' /tmp/cg-live.html               && grep -Fq 'cgimage006.js?v=CGIMAGE006_1' /tmp/cg-live.html               && grep -Fq 'cgimage007.js?v=CGIMAGE007_1' /tmp/cg-live.html               && grep -Fq 'cgweb138.js?v=CGWEB138_FIX3_TEST_HARNESS_PRESERVE001' /tmp/cg-live.html               && grep -Fq 'cgweb140.js?v=CGWEB140_FULL_QR_EXPORT001' /tmp/cg-live.html               && grep -Fq 'cgweb141.js?v=CGWEB141_FIX2_THEME_COMPARE_NORMALIZE001' /tmp/cg-live.html
+            if test -s /tmp/cg-live.html               && grep -Fq 'cgimport009fix4.js' /tmp/cg-live.html               && grep -Fq 'cgweb109.js' /tmp/cg-live.html               && grep -Fq 'cgimage001.js?v=CGIMAGE001_1' /tmp/cg-live.html               && grep -Fq 'cgimage002.js?v=CGIMAGE002_1' /tmp/cg-live.html               && grep -Fq 'cgimage005.js?v=CGIMAGE005_1' /tmp/cg-live.html               && grep -Fq 'cgimage006.js?v=CGIMAGE006_1' /tmp/cg-live.html               && grep -Fq 'cgimage007.js?v=CGIMAGE007_1' /tmp/cg-live.html               && grep -Fq 'cgweb138.js?v=CGWEB138_FIX3_TEST_HARNESS_PRESERVE001' /tmp/cg-live.html               && grep -Fq 'cgweb140.js?v=CGWEB140_FULL_QR_EXPORT001' /tmp/cg-live.html               && grep -Fq 'cgweb016fix2.css?v=CGWEB142_CREATE_QR_SYMMETRY001' /tmp/cg-live.html
             then
               if curl --fail --silent --show-error --location                 --header 'Cache-Control: no-cache'                 "https://culturegeneralesync.web.app/cgimage007.js?cgdeploy=${STAMP}"                 -o /tmp/cgimage007-live.js                 && grep -Fq 'CGIMAGE007_1' /tmp/cgimage007-live.js
               then
@@ -305,13 +308,28 @@ jobs:
           echo "✅ CGWEB140 endpoint protégé par Firebase Auth"
 
 
-          CG141_STAMP="$(date +%s)"
+          CG142_STAMP="$(date +%s)"
 
-          curl             --fail             --silent             --show-error             --location             --header 'Cache-Control: no-cache'             "https://culturegeneralesync.web.app/cgweb141.js?cgdeploy=${CG141_STAMP}"             -o /tmp/cgweb141-live.js
+          if grep -Fq             'cgweb141.js?v='             /tmp/cg-live.html
+          then
+            echo "❌ CGWEB142 : panneau d'audit CGWEB141 encore chargé."
+            exit 1
+          fi
 
-          grep -Fq             'CGWEB141_FIX2_THEME_COMPARE_NORMALIZE001_FALSE_POSITIVE_GUARD001_INVISIBLE_DIFF_DIAGNOSTIC001_REPAIR_SCOPE_GUARD001'             /tmp/cgweb141-live.js
+          curl             --fail             --silent             --show-error             --location             --header 'Cache-Control: no-cache'             "https://culturegeneralesync.web.app/cgweb016fix2.css?cgdeploy=${CG142_STAMP}"             -o /tmp/cgweb142-css-live.css
 
-          echo "✅ CGWEB141 audit Quizypedia réellement servi"
+          grep -Fq             'CGWEB142_CREATE_QR_SYMMETRY001_EQUAL_TEXTAREA_HEIGHT001'             /tmp/cgweb142-css-live.css
+
+          curl             --fail             --silent             --show-error             --location             --header 'Cache-Control: no-cache'             "https://culturegeneralesync.web.app/cgimport009fix4.js?cgdeploy=${CG142_STAMP}"             -o /tmp/cgweb142-import-live.js
+
+          grep -Fq             'function themeFromQuizypediaUrl'             /tmp/cgweb142-import-live.js
+
+          grep -Fq             'function resetQuizypediaStateForUrl'             /tmp/cgweb142-import-live.js
+
+          echo "✅ CGWEB142 : Question/Réponse symétriques réellement servies"
+          echo "✅ CGWEB142 : panneau audit Quizypedia retiré"
+          echo "✅ CGWEB142 : protections URL/thème Quizypedia préservées"
+
 
           echo "✅ Quizypedia + CGIMAGE001/2/5/6/7 sont servis par culturegeneralesync.web.app"
           echo "✅ CGWEB138 FIX3 est réellement servi par Hosting"
