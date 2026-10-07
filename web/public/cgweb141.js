@@ -2,7 +2,7 @@
   "use strict";
 
   const VERSION =
-    "CGWEB141_QUIZYPEDIA_THEME_STATE_RESET001_URL_THEME_SOURCE_OF_TRUTH001_RECENT_IMPORT_AUDIT001_CREATED_AT_SORT001_THEME_MISMATCH_DETECT001_SAFE_THEME_REPAIR001";
+    "CGWEB141_FIX2_THEME_COMPARE_NORMALIZE001_FALSE_POSITIVE_GUARD001_INVISIBLE_DIFF_DIAGNOSTIC001_REPAIR_SCOPE_GUARD001";
 
   const MAX_THEMES = 30;
   const PAGE_SIZE = 100;
@@ -35,6 +35,195 @@
         " "
       )
       .trim();
+  }
+
+
+  /*
+   * ============================================================
+   * CGWEB141 FIX2
+   * THEME_COMPARE_NORMALIZE001
+   * ============================================================
+   *
+   * La comparaison fonctionnelle neutralise uniquement :
+   * - composition Unicode différente ;
+   * - espaces Unicode / insécables ;
+   * - espaces multiples ;
+   * - caractères invisibles de formatage.
+   *
+   * Elle ne neutralise PAS les mots, chiffres ou ponctuations
+   * réellement différents.
+   */
+  function themeCompareKey(value){
+
+    return String(
+      value ?? ""
+    )
+      .normalize("NFKC")
+      .replace(
+        /[\u200B-\u200D\u2060\uFEFF]/gu,
+        ""
+      )
+      .replace(
+        /[\s\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]+/gu,
+        " "
+      )
+      .trim();
+  }
+
+
+  function sameTheme(
+    actual,
+    expected
+  ){
+
+    return (
+      themeCompareKey(actual)
+      ===
+      themeCompareKey(expected)
+    );
+  }
+
+
+  function trueThemeMismatch(
+    actual,
+    expected
+  ){
+
+    return !sameTheme(
+      actual,
+      expected
+    );
+  }
+
+
+  function invisibleCodePoints(value){
+
+    const found =
+      new Set();
+
+    for(
+      const ch of String(
+        value ?? ""
+      )
+    ){
+
+      const cp =
+        ch.codePointAt(0);
+
+      if(
+        cp === 0x00A0 ||
+        cp === 0x1680 ||
+        (
+          cp >= 0x2000 &&
+          cp <= 0x200D
+        ) ||
+        cp === 0x202F ||
+        cp === 0x205F ||
+        cp === 0x2060 ||
+        cp === 0x3000 ||
+        cp === 0xFEFF
+      ){
+
+        found.add(
+          "U+"
+          + cp
+              .toString(16)
+              .toUpperCase()
+              .padStart(4,"0")
+        );
+      }
+    }
+
+    return [
+      ...found
+    ];
+  }
+
+
+  /*
+   * INVISIBLE_DIFF_DIAGNOSTIC001
+   *
+   * Cette fonction n'est appelée que lorsque :
+   * - les chaînes brutes diffèrent ;
+   * - leur valeur fonctionnelle normalisée est identique.
+   */
+  function invisibleDiffDiagnostic(
+    actual,
+    expected
+  ){
+
+    const a =
+      String(
+        actual ?? ""
+      );
+
+    const e =
+      String(
+        expected ?? ""
+      );
+
+    if(
+      a === e ||
+      !sameTheme(a,e)
+    ){
+      return "";
+    }
+
+    const reasons =
+      [];
+
+    if(
+      a.normalize("NFKC")
+      !==
+      a
+      ||
+      e.normalize("NFKC")
+      !==
+      e
+    ){
+      reasons.push(
+        "normalisation Unicode"
+      );
+    }
+
+    const points =
+      [
+        ...new Set([
+          ...invisibleCodePoints(a),
+          ...invisibleCodePoints(e)
+        ])
+      ];
+
+    if(points.length){
+
+      reasons.push(
+        "caractères "
+        + points.join(", ")
+      );
+    }
+
+    if(
+      /[\s\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]{2,}/u
+        .test(a)
+      ||
+      /[\s\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]{2,}/u
+        .test(e)
+    ){
+      reasons.push(
+        "espacement multiple"
+      );
+    }
+
+    if(!reasons.length){
+
+      reasons.push(
+        "différence d'espacement/formatage neutralisée"
+      );
+    }
+
+    return reasons.join(
+      " · "
+    );
   }
 
 
@@ -310,6 +499,20 @@
         font-size:12px
       }
 
+      .cg141-normalized{
+        color:#8de9ae;
+        font-weight:800;
+        margin-top:4px;
+        font-size:12px
+      }
+
+      .cg141-diagnostic{
+        color:#d1c480;
+        margin-top:3px;
+        font-size:11px;
+        line-height:1.35
+      }
+
       .cg141-badge{
         white-space:nowrap;
         border-radius:999px;
@@ -569,6 +772,27 @@
         const bad =
           group.mismatches.length;
 
+        const normalized =
+          group.normalizedOnly
+            ?.length ||
+          0;
+
+        const diagnostic =
+          [
+            ...new Set(
+              (
+                group.normalizedOnly ||
+                []
+              )
+                .map(
+                  item =>
+                    item.diagnostic
+                )
+                .filter(Boolean)
+            )
+          ]
+            .join(" · ");
+
         const current =
           [
             ...group.currentThemes
@@ -618,11 +842,25 @@
               ${
                 bad
                   ? `<div class="cg141-mismatch">
-                       ⚠ ${bad} question(s) à corriger
+                       ⚠ ${bad} vraie(s) discordance(s) à corriger
                      </div>`
-                  : `<div class="cg141-ok">
-                       ✓ concordance URL / thème
-                     </div>`
+
+                  : normalized
+                    ? `<div class="cg141-normalized">
+                         ✓ concordance après normalisation
+                         · ${normalized} différence(s) brute(s) neutralisée(s)
+                       </div>
+
+                       <div class="cg141-diagnostic">
+                         ${esc(
+                           diagnostic ||
+                           "différence Unicode / espacement invisible"
+                         )}
+                       </div>`
+
+                    : `<div class="cg141-ok">
+                         ✓ concordance URL / thème
+                       </div>`
               }
 
             </div>
@@ -630,7 +868,13 @@
             <span
               class="cg141-badge ${bad ? "bad" : "good"}"
             >
-              ${bad ? "Anomalie" : "OK"}
+              ${
+                bad
+                  ? "Anomalie"
+                  : normalized
+                    ? "OK normalisé"
+                    : "OK"
+              }
             </span>
 
           </div>
@@ -691,7 +935,18 @@
         rows:[],
         currentThemes:
           new Set(),
+
+        /*
+         * mismatches :
+         * vraies discordances uniquement.
+         *
+         * normalizedOnly :
+         * chaînes brutes différentes mais fonctionnellement
+         * identiques après normalisation.
+         */
         mismatches:[],
+        normalizedOnly:[],
+
         newestMs:0,
         newestCreated:null
       };
@@ -716,12 +971,34 @@
       actual
     );
 
+    /*
+     * CGWEB141 FIX2 :
+     * une différence brute ne suffit plus à déclarer
+     * une anomalie.
+     */
     if(
-      actual !== expected
+      trueThemeMismatch(
+        actual,
+        expected
+      )
     ){
+
       group.mismatches.push(
         row
       );
+
+    }else if(
+      actual !== expected
+    ){
+
+      group.normalizedOnly.push({
+        row,
+        diagnostic:
+          invisibleDiffDiagnostic(
+            actual,
+            expected
+          )
+      });
     }
 
     const ms =
@@ -908,12 +1185,33 @@
           0
         );
 
+      const normalizedQuestions =
+        groups.reduce(
+          (sum,g) =>
+            sum +
+            (
+              g.normalizedOnly
+                ?.length ||
+              0
+            ),
+          0
+        );
+
+      const normalizedSuffix =
+        normalizedQuestions
+          ? (
+              ` · ${normalizedQuestions} différence(s) `
+              + `invisible(s)/Unicode neutralisée(s)`
+            )
+          : "";
+
       if(anomalies.length){
 
         state(
           `⚠ ${groups.length} thème(s) contrôlé(s) · `
-          + `${anomalies.length} thème(s) avec anomalie · `
-          + `${badQuestions} question(s) concernée(s).`,
+          + `${anomalies.length} thème(s) avec vraie anomalie · `
+          + `${badQuestions} question(s) réellement concernée(s)`
+          + `${normalizedSuffix}.`,
           "warn"
         );
 
@@ -921,7 +1219,8 @@
 
         state(
           `✅ ${groups.length} thème(s) Quizypedia récents contrôlés · `
-          + `aucune discordance URL / thème.`,
+          + `aucune vraie discordance URL / thème`
+          + `${normalizedSuffix}.`,
           "ok"
         );
       }
@@ -954,23 +1253,81 @@
   }
 
 
+  /*
+   * ============================================================
+   * CGWEB141 FIX2 · REPAIR_SCOPE_GUARD001
+   * ============================================================
+   *
+   * Une ligne n'entre dans le plan de réparation que si :
+   * 1. son URL Quizypedia donne toujours un thème ;
+   * 2. ce thème correspond au groupe audité ;
+   * 3. le thème enregistré reste réellement différent après
+   *    normalisation.
+   *
+   * Un simple écart Unicode/espacement ne peut donc jamais être
+   * réécrit.
+   */
+  function safeRepairRows(group){
+
+    return (
+      group?.mismatches ||
+      []
+    ).filter(row => {
+
+      const expectedNow =
+        themeFromQuizypediaUrl(
+          row.url_quizypedia
+        );
+
+      if(!expectedNow){
+        return false;
+      }
+
+      if(
+        !sameTheme(
+          expectedNow,
+          group.expectedTheme
+        )
+      ){
+        return false;
+      }
+
+      return trueThemeMismatch(
+        row.theme,
+        expectedNow
+      );
+    });
+  }
+
+
   async function repairSelected(){
 
     if(busy){
       return;
     }
 
+    const selectedGroupsNow =
+      selectedGroups();
+
     const selected =
-      selectedGroups()
+      selectedGroupsNow
+        .map(group => ({
+          group,
+          rows:
+            safeRepairRows(
+              group
+            )
+        }))
         .filter(
-          group =>
-            group.mismatches.length
+          item =>
+            item.rows.length
         );
 
     if(!selected.length){
 
       state(
-        "Aucune anomalie sélectionnée.",
+        "Aucune vraie discordance sélectionnée. "
+        + "Le garde-fou de réparation n'autorise aucune écriture.",
         "warn"
       );
 
@@ -979,16 +1336,33 @@
 
     const total =
       selected.reduce(
-        (sum,group) =>
+        (sum,item) =>
           sum +
-          group.mismatches.length,
+          item.rows.length,
         0
       );
+
+    const blocked =
+      selectedGroupsNow.reduce(
+        (sum,group) =>
+          sum +
+          (
+            group.mismatches
+              ?.length ||
+            0
+          ),
+        0
+      )
+      -
+      total;
 
     const preview =
       selected
         .slice(0,8)
-        .map(group => {
+        .map(item => {
+
+          const group =
+            item.group;
 
           const actual =
             [
@@ -1001,6 +1375,7 @@
           return (
             `• ${actual}`
             + ` → ${group.expectedTheme}`
+            + ` (${item.rows.length})`
           );
         })
         .join("\n");
@@ -1018,7 +1393,13 @@
         `Corriger ${total} question(s) `
         + `dans ${selected.length} thème(s) ?\n\n`
         + `${preview}${suffix}\n\n`
-        + `Seul le champ Thème sera modifié.\n`
+        + (
+            blocked > 0
+              ? `${blocked} ligne(s) exclue(s) par le garde-fou.\n\n`
+              : ""
+          )
+        + `Seules les vraies discordances seront modifiées.\n`
+        + `Les différences Unicode/espaces sont exclues.\n`
         + `Chaque modification sera historisée.`
       );
 
@@ -1060,11 +1441,17 @@
     try{
 
       for(
-        const group of selected
+        const item of selected
       ){
 
+        const group =
+          item.group;
+
+        const rows =
+          item.rows;
+
         for(
-          const row of group.mismatches
+          const row of rows
         ){
 
           state(
@@ -1238,6 +1625,10 @@
   window.CGWEB141_API = {
     version:VERSION,
     themeFromQuizypediaUrl,
+    themeCompareKey,
+    sameTheme,
+    trueThemeMismatch,
+    invisibleDiffDiagnostic,
     scanRecent,
     repairSelected
   };

@@ -116,7 +116,7 @@ jobs:
           grep -Fq 'cgqr001.js?v=' web/public/index.html
           grep -Fq 'cgweb138.js?v=CGWEB138_FIX3_TEST_HARNESS_PRESERVE001' web/public/index.html
           grep -Fq 'cgweb140.js?v=CGWEB140_FULL_QR_EXPORT001' web/public/index.html
-          grep -Fq 'cgweb141.js?v=CGWEB141_THEME_AUDIT001' web/public/index.html
+          grep -Fq 'cgweb141.js?v=CGWEB141_FIX2_THEME_COMPARE_NORMALIZE001' web/public/index.html
           grep -Fq 'cgweb016fix2.js?v=' web/public/index.html
           grep -Fq 'cgweb016fix2.css?v=' web/public/index.html
           grep -Fq 'cgimport002Quizypedia' web/functions/index.js
@@ -236,7 +236,7 @@ jobs:
 
             curl --fail --silent --show-error --location               --header 'Cache-Control: no-cache'               "https://culturegeneralesync.web.app/?cgdeploy=${STAMP}"               -o /tmp/cg-live.html || true
 
-            if test -s /tmp/cg-live.html               && grep -Fq 'cgimport009fix4.js' /tmp/cg-live.html               && grep -Fq 'cgweb109.js' /tmp/cg-live.html               && grep -Fq 'cgimage001.js?v=CGIMAGE001_1' /tmp/cg-live.html               && grep -Fq 'cgimage002.js?v=CGIMAGE002_1' /tmp/cg-live.html               && grep -Fq 'cgimage005.js?v=CGIMAGE005_1' /tmp/cg-live.html               && grep -Fq 'cgimage006.js?v=CGIMAGE006_1' /tmp/cg-live.html               && grep -Fq 'cgimage007.js?v=CGIMAGE007_1' /tmp/cg-live.html               && grep -Fq 'cgweb138.js?v=CGWEB138_FIX3_TEST_HARNESS_PRESERVE001' /tmp/cg-live.html               && grep -Fq 'cgweb140.js?v=CGWEB140_FULL_QR_EXPORT001' /tmp/cg-live.html
+            if test -s /tmp/cg-live.html               && grep -Fq 'cgimport009fix4.js' /tmp/cg-live.html               && grep -Fq 'cgweb109.js' /tmp/cg-live.html               && grep -Fq 'cgimage001.js?v=CGIMAGE001_1' /tmp/cg-live.html               && grep -Fq 'cgimage002.js?v=CGIMAGE002_1' /tmp/cg-live.html               && grep -Fq 'cgimage005.js?v=CGIMAGE005_1' /tmp/cg-live.html               && grep -Fq 'cgimage006.js?v=CGIMAGE006_1' /tmp/cg-live.html               && grep -Fq 'cgimage007.js?v=CGIMAGE007_1' /tmp/cg-live.html               && grep -Fq 'cgweb138.js?v=CGWEB138_FIX3_TEST_HARNESS_PRESERVE001' /tmp/cg-live.html               && grep -Fq 'cgweb140.js?v=CGWEB140_FULL_QR_EXPORT001' /tmp/cg-live.html               && grep -Fq 'cgweb141.js?v=CGWEB141_FIX2_THEME_COMPARE_NORMALIZE001' /tmp/cg-live.html
             then
               if curl --fail --silent --show-error --location                 --header 'Cache-Control: no-cache'                 "https://culturegeneralesync.web.app/cgimage007.js?cgdeploy=${STAMP}"                 -o /tmp/cgimage007-live.js                 && grep -Fq 'CGIMAGE007_1' /tmp/cgimage007-live.js
               then
@@ -309,7 +309,7 @@ jobs:
 
           curl             --fail             --silent             --show-error             --location             --header 'Cache-Control: no-cache'             "https://culturegeneralesync.web.app/cgweb141.js?cgdeploy=${CG141_STAMP}"             -o /tmp/cgweb141-live.js
 
-          grep -Fq             'CGWEB141_QUIZYPEDIA_THEME_STATE_RESET001_URL_THEME_SOURCE_OF_TRUTH001_RECENT_IMPORT_AUDIT001_CREATED_AT_SORT001_THEME_MISMATCH_DETECT001_SAFE_THEME_REPAIR001'             /tmp/cgweb141-live.js
+          grep -Fq             'CGWEB141_FIX2_THEME_COMPARE_NORMALIZE001_FALSE_POSITIVE_GUARD001_INVISIBLE_DIFF_DIAGNOSTIC001_REPAIR_SCOPE_GUARD001'             /tmp/cgweb141-live.js
 
           echo "✅ CGWEB141 audit Quizypedia réellement servi"
 
