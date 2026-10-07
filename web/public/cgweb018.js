@@ -9,20 +9,133 @@ const CG18_COLUMNS="CGWEB018_COLUMNS";
 const CG18_THEME_CATALOG_SESSION="CGWEB018_THEME_CATALOG_V5";
 
 const CG18_COLS={
-  id:"ID", mega:"Mégathème", theme:"Thème", question:"Question",
-  image:"Image", missing:"Recherche image", status:"Statut", revision:"Révision", updated:"Mise à jour"
+  id:"ID",
+  created:"Création",
+  mega:"Mégathème",
+  theme:"Thème",
+  question:"Question",
+  image:"Image",
+  missing:"Recherche image",
+  status:"Statut",
+  revision:"Révision",
+  updated:"Mise à jour"
 };
-const CG18_DEFAULT=["id","mega","theme","question","image","missing","status","revision"];
+
+const CG18_DEFAULT=[
+  "id",
+  "created",
+  "mega",
+  "theme",
+  "question",
+  "image",
+  "missing",
+  "status",
+  "revision"
+];
+
+const CG18_CREATED_COLUMN_ONCE =
+  "CGWEB141_CREATED_COLUMN_ONCE";
 const CG18={stack:[null],page:0,next:null,rows:[],total:0,selected:new Set(),columns:new Set(CG18_DEFAULT),classic:false};
 
 function cg18LoadPrefs(){
-  try{const a=JSON.parse(sessionStorage.getItem(CG18_SELECTION)||"[]");CG18.selected=new Set(Array.isArray(a)?a.map(String):[])}catch(_){}
-  try{const a=JSON.parse(localStorage.getItem(CG18_COLUMNS)||"[]");if(Array.isArray(a)&&a.length)CG18.columns=new Set(a)}catch(_){}
+
+  try{
+
+    const a=
+      JSON.parse(
+        sessionStorage.getItem(
+          CG18_SELECTION
+        ) || "[]"
+      );
+
+    CG18.selected=
+      new Set(
+        Array.isArray(a)
+          ? a.map(String)
+          : []
+      );
+
+  }catch(_){}
+
+
+  try{
+
+    const a=
+      JSON.parse(
+        localStorage.getItem(
+          CG18_COLUMNS
+        ) || "[]"
+      );
+
+    if(
+      Array.isArray(a) &&
+      a.length
+    ){
+      CG18.columns=
+        new Set(a);
+    }
+
+  }catch(_){}
+
+
+  /*
+   * Une fois lors du passage à CGWEB141,
+   * la colonne Création devient visible.
+   *
+   * Ensuite la préférence utilisateur reprend la main.
+   */
+  try{
+
+    if(
+      localStorage.getItem(
+        CG18_CREATED_COLUMN_ONCE
+      ) !== "1"
+    ){
+
+      CG18.columns.add(
+        "created"
+      );
+
+      localStorage.setItem(
+        CG18_CREATED_COLUMN_ONCE,
+        "1"
+      );
+
+      cg18SaveColumns();
+    }
+
+  }catch(_){}
 }
 function cg18SaveSelection(){try{sessionStorage.setItem(CG18_SELECTION,JSON.stringify([...CG18.selected]))}catch(_){}}
 function cg18SaveColumns(){try{localStorage.setItem(CG18_COLUMNS,JSON.stringify([...CG18.columns]))}catch(_){}}
 function cg18Status(text,type=""){const e=cg18$("cg18Status");if(e){e.textContent=text;e.className=`cg18-status${type?" cg18-"+type:""}`}}
 function cg18Date(v){if(!v)return"—";try{const d=typeof v?.toDate==="function"?v.toDate():v?.seconds?new Date(v.seconds*1000):new Date(v);return Number.isNaN(d.getTime())?"—":d.toLocaleDateString("fr-FR")}catch(_){return"—"}}
+function cg18DateTime(v){
+  if(!v)return"—";
+
+  try{
+
+    const d=
+      typeof v?.toDate==="function"
+        ? v.toDate()
+        : v?.seconds
+          ? new Date(
+              v.seconds * 1000
+            )
+          : new Date(v);
+
+    return Number.isNaN(
+      d.getTime()
+    )
+      ? "—"
+      : d.toLocaleString(
+          "fr-FR"
+        );
+
+  }catch(_){
+    return"—";
+  }
+}
 function cg18ImageLabel(r){const p=String(r.image_file||"").trim();if(!p)return"—";return String(r.image_origin||"")==="firebase_storage"||p.startsWith("users/")?"Cloud":"Historique"}
 function cg18Filters(){return{
   megatheme:"",
@@ -41,6 +154,7 @@ function cg18UpdateSelection(){
 
 function cg18Cell(key,r){
   if(key==="id")return `<code>#${cg18Esc(r.original_id??r.id)}</code>`;
+  if(key==="created")return cg18Esc(cg18DateTime(r.cg_created_at));
   if(key==="mega")return cg18Esc(r.megatheme||"");
   if(key==="theme")return cg18Esc(r.theme||"");
   if(key==="question")return `<div class="cg18-question">${cg18Esc(r.question||"")}</div>`;
@@ -166,7 +280,7 @@ function cg18Init(){
     <div class="cg18-filters cg18-filters-compact">
       <label class="cg18-filter-search">La fiche contient<input id="cg18Prefix" placeholder="Question, détail, thème ou mégathème…"></label>
       <label class="cg18-filter-image">Image<select id="cg18Image"><option value="">Toutes</option><option value="1">Avec image</option><option value="0">Sans image</option></select></label>
-      <label class="cg18-filter-sort">Tri<select id="cg18Sort"><option value="id">ID</option><option value="question">Question</option><option value="megatheme">Mégathème</option><option value="theme">Thème</option><option value="status">Statut</option></select></label>
+      <label class="cg18-filter-sort">Tri<select id="cg18Sort"><option value="id">ID</option><option value="created">Date de création</option><option value="question">Question</option><option value="megatheme">Mégathème</option><option value="theme">Thème</option><option value="status">Statut</option></select></label>
       <label class="cg18-filter-direction">Sens<select id="cg18Direction"><option value="asc">Croissant</option><option value="desc">Décroissant</option></select></label>
       <label class="cg18-filter-page">Par page<select id="cg18PageSize"><option>20</option><option selected>50</option><option>100</option></select></label>
     </div>

@@ -107,6 +107,7 @@ jobs:
           test -f web/public/cgqr001.js
           test -f web/public/cgweb138.js
           test -f web/public/cgweb140.js
+          test -f web/public/cgweb141.js
           test -f web/functions/cgweb140.js
           test -f web/functions/cgweb029.js
           test -f web/functions/cgweb025.js
@@ -115,6 +116,7 @@ jobs:
           grep -Fq 'cgqr001.js?v=' web/public/index.html
           grep -Fq 'cgweb138.js?v=CGWEB138_FIX3_TEST_HARNESS_PRESERVE001' web/public/index.html
           grep -Fq 'cgweb140.js?v=CGWEB140_FULL_QR_EXPORT001' web/public/index.html
+          grep -Fq 'cgweb141.js?v=CGWEB141_THEME_AUDIT001' web/public/index.html
           grep -Fq 'cgweb016fix2.js?v=' web/public/index.html
           grep -Fq 'cgweb016fix2.css?v=' web/public/index.html
           grep -Fq 'cgimport002Quizypedia' web/functions/index.js
@@ -191,6 +193,7 @@ jobs:
           node --check web/public/cgqr001.js
           node --check web/public/cgweb138.js
           node --check web/public/cgweb140.js
+          node --check web/public/cgweb141.js
           node --check web/functions/cgweb140.js
           node --check web/functions/cgweb029.js
           node --check web/public/cgweb016fix2.js
@@ -300,6 +303,15 @@ jobs:
           echo "✅ CGWEB140 frontend réellement servi"
           echo "✅ CGWEB140 endpoint paginé réellement servi"
           echo "✅ CGWEB140 endpoint protégé par Firebase Auth"
+
+
+          CG141_STAMP="$(date +%s)"
+
+          curl             --fail             --silent             --show-error             --location             --header 'Cache-Control: no-cache'             "https://culturegeneralesync.web.app/cgweb141.js?cgdeploy=${CG141_STAMP}"             -o /tmp/cgweb141-live.js
+
+          grep -Fq             'CGWEB141_QUIZYPEDIA_THEME_STATE_RESET001_URL_THEME_SOURCE_OF_TRUTH001_RECENT_IMPORT_AUDIT001_CREATED_AT_SORT001_THEME_MISMATCH_DETECT001_SAFE_THEME_REPAIR001'             /tmp/cgweb141-live.js
+
+          echo "✅ CGWEB141 audit Quizypedia réellement servi"
 
           echo "✅ Quizypedia + CGIMAGE001/2/5/6/7 sont servis par culturegeneralesync.web.app"
           echo "✅ CGWEB138 FIX3 est réellement servi par Hosting"

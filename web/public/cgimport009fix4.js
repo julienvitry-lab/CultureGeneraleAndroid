@@ -61,6 +61,70 @@ function parseQuizypediaUrl(raw){
     };
   }catch{return null;}
 }
+
+/*
+ * ============================================================
+ * CGWEB141
+ * URL_THEME_SOURCE_OF_TRUTH001
+ * ============================================================
+ *
+ * Le thème est déterminé par :
+ *
+ * /quiz/<THEME>/...
+ *
+ * cgimp2Theme n'est plus une autorité.
+ */
+function themeFromQuizypediaUrl(raw){
+
+  return String(
+    parseQuizypediaUrl(raw)?.theme ||
+    ''
+  ).trim();
+}
+
+
+/*
+ * ============================================================
+ * CGWEB141
+ * QUIZYPEDIA_THEME_STATE_RESET001
+ * ============================================================
+ *
+ * Chaque nouvelle URL repart d'un état vierge.
+ *
+ * Le mégathème choisi manuellement reste conservé.
+ */
+function resetQuizypediaStateForUrl(
+  raw,
+  parsed=null
+){
+
+  const info=
+    parsed ||
+    parseQuizypediaUrl(raw);
+
+  extracted=null;
+  drafts=[];
+  strictComplete=false;
+  batchMode=false;
+  questionnaires=[];
+  batchBusy=false;
+
+  const hiddenTheme=
+    $('cgimp2Theme');
+
+  if(hiddenTheme){
+
+    hiddenTheme.value=
+      String(
+        info?.theme ||
+        ''
+      ).trim();
+  }
+
+  render();
+  renderBatch();
+  updateImportAvailability();
+}
 async function apiCall(body){
   const user=currentUser();
   if(!user)throw new Error('Connecte-toi d’abord à Firebase.');
@@ -83,17 +147,37 @@ function sourceToDrafts(data,questionnaireMeta=null){
   const mega =
     $('cgimp2Mega').value.trim();
 
-  const theme =
-    $('cgimp2Theme').value.trim() ||
-    data.theme ||
-    '';
-
   const sourceUrl =
     canonicalUrl(
       data.effectiveUrl ||
       data.requestedUrl ||
+      $('cgimp2Url')?.value ||
       ''
     );
+
+  /*
+   * CGWEB141 :
+   * l'URL Quizypedia est la source de vérité.
+   */
+  const theme =
+    themeFromQuizypediaUrl(
+      sourceUrl
+    ) ||
+    themeFromQuizypediaUrl(
+      $('cgimp2Url')?.value ||
+      ''
+    ) ||
+    String(
+      data.theme ||
+      ''
+    ).trim();
+
+  const hiddenTheme =
+    $('cgimp2Theme');
+
+  if(hiddenTheme){
+    hiddenTheme.value=theme;
+  }
 
 
   /*
@@ -193,7 +277,14 @@ function sourceToDrafts(data,questionnaireMeta=null){
 
 function applyClassification(){
   const mega=$('cgimp2Mega').value.trim();
-  const theme=$('cgimp2Theme').value.trim()||extracted?.theme||'';
+  const theme=
+    themeFromQuizypediaUrl(
+      $('cgimp2Url')?.value ||
+      ''
+    ) ||
+    $('cgimp2Theme').value.trim() ||
+    extracted?.theme ||
+    '';
   drafts.forEach(q=>{q.megatheme=mega;q.theme=theme;});
   render();
   status('Mégathème / thème appliqués. La question et sa bonne réponse Quizypedia sont conservées.','ok');
@@ -738,7 +829,16 @@ async function captureDirect(url){
     batchMode=false;
     questionnaires=[];
     strictComplete=Boolean(data.strictComplete);
-    if(!$('cgimp2Theme').value.trim())$('cgimp2Theme').value=data.theme||'';
+    $('cgimp2Theme').value =
+      themeFromQuizypediaUrl(
+        data.effectiveUrl ||
+        data.requestedUrl ||
+        url
+      ) ||
+      String(
+        data.theme ||
+        ''
+      ).trim();
     drafts=sourceToDrafts(data);
     render();
     updateImportAvailability();
@@ -784,7 +884,16 @@ async function discoverTheme(url){
     batchMode=true;
     drafts=[];
     strictComplete=false;
-    if(!$('cgimp2Theme').value.trim())$('cgimp2Theme').value=data.theme||'';
+    $('cgimp2Theme').value =
+      themeFromQuizypediaUrl(
+        data.effectiveUrl ||
+        data.requestedUrl ||
+        url
+      ) ||
+      String(
+        data.theme ||
+        ''
+      ).trim();
 
     questionnaires=(data.questionnaires||[]).map((q,i)=>({
       id:i+1,
@@ -839,6 +948,15 @@ async function analyze(){
     );
     return;
   }
+
+  /*
+   * CGWEB141 :
+   * aucun état de l'import précédent ne survit.
+   */
+  resetQuizypediaStateForUrl(
+    url,
+    parsed
+  );
 
   if(parsed.kind==='theme')await discoverTheme(url);
   else await captureDirect(url);
@@ -1008,6 +1126,9 @@ async function importSelected(arg={}){
 
         answer:
           q.answer,
+
+        question_origin:
+          'quizypedia',
 
         url_quizypedia:
           q.url_quizypedia,
@@ -1390,9 +1511,13 @@ function install(){
         ?.trim()||'';
 
     const theme=
+      themeFromQuizypediaUrl(
+        $('cgimp2Url')?.value ||
+        ''
+      ) ||
       $('cgimp2Theme')?.value
-        ?.trim()||
-      extracted?.theme||
+        ?.trim() ||
+      extracted?.theme ||
       '';
 
     drafts.forEach(q=>{
@@ -1402,6 +1527,41 @@ function install(){
 
     render();
   };
+
+  const cg141SyncThemeFromUrl=()=>{
+
+    const raw=
+      $('cgimp2Url')
+        ?.value
+        ?.trim() ||
+      '';
+
+    const hidden=
+      $('cgimp2Theme');
+
+    if(hidden){
+
+      hidden.value=
+        themeFromQuizypediaUrl(
+          raw
+        );
+    }
+  };
+
+
+  $('cgimp2Url')
+    ?.addEventListener(
+      'input',
+      cg141SyncThemeFromUrl
+    );
+
+
+  $('cgimp2Url')
+    ?.addEventListener(
+      'change',
+      cg141SyncThemeFromUrl
+    );
+
 
   $('cgimp2Mega')
     ?.addEventListener(

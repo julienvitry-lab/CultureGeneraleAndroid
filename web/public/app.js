@@ -124,6 +124,114 @@ window.CGWEB001 = {
     return snap.exists() ? { id: snap.id, ...snap.data() } : null;
   },
 
+  /*
+   * CGWEB141 · RECENT_IMPORT_AUDIT001
+   *
+   * Pas de count().
+   * Pas de scan automatique.
+   * 100 documents maximum par page.
+   */
+  listRecentCreatedPage: async ({
+    cursor = null,
+    pageSize = 100
+  } = {}) => {
+
+    const user =
+      auth.currentUser;
+
+    if (!user) {
+      throw new Error(
+        "Utilisateur Firebase non connecté."
+      );
+    }
+
+    const size =
+      Math.max(
+        1,
+        Math.min(
+          Number(pageSize) || 100,
+          100
+        )
+      );
+
+    const ref =
+      collection(
+        db,
+        "users",
+        user.uid,
+        "questions"
+      );
+
+    const parts = [
+      orderBy(
+        "cg_created_at",
+        "desc"
+      ),
+      orderBy(
+        documentId(),
+        "desc"
+      )
+    ];
+
+    if (
+      cursor?.value &&
+      cursor?.id
+    ) {
+
+      parts.push(
+        startAfter(
+          cursor.value,
+          String(cursor.id)
+        )
+      );
+    }
+
+    parts.push(
+      limit(size)
+    );
+
+    const snap =
+      await getDocs(
+        query(
+          ref,
+          ...parts
+        )
+      );
+
+    const items =
+      snap.docs.map(
+        d => ({
+          id:d.id,
+          ...d.data()
+        })
+      );
+
+    let nextCursor =
+      null;
+
+    if (snap.docs.length) {
+
+      const last =
+        snap.docs[
+          snap.docs.length - 1
+        ];
+
+      nextCursor = {
+        id:last.id,
+        value:
+          last.data()
+            ?.cg_created_at ||
+          null
+      };
+    }
+
+    return {
+      items,
+      nextCursor,
+      size:snap.size
+    };
+  },
+
   queryQuestionsPage: async ({
     cursor = null,
     pageSize = 20,
@@ -165,7 +273,8 @@ window.CGWEB001 = {
       question: "question",
       megatheme: "megatheme",
       theme: "theme",
-      status: "status"
+      status: "status",
+      created: "cg_created_at"
     };
     const primary = fieldMap[effectiveSort] || documentId();
 
@@ -189,10 +298,29 @@ window.CGWEB001 = {
     const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     let nextCursor = null;
     if (snap.docs.length) {
-      const last = snap.docs[snap.docs.length - 1];
-      nextCursor = effectiveSort === "id"
-        ? { id: last.id }
-        : { id: last.id, value: last.data()?.[effectiveSort] ?? "" };
+
+      const last =
+        snap.docs[
+          snap.docs.length - 1
+        ];
+
+      const cursorField =
+        effectiveSort === "created"
+          ? "cg_created_at"
+          : effectiveSort;
+
+      nextCursor =
+        effectiveSort === "id"
+          ? {
+              id:last.id
+            }
+          : {
+              id:last.id,
+              value:
+                last.data()
+                  ?.[cursorField] ??
+                ""
+            };
     }
 
     return {
