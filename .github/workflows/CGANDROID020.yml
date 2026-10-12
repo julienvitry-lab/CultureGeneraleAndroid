@@ -1,4 +1,4 @@
-name: CGANDROID019 - Universal APK
+name: CGANDROID020 - Universal APK
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ on:
       - "gradle.properties"
       - "gradle/**"
       - "gradlew"
-      - ".github/workflows/CGANDROID019.yml"
+      - ".github/workflows/CGANDROID020.yml"
 
 permissions:
   contents: read
@@ -58,11 +58,11 @@ jobs:
             tablet/build.gradle
 
           grep -Fq \
-            "versionCode 965" \
+            "versionCode 966" \
             tablet/build.gradle
 
           grep -Fq \
-            "versionName '9.6.5-cgandroid019-universal'" \
+            "versionName '9.6.6-cgandroid020-universal'" \
             tablet/build.gradle
 
           grep -Fq \
@@ -109,58 +109,51 @@ jobs:
 
           echo "✓ PHONE/TABLET automatique"
 
-      - name: CGANDROID019 feature guards
+      - name: CGANDROID020 feature guards
         run: |
           set -euo pipefail
 
           MAIN="tablet/src/main/java/fr/culturegenerale/android/tablet/TabletMainActivity.java"
           ENGINE="tablet/src/main/java/fr/culturegenerale/android/tablet/CgLocalEngine.java"
 
-          grep -Fq 'GLOBAL_HISTORY_STATS001' "$MAIN"
-          grep -Fq 'GLOBAL_HISTORY_STATS001' "$ENGINE"
+          grep -Fq 'AVAILABLE_COUNTS_LOCAL_FIRST001' "$MAIN"
+          grep -Fq 'UNBOUNDED_SESSION_REWIND001' "$MAIN"
 
-          grep -Fq 'SYNCED_EXCLUSIONS001' "$MAIN"
-          grep -Fq 'SYNCED_EXCLUSIONS001' "$ENGINE"
+          grep -Fq 'TRANSACTIONAL_ATTEMPT_ROLLBACK001' "$MAIN"
+          grep -Fq 'TRANSACTIONAL_ATTEMPT_ROLLBACK001' "$ENGINE"
 
-          grep -Fq 'EXCLUSION_DIRECTORY001' "$MAIN"
+          grep -Fq 'LEARNING_ROLLBACK001' "$ENGINE"
 
-          grep -Fq 'PROBLEM_PERSIST001' "$MAIN"
-          grep -Fq 'PROBLEM_PERSIST001' "$ENGINE"
+          grep -Fq 'CLOUD_HISTORY_RETRACT001' "$MAIN"
 
-          grep -Fq 'AVAILABLE_COUNTS001' "$MAIN"
-          grep -Fq 'AVAILABLE_COUNTS001' "$ENGINE"
+          grep -Fq 'COMPACT_HISTORY_LIST001' "$MAIN"
+          grep -Fq 'RICH_HISTORY_DETAIL001' "$MAIN"
+          grep -Fq 'HISTORY_IMAGE001' "$MAIN"
 
-          grep -Fq 'SINGLE_STEP_BACK001' "$MAIN"
+          grep -Fq 'EXCLUSION_RESTORE001' "$MAIN"
+          grep -Fq 'EXCLUSION_STATE_SYNC001' "$MAIN"
+          grep -Fq 'EXCLUSION_STATE_SYNC001' "$ENGINE"
 
-          grep -Fq \
-            'previousDisplayedQuestion' \
-            "$MAIN"
+          grep -Fq 'rollbackAttempt(' "$ENGINE"
+          grep -Fq 'rollbackAnswer(' "$MAIN"
+          grep -Fq 'retractHistoryAttempt(' "$MAIN"
 
-          grep -Fq \
-            'globalHistoryStats()' \
-            "$ENGINE"
+          grep -Fq 'state",' "$MAIN"
+          grep -Fq '"retracted"' "$MAIN"
 
-          grep -Fq \
-            'syncRemoteFlags(' \
-            "$ENGINE"
-
-          grep -Fq \
-            'availableCounts(' \
-            "$ENGINE"
-
-          grep -Fq \
-            'flags.isProblem(q)' \
-            "$ENGINE"
-
-          if grep -Fq \
-            'CGANDROID014 · MULTI_STEP_REWIND001' \
-            "$MAIN"
+          if grep -Fq 'previousDisplayedQuestion' "$MAIN"
           then
-            echo "❌ ancienne logique MULTI_STEP_REWIND active"
+            echo "❌ ancien rewind CGANDROID019 encore actif"
             exit 40
           fi
 
-          echo "✓ CGANDROID019 guards OK"
+          if grep -Fq 'Vous êtes déjà revenu d’une question' "$MAIN"
+          then
+            echo "❌ verrou single-step encore actif"
+            exit 41
+          fi
+
+          echo "✓ CGANDROID020 feature guards OK"
 
       - name: COMPILE_VERIFY001
         run: |
@@ -267,11 +260,11 @@ jobs:
             --ks-key-alias "$ANDROID_KEY_ALIAS" \
             --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
             --key-pass env:ANDROID_KEY_PASSWORD \
-            --out CultureGenerale-Universelle-CGANDROID019.apk \
+            --out CultureGenerale-Universelle-CGANDROID020.apk \
             universal-aligned-unsigned.apk
 
           test -s \
-            CultureGenerale-Universelle-CGANDROID019.apk
+            CultureGenerale-Universelle-CGANDROID020.apk
 
           echo "✓ zipalign + SIGN001"
 
@@ -279,7 +272,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          APK="CultureGenerale-Universelle-CGANDROID019.apk"
+          APK="CultureGenerale-Universelle-CGANDROID020.apk"
 
           APKSIGNER="$(
             find "$ANDROID_HOME/build-tools" \
@@ -328,7 +321,7 @@ jobs:
             universal-badging.txt
 
           grep -Fq \
-            "versionCode='965'" \
+            "versionCode='966'" \
             universal-badging.txt
 
           grep -Fq \
@@ -340,14 +333,14 @@ jobs:
             | tee universal-sha256.txt
 
           {
-            echo "CGANDROID019"
+            echo "CGANDROID020"
             echo "artifact=universal"
             echo "source_module=tablet-modern"
             echo "legacy_module=retired"
             echo "applicationId=fr.culturegenerale.android"
             echo "launcher=fr.culturegenerale.android.tablet.TabletMainActivity"
-            echo "versionCode=964"
-            echo "versionName=9.6.5-cgandroid019-universal"
+            echo "versionCode=966"
+            echo "versionName=9.6.6-cgandroid020-universal"
             echo "phone=<600dp portrait"
             echo "tablet=>=600dp landscape"
             echo "signing=SIGN001"
@@ -359,9 +352,9 @@ jobs:
       - name: Publier APK universel
         uses: actions/upload-artifact@v4
         with:
-          name: CultureGenerale-Universelle-CGANDROID019
+          name: CultureGenerale-Universelle-CGANDROID020
           path: |
-            CultureGenerale-Universelle-CGANDROID019.apk
+            CultureGenerale-Universelle-CGANDROID020.apk
             universal-sha256.txt
             universal-signature.txt
             universal-badging.txt

@@ -168,32 +168,25 @@ public class TabletMainActivity extends Activity {
     private boolean answering = false;
     private String screen = "home";
 
-    // CGANDROID019 · SINGLE_STEP_BACK001
-    private CgQuestion lastAnsweredQuestion = null;
-    private boolean lastAnswerCorrect = false;
-    private String lastAttemptId = "";
-    private int lastAttemptRevision = 0;
-    private CgLocalAttempt lastAnsweredAttempt = null;
-
-    private boolean correctingPrevious = false;
-    private CgQuestion correctionResumeQuestion = null;
-
     /*
-     * Navigation réelle par QUESTION AFFICHÉE.
+     * ================================================================
+     * CGANDROID020 · UNBOUNDED_SESSION_REWIND001
+     * ================================================================
      *
-     * previousDisplayedQuestion est strictement l'écran Question
-     * affiché immédiatement avant l'écran courant.
+     * Aucun plafond arbitraire : le joueur peut revenir jusqu'au
+     * début de la session courante.
      *
-     * Un clic ne peut donc jamais sauter plusieurs questions,
-     * même si certaines questions n'ont généré aucun attempt
-     * (Problème / exclusion).
+     * Chaque entrée correspond à une QUESTION RÉELLEMENT AFFICHÉE,
+     * et non simplement à un attempt.
      */
-    private CgQuestion previousDisplayedQuestion = null;
-    private CgLocalAttempt previousDisplayedAttempt = null;
+    private final ArrayList<CgSessionTrailEntry> sessionTrail =
+            new ArrayList<>();
 
-    private CgQuestion rewindAnchorQuestion = null;
-    private CgLocalAttempt rewindTargetAttempt = null;
-    private boolean rewindViewOnly = false;
+    private int sessionTrailIndex =
+            -1;
+
+    private boolean sessionRewinding =
+            false;
 
     // CGANDROID011 · NEXT_GAME_ALL_DOMAIN_WARMUP001
     private static final long NEXT_GAME_WARM_TTL_MS = 30L * 60L * 1000L;
@@ -1583,15 +1576,21 @@ public class TabletMainActivity extends Activity {
     }
 
 
+
+    /*
+     * ================================================================
+     * CGANDROID020 · COMPACT_HISTORY_LIST001
+     * ================================================================
+     *
+     * La liste ne montre QUE :
+     * - horodatage + mégathème
+     * - thème
+     *
+     * Le résultat, la question et la réponse sont réservés au détail.
+     */
     private void addHistoryRow(
             CgHistoryItem item
     ) {
-
-        int color =
-                item.correct
-                        ? GREEN
-                        : RED;
-
 
         LinearLayout card =
                 new LinearLayout(this);
@@ -1602,16 +1601,16 @@ public class TabletMainActivity extends Activity {
 
         card.setPadding(
                 dp(18),
-                dp(14),
+                dp(13),
                 dp(18),
-                dp(14)
+                dp(13)
         );
 
         card.setBackground(
                 roundedStroke(
                         DARK,
                         14,
-                        color,
+                        GREY,
                         1
                 )
         );
@@ -1627,15 +1626,16 @@ public class TabletMainActivity extends Activity {
                 !item.domain.trim().isEmpty()
         ) {
 
-            top += "  ·  "
-                    + item.domain;
+            top +=
+                    "  ·  "
+                            + item.domain.trim();
         }
 
 
         TextView meta =
                 text(
                         top,
-                        13,
+                        14,
                         LIGHT_GREY,
                         Gravity.LEFT
                 );
@@ -1649,121 +1649,33 @@ public class TabletMainActivity extends Activity {
         );
 
 
-        if (
-                item.theme != null &&
-                !item.theme.trim().isEmpty()
-        ) {
-
-            TextView theme =
-                    text(
-                            item.theme,
-                            14,
-                            YELLOW,
-                            Gravity.LEFT
-                    );
-
-            LinearLayout.LayoutParams themeLp =
-                    new LinearLayout.LayoutParams(
-                            -1,
-                            -2
-                    );
-
-            themeLp.setMargins(
-                    0,
-                    dp(4),
-                    0,
-                    0
-            );
-
-            card.addView(
-                    theme,
-                    themeLp
-            );
-        }
-
-
-        TextView question =
+        TextView theme =
                 text(
                         safeHistoryText(
-                                item.question,
-                                "Question indisponible"
+                                item.theme,
+                                "(sans thème)"
                         ),
-                        18,
-                        Color.WHITE,
+                        15,
+                        YELLOW,
                         Gravity.LEFT
                 );
 
-        LinearLayout.LayoutParams questionLp =
+        LinearLayout.LayoutParams themeLp =
                 new LinearLayout.LayoutParams(
                         -1,
                         -2
                 );
 
-        questionLp.setMargins(
+        themeLp.setMargins(
                 0,
-                dp(9),
-                0,
-                dp(8)
-        );
-
-        card.addView(
-                question,
-                questionLp
-        );
-
-
-        TextView answer =
-                text(
-                        "Réponse : "
-                                + safeHistoryText(
-                                        item.correctAnswer,
-                                        "—"
-                                ),
-                        16,
-                        Color.WHITE,
-                        Gravity.LEFT
-                );
-
-        card.addView(
-                answer,
-                new LinearLayout.LayoutParams(
-                        -1,
-                        -2
-                )
-        );
-
-
-        TextView result =
-                text(
-                        item.correct
-                                ? "✓ J’avais bon"
-                                : "✕ J’avais faux",
-                        16,
-                        color,
-                        Gravity.LEFT
-                );
-
-        result.setTypeface(
-                appFont,
-                Typeface.BOLD
-        );
-
-        LinearLayout.LayoutParams resultLp =
-                new LinearLayout.LayoutParams(
-                        -1,
-                        -2
-                );
-
-        resultLp.setMargins(
-                0,
-                dp(8),
+                dp(5),
                 0,
                 0
         );
 
         card.addView(
-                result,
-                resultLp
+                theme,
+                themeLp
         );
 
 
@@ -1777,7 +1689,7 @@ public class TabletMainActivity extends Activity {
                 0,
                 0,
                 0,
-                dp(10)
+                dp(9)
         );
 
         root.addView(
@@ -1785,19 +1697,25 @@ public class TabletMainActivity extends Activity {
                 cardLp
         );
 
-
         card.setOnClickListener(
-                v -> showHistoryDetail(item)
+                v -> showHistoryDetail(
+                        item
+                )
         );
     }
 
 
-    // CGANDROID004 FIX1 · JAVA_STRING_ESCAPE001
+    /*
+     * ================================================================
+     * CGANDROID020 · RICH_HISTORY_DETAIL001 / HISTORY_IMAGE001
+     * ================================================================
+     */
     private void showHistoryDetail(
             CgHistoryItem selected
     ) {
 
-        screen = "history_detail";
+        screen =
+                "history_detail";
 
         baseScreen();
 
@@ -1807,11 +1725,29 @@ public class TabletMainActivity extends Activity {
                 Color.WHITE
         );
 
-        addSub(
+
+        String subtitle =
                 safeHistoryText(
                         selected.domain,
                         ""
-                ),
+                );
+
+        String theme =
+                safeHistoryText(
+                        selected.theme,
+                        ""
+                );
+
+        if (!theme.isEmpty()) {
+
+            subtitle +=
+                    subtitle.isEmpty()
+                            ? theme
+                            : " · " + theme;
+        }
+
+        addSub(
+                subtitle,
                 15,
                 LIGHT_GREY
         );
@@ -1845,13 +1781,34 @@ public class TabletMainActivity extends Activity {
         );
 
 
+        /*
+         * Image du catalogue, lorsque la question en possède une.
+         */
+        CgQuestion catalogQuestion =
+                localEngine == null
+                        ? null
+                        : localEngine.questionById(
+                                selected.questionId
+                        );
+
+        if (
+                catalogQuestion != null &&
+                catalogQuestion.hasImage()
+        ) {
+
+            addHistoryImage(
+                    catalogQuestion
+            );
+        }
+
+
         TextView answer =
                 cardText(
                         "Réponse\n\n"
                                 + safeHistoryText(
-                                        selected.correctAnswer,
-                                        "—"
-                                ),
+                                selected.correctAnswer,
+                                "—"
+                        ),
                         22,
                         DARK,
                         Color.WHITE
@@ -1868,21 +1825,61 @@ public class TabletMainActivity extends Activity {
                 dp(20),
                 0,
                 dp(20),
-                dp(20)
+                dp(12)
         );
 
 
-        int attempts = 0;
-        int success = 0;
-        int failures = 0;
+        int lastColor =
+                selected.correct
+                        ? GREEN
+                        : RED;
+
+        TextView lastResult =
+                cardText(
+                        selected.correct
+                                ? "Dernier passage : ✓ Réussite"
+                                : "Dernier passage : ✕ Échec",
+                        17,
+                        DARK,
+                        lastColor
+                );
+
+        lastResult.setGravity(
+                Gravity.CENTER
+        );
+
+        add(
+                lastResult,
+                -1,
+                -2,
+                dp(20),
+                0,
+                dp(20),
+                dp(18)
+        );
 
 
-        for (CgHistoryItem item : historyItems) {
+        int attempts =
+                0;
 
-            if (!sameHistoryQuestion(
-                    selected,
-                    item
-            )) {
+        int success =
+                0;
+
+        int failures =
+                0;
+
+
+        for (
+                CgHistoryItem item
+                        : historyItems
+        ) {
+
+            if (
+                    !sameHistoryQuestion(
+                            selected,
+                            item
+                    )
+            ) {
                 continue;
             }
 
@@ -1931,20 +1928,13 @@ public class TabletMainActivity extends Activity {
                 historyStatLp()
         );
 
-
-        String last =
-                selected.correct
-                        ? "✓"
-                        : "✕";
-
-
         stats.addView(
                 historyStatCard(
                         "Dernière",
-                        last,
                         selected.correct
-                                ? GREEN
-                                : RED
+                                ? "✓"
+                                : "✕",
+                        lastColor
                 ),
                 historyStatLp()
         );
@@ -1988,21 +1978,24 @@ public class TabletMainActivity extends Activity {
         );
 
 
-        for (CgHistoryItem item : historyItems) {
+        for (
+                CgHistoryItem item
+                        : historyItems
+        ) {
 
-            if (!sameHistoryQuestion(
-                    selected,
-                    item
-            )) {
+            if (
+                    !sameHistoryQuestion(
+                            selected,
+                            item
+                    )
+            ) {
                 continue;
             }
-
 
             int resultColor =
                     item.correct
                             ? GREEN
                             : RED;
-
 
             TextView attempt =
                     text(
@@ -2063,6 +2056,137 @@ public class TabletMainActivity extends Activity {
         );
     }
 
+
+    private void addHistoryImage(
+            CgQuestion q
+    ) {
+
+        if (
+                q == null ||
+                !q.hasImage()
+        ) {
+            return;
+        }
+
+        ensureImageCacheForCurrentUser();
+
+        FrameLayout area =
+                new FrameLayout(this);
+
+        area.setBackgroundColor(
+                Color.BLACK
+        );
+
+        TextView loading =
+                text(
+                        "Chargement de l’image…",
+                        15,
+                        LIGHT_GREY,
+                        Gravity.CENTER
+                );
+
+        area.addView(
+                loading,
+                new FrameLayout.LayoutParams(
+                        -1,
+                        -1,
+                        Gravity.CENTER
+                )
+        );
+
+        add(
+                area,
+                -1,
+                dp(
+                        isPhoneProfile()
+                                ? 220
+                                : 270
+                ),
+                dp(20),
+                0,
+                dp(20),
+                dp(12)
+        );
+
+
+        io.submit(() -> {
+
+            boolean ready =
+                    prepareImageSync(
+                            q.imageFile
+                    );
+
+            main.post(() -> {
+
+                if (
+                        !"history_detail".equals(
+                                screen
+                        )
+                ) {
+                    return;
+                }
+
+                if (ready) {
+
+                    loadImageAsync(
+                            q,
+                            area
+                    );
+
+                } else {
+
+                    area.removeAllViews();
+
+                    TextView missing =
+                            text(
+                                    "Image indisponible",
+                                    15,
+                                    LIGHT_GREY,
+                                    Gravity.CENTER
+                            );
+
+                    area.addView(
+                            missing,
+                            new FrameLayout.LayoutParams(
+                                    -1,
+                                    -1,
+                                    Gravity.CENTER
+                            )
+                    );
+                }
+            });
+        });
+    }
+
+
+    private void ensureImageCacheForCurrentUser() {
+
+        String uid =
+                auth.uid();
+
+        if (
+                imageDiskCache == null ||
+                !uid.equals(
+                        imageCacheUid
+                )
+        ) {
+
+            synchronized (
+                    imageCache
+            ) {
+                imageCache.clear();
+            }
+
+            imageDiskCache =
+                    new CgImageDiskCache(
+                            this,
+                            uid
+                    );
+
+            imageCacheUid =
+                    uid;
+        }
+    }
 
     private boolean sameHistoryQuestion(
             CgHistoryItem a,
@@ -2459,11 +2583,15 @@ public class TabletMainActivity extends Activity {
         );
 
         /*
-         * Le comptage peut parcourir un grand catalogue :
-         * jamais sur le thread UI.
+         * ============================================================
+         * CGANDROID020 · AVAILABLE_COUNTS_LOCAL_FIRST001
+         * ============================================================
          *
-         * On profite également de cette phase pour récupérer
-         * les exclusions / problèmes créés sur l'autre appareil.
+         * Le réseau ne bloque JAMAIS l'affichage des compteurs.
+         *
+         * 1. SQLite local -> nombres visibles immédiatement.
+         * 2. Sync exclusions/problèmes en arrière-plan.
+         * 3. Recalcul local si l'état distant a changé.
          */
         if (
                 localEngine != null &&
@@ -2476,120 +2604,122 @@ public class TabletMainActivity extends Activity {
 
                 try {
 
-                    if (
-                            isNetworkAvailable() &&
-                            flags.needsRemoteSync(
-                                    5L * 60L * 1000L
-                            )
-                    ) {
+                    Map<String, Integer> localCounts =
+                            localEngine.availableCounts(
+                                    flags
+                            );
 
-                        String token =
-                                auth.tokenSync();
+                    postAvailableCounts(
+                            buttons,
+                            all,
+                            exclusions,
+                            localCounts
+                    );
 
-                        localEngine.syncRemoteFlags(
-                                token,
-                                auth.uid(),
-                                flags
-                        );
-                    }
+                } catch (Exception problem) {
 
-                } catch (Exception ignored) {
-
-                    // Les exclusions déjà mémorisées localement
-                    // restent actives hors ligne.
+                    android.util.Log.w(
+                            "CGANDROID020",
+                            "Local available-count failed",
+                            problem
+                    );
                 }
 
-                final Map<String, Integer> counts =
-                        localEngine.availableCounts(
-                                flags
-                        );
 
-                main.post(() -> {
+                if (
+                        !isNetworkAvailable() ||
+                        !flags.needsRemoteSync(
+                                5L * 60L * 1000L
+                        )
+                ) {
+                    return;
+                }
 
-                    if (!"megathemes".equals(screen)) {
-                        return;
-                    }
 
-                    setAvailableCount(
-                            animals,
-                            "Animaux et Plantes",
-                            counts.get(
-                                    "Animaux et Plantes"
-                            )
+                try {
+
+                    String token =
+                            auth.tokenSync();
+
+                    localEngine.syncRemoteFlags(
+                            token,
+                            auth.uid(),
+                            flags
                     );
 
-                    setAvailableCount(
-                            classic,
-                            "Culture Classique",
-                            counts.get(
-                                    "Culture Classique"
-                            )
-                    );
+                    Map<String, Integer> refreshed =
+                            localEngine.availableCounts(
+                                    flags
+                            );
 
-                    setAvailableCount(
-                            general,
-                            "Culture Générale",
-                            counts.get(
-                                    "Culture Générale"
-                            )
-                    );
-
-                    setAvailableCount(
-                            modern,
-                            "Culture Moderne",
-                            counts.get(
-                                    "Culture Moderne"
-                            )
-                    );
-
-                    setAvailableCount(
-                            geography,
-                            "Géographie",
-                            counts.get(
-                                    "Géographie"
-                            )
-                    );
-
-                    setAvailableCount(
-                            history,
-                            "Histoire",
-                            counts.get(
-                                    "Histoire"
-                            )
-                    );
-
-                    setAvailableCount(
-                            sciences,
-                            "Sciences et Techniques",
-                            counts.get(
-                                    "Sciences et Techniques"
-                            )
-                    );
-
-                    setAvailableCount(
-                            sport,
-                            "Sport",
-                            counts.get(
-                                    "Sport"
-                            )
-                    );
-
-                    setAvailableCount(
+                    postAvailableCounts(
+                            buttons,
                             all,
-                            "Toutes les questions",
-                            counts.get(
-                                    "__ALL__"
-                            )
+                            exclusions,
+                            refreshed
                     );
 
-                    exclusions.setText(
-                            "Thèmes exclus ("
-                                    + flags.exclusionCount()
-                                    + ")"
+                } catch (Exception problem) {
+
+                    /*
+                     * Les nombres locaux restent affichés.
+                     */
+                    android.util.Log.w(
+                            "CGANDROID020",
+                            "Remote flag refresh failed",
+                            problem
                     );
-                });
+                }
             });
         }
+    }
+
+
+    private void postAvailableCounts(
+            Map<String, Button> buttons,
+            Button all,
+            Button exclusions,
+            Map<String, Integer> counts
+    ) {
+
+        main.post(() -> {
+
+            if (
+                    !"megathemes".equals(
+                            screen
+                    )
+            ) {
+                return;
+            }
+
+            for (
+                    Map.Entry<String, Button> entry
+                            : buttons.entrySet()
+            ) {
+
+                setAvailableCount(
+                        entry.getValue(),
+                        entry.getKey(),
+                        counts.get(
+                                entry.getKey()
+                        )
+                );
+            }
+
+            setAvailableCount(
+                    all,
+                    "Toutes les questions",
+                    counts.get(
+                            "__ALL__"
+                    )
+            );
+
+            exclusions.setText(
+                    "Thèmes exclus ("
+                            + flags.exclusionCount()
+                            + ")"
+            );
+        });
     }
 
 
@@ -2619,6 +2749,12 @@ public class TabletMainActivity extends Activity {
     }
 
 
+
+    /*
+     * ================================================================
+     * CGANDROID020 · EXCLUSION_RESTORE001
+     * ================================================================
+     */
     private void showExclusionDirectory() {
 
         screen =
@@ -2634,7 +2770,7 @@ public class TabletMainActivity extends Activity {
 
         addSub(
                 "Groupes analogues exclus · "
-                        + "même thème + même question",
+                        + "réintégration possible",
                 14,
                 LIGHT_GREY
         );
@@ -2670,84 +2806,148 @@ public class TabletMainActivity extends Activity {
 
         } else {
 
-            StringBuilder text =
-                    new StringBuilder();
+            for (
+                    String rawKey
+                            : entries
+            ) {
 
-            for (String key : entries) {
-
-                String value =
-                        key == null
+                final String groupKey =
+                        rawKey == null
                                 ? ""
-                                : key;
+                                : rawKey;
 
                 int split =
-                        value.indexOf(
+                        groupKey.indexOf(
                                 '\n'
                         );
 
                 String theme =
                         split >= 0
-                                ? value.substring(
+                                ? groupKey.substring(
                                 0,
                                 split
                         )
-                                : value;
+                                : groupKey;
 
                 String question =
                         split >= 0
-                                ? value.substring(
+                                ? groupKey.substring(
                                 split + 1
                         )
                                 : "";
 
-                if (text.length() > 0) {
-                    text.append(
-                            "\n\n"
-                    );
-                }
 
-                text.append("• ");
+                LinearLayout card =
+                        new LinearLayout(this);
 
-                text.append(
-                        theme.isEmpty()
-                                ? "(sans thème)"
-                                : theme
+                card.setOrientation(
+                        LinearLayout.VERTICAL
                 );
 
+                card.setPadding(
+                        dp(16),
+                        dp(12),
+                        dp(16),
+                        dp(12)
+                );
+
+                card.setBackground(
+                        roundedStroke(
+                                DARK,
+                                12,
+                                YELLOW,
+                                1
+                        )
+                );
+
+
+                TextView title =
+                        text(
+                                theme.isEmpty()
+                                        ? "(sans thème)"
+                                        : theme,
+                                16,
+                                YELLOW,
+                                Gravity.LEFT
+                        );
+
+                card.addView(
+                        title
+                );
+
+
                 if (!question.isEmpty()) {
-                    text.append(
-                            "\n  "
+
+                    TextView q =
+                            text(
+                                    question,
+                                    14,
+                                    Color.WHITE,
+                                    Gravity.LEFT
+                            );
+
+                    LinearLayout.LayoutParams qLp =
+                            new LinearLayout.LayoutParams(
+                                    -1,
+                                    -2
+                            );
+
+                    qLp.setMargins(
+                            0,
+                            dp(6),
+                            0,
+                            dp(10)
                     );
 
-                    text.append(
-                            question
+                    card.addView(
+                            q,
+                            qLp
                     );
                 }
+
+
+                Button restore =
+                        button(
+                                "Réintégrer",
+                                GREEN,
+                                15
+                        );
+
+                card.addView(
+                        restore,
+                        new LinearLayout.LayoutParams(
+                                -1,
+                                dp(48)
+                        )
+                );
+
+                restore.setOnClickListener(
+                        v -> confirmRestoreExclusion(
+                                groupKey
+                        )
+                );
+
+
+                LinearLayout.LayoutParams cardLp =
+                        new LinearLayout.LayoutParams(
+                                -1,
+                                -2
+                        );
+
+                cardLp.setMargins(
+                        dp(8),
+                        0,
+                        dp(8),
+                        dp(10)
+                );
+
+                root.addView(
+                        card,
+                        cardLp
+                );
             }
-
-            TextView list =
-                    cardText(
-                            text.toString(),
-                            15,
-                            DARK,
-                            Color.WHITE
-                    );
-
-            list.setGravity(
-                    Gravity.START
-                            | Gravity.CENTER_VERTICAL
-            );
-
-            add(
-                    list,
-                    -1,
-                    -2,
-                    dp(8),
-                    0,
-                    dp(8),
-                    dp(16)
-            );
         }
+
 
         Button back =
                 button(
@@ -2769,6 +2969,126 @@ public class TabletMainActivity extends Activity {
         back.setOnClickListener(
                 v -> showMegathemes()
         );
+    }
+
+
+    private void confirmRestoreExclusion(
+            String groupKey
+    ) {
+
+        if (
+                groupKey == null ||
+                groupKey.trim().isEmpty()
+        ) {
+            return;
+        }
+
+
+        new AlertDialog.Builder(this)
+                .setTitle(
+                        "Réintégrer ce groupe ?"
+                )
+                .setMessage(
+                        "Les questions correspondantes pourront "
+                                + "de nouveau être proposées."
+                )
+                .setNegativeButton(
+                        "Annuler",
+                        null
+                )
+                .setPositiveButton(
+                        "Réintégrer",
+                        (dialog, which) ->
+                                restoreExclusion(
+                                        groupKey
+                                )
+                )
+                .show();
+    }
+
+
+    private void restoreExclusion(
+            String groupKey
+    ) {
+
+        flags.restoreTKey(
+                groupKey
+        );
+
+
+        int split =
+                groupKey.indexOf(
+                        '\n'
+                );
+
+        String theme =
+                split >= 0
+                        ? groupKey.substring(
+                        0,
+                        split
+                )
+                        : groupKey;
+
+        String question =
+                split >= 0
+                        ? groupKey.substring(
+                        split + 1
+                )
+                        : "";
+
+
+        JSONObject payload =
+                new JSONObject();
+
+        try {
+
+            payload.put(
+                    "theme",
+                    theme
+            );
+
+            payload.put(
+                    "question",
+                    question
+            );
+
+            payload.put(
+                    "group_key",
+                    groupKey
+            );
+
+            payload.put(
+                    "created_ms",
+                    System.currentTimeMillis()
+            );
+
+            payload.put(
+                    "state",
+                    "resolved"
+            );
+
+            payload.put(
+                    "source",
+                    BuildConfig.CG_CHANNEL
+            );
+
+        } catch (Exception ignored) { }
+
+
+        flags.enqueue(
+                "analog_exclusions",
+                payload
+        );
+
+        flushOutboxAsync();
+
+        showExclusionDirectory();
+
+        Toast.makeText(
+                this,
+                "Groupe réintégré.",
+                Toast.LENGTH_SHORT
+        ).show();
     }
 
     private LinearLayout domainRow(Button left, Button right) {
@@ -3059,26 +3379,7 @@ public class TabletMainActivity extends Activity {
         nextBatchPrefetching =
                 false;
 
-        lastAnsweredQuestion =
-                null;
-
-        lastAnswerCorrect =
-                false;
-
-        lastAttemptId =
-                "";
-
-        lastAttemptRevision =
-                0;
-
-        correctingPrevious =
-                false;
-
-        correctionResumeQuestion =
-                null;
-
-        clearRewindState();
-        clearSingleStepHistory();
+        clearSessionRewindTrail();
 
         loadNextPlayable();
 
@@ -3106,26 +3407,7 @@ public class TabletMainActivity extends Activity {
         nextBatchPrefetching =
                 false;
 
-        lastAnsweredQuestion =
-                null;
-
-        lastAnswerCorrect =
-                false;
-
-        lastAttemptId =
-                "";
-
-        lastAttemptRevision =
-                0;
-
-        correctingPrevious =
-                false;
-
-        correctionResumeQuestion =
-                null;
-
-        clearRewindState();
-        clearSingleStepHistory();
+        clearSessionRewindTrail();
 
         preloadQuestionIds(
                 batch.ids,
@@ -3957,10 +4239,11 @@ public class TabletMainActivity extends Activity {
         pumpLocalImagePrefetch();
     }
 
+
     /*
-     * CGANDROID019 · SINGLE_STEP_BACK001
-     *
-     * Historique de NAVIGATION, distinct de l'historique des réponses.
+     * ================================================================
+     * CGANDROID020 · UNBOUNDED_SESSION_REWIND001
+     * ================================================================
      */
     private void presentNewQuestion(
             CgQuestion q
@@ -3970,30 +4253,38 @@ public class TabletMainActivity extends Activity {
             return;
         }
 
-        if (
-                current != null &&
-                rewindAnchorQuestion == null &&
-                !safe(current.id).equals(
-                        safe(q.id)
-                )
-        ) {
+        if (!sessionRewinding) {
 
-            previousDisplayedQuestion =
-                    current;
+            /*
+             * Une branche future ne peut survivre à une nouvelle
+             * progression.
+             */
+            trimSessionTrailAfterCurrent();
 
-            previousDisplayedAttempt =
-                    (
-                            lastAnsweredAttempt != null &&
-                            safe(
-                                    lastAnsweredAttempt.questionId
-                            ).equals(
-                                    safe(
-                                            current.id
+            boolean sameAsCurrentEntry =
+                    sessionTrailIndex >= 0
+                            && sessionTrailIndex < sessionTrail.size()
+                            && safe(
+                            sessionTrail
+                                    .get(
+                                            sessionTrailIndex
                                     )
-                            )
-                    )
-                            ? lastAnsweredAttempt
-                            : null;
+                                    .question.id
+                    ).equals(
+                            safe(q.id)
+                    );
+
+            if (!sameAsCurrentEntry) {
+
+                sessionTrail.add(
+                        new CgSessionTrailEntry(
+                                q
+                        )
+                );
+
+                sessionTrailIndex =
+                        sessionTrail.size() - 1;
+            }
         }
 
         current =
@@ -4006,7 +4297,6 @@ public class TabletMainActivity extends Activity {
                 q
         );
     }
-
 
     private void pumpLocalImagePrefetch() {
         final long epoch;
@@ -4369,6 +4659,7 @@ public class TabletMainActivity extends Activity {
         }
     }
 
+
     private void answer(
             CgQuestion q,
             int choice
@@ -4405,18 +4696,26 @@ public class TabletMainActivity extends Activity {
                         System.currentTimeMillis()
                 );
 
-        boolean revisingRewind =
-                rewindTargetAttempt != null &&
-                safe(q.id).equals(
-                        safe(
-                                rewindTargetAttempt.questionId
-                        )
+        CgSessionTrailEntry trailEntry =
+                currentTrailEntry(
+                        q
                 );
 
-        if (revisingRewind) {
+
+        /*
+         * ------------------------------------------------------------
+         * On se trouve sur une ancienne question encore enregistrée :
+         * la réponse saisie constitue une révision de cet attempt.
+         * ------------------------------------------------------------
+         */
+        if (
+                sessionRewinding &&
+                trailEntry != null &&
+                trailEntry.attempt != null
+        ) {
 
             CgLocalAttempt target =
-                    rewindTargetAttempt;
+                    trailEntry.attempt;
 
             int newRevision =
                     Math.max(
@@ -4450,7 +4749,7 @@ public class TabletMainActivity extends Activity {
                     responseMs
             );
 
-            CgLocalAttempt revisedAttempt =
+            trailEntry.attempt =
                     new CgLocalAttempt(
                             target.attemptId,
                             target.sessionId,
@@ -4461,85 +4760,76 @@ public class TabletMainActivity extends Activity {
                             playedAtMs
                     );
 
-            if (
-                    lastAnsweredAttempt != null &&
-                    safe(
-                            lastAnsweredAttempt.attemptId
-                    ).equals(
-                            safe(
-                                    target.attemptId
-                            )
-                    )
-            ) {
-                lastAnsweredAttempt =
-                        revisedAttempt;
-            }
-
-            previousDisplayedAttempt =
-                    revisedAttempt;
-
             flags.enqueue(
                     "play_history",
                     event
             );
 
-            flushOutboxAsync();
+            /*
+             * Tout ce qui était situé APRÈS cette question constitue
+             * désormais une branche annulée.
+             */
+            trimSessionTrailAfterCurrent();
 
-            CgQuestion resume =
-                    rewindAnchorQuestion;
-
-            clearRewindState();
+            sessionRewinding =
+                    false;
 
             answering =
                     false;
 
-            main.post(() -> {
-                if (resume != null) {
-                    current =
-                            resume;
-                    showQuestion(
-                            resume
-                    );
-                } else {
-                    loadNextPlayable();
-                }
-            });
+            flushOutboxAsync();
+
+            main.post(
+                    this::loadNextPlayable
+            );
 
             return;
         }
 
+
+        /*
+         * Une question explicitement marquée Problème ou appartenant à
+         * un groupe exclu reste exclue, même si elle est rencontrée
+         * pendant un retour arrière.
+         */
         if (
-                rewindViewOnly &&
-                rewindAnchorQuestion != null
+                sessionRewinding &&
+                trailEntry != null &&
+                trailEntry.attempt == null &&
+                (
+                        flags.isTExcluded(q) ||
+                        flags.isProblem(q)
+                )
         ) {
 
-            CgQuestion resume =
-                    rewindAnchorQuestion;
+            trimSessionTrailAfterCurrent();
 
-            clearRewindState();
+            sessionRewinding =
+                    false;
 
             answering =
                     false;
-
-            if (resume != null) {
-
-                current =
-                        resume;
-
-                showQuestion(
-                        resume
-                );
-            }
 
             Toast.makeText(
                     this,
-                    "Retour consultatif · aucune réponse ajoutée.",
+                    "Cette exclusion reste active. "
+                            + "Aucune réponse n’a été enregistrée.",
                     Toast.LENGTH_SHORT
             ).show();
+
+            main.post(
+                    this::loadNextPlayable
+            );
 
             return;
         }
 
+
+        /*
+         * ------------------------------------------------------------
+         * Nouvelle tentative.
+         * ------------------------------------------------------------
+         */
         String attemptId =
                 UUID.randomUUID()
                         .toString();
@@ -4560,7 +4850,7 @@ public class TabletMainActivity extends Activity {
                 correct
         );
 
-        lastAnsweredAttempt =
+        CgLocalAttempt localAttempt =
                 localEngine.recordAttempt(
                         game.sessionId(),
                         attemptId,
@@ -4570,21 +4860,43 @@ public class TabletMainActivity extends Activity {
                         responseMs
                 );
 
-        lastAnsweredQuestion =
-                q;
-        lastAnswerCorrect =
-                correct;
-        lastAttemptId =
-                attemptId;
-        lastAttemptRevision =
-                1;
+        if (trailEntry == null) {
+
+            trailEntry =
+                    new CgSessionTrailEntry(
+                            q
+                    );
+
+            trimSessionTrailAfterCurrent();
+
+            sessionTrail.add(
+                    trailEntry
+            );
+
+            sessionTrailIndex =
+                    sessionTrail.size() - 1;
+        }
+
+        trailEntry.attempt =
+                localAttempt;
 
         flags.enqueue(
                 "play_history",
                 event
         );
 
+        if (sessionRewinding) {
+
+            trimSessionTrailAfterCurrent();
+
+            sessionRewinding =
+                    false;
+        }
+
         flushOutboxAsync();
+
+        answering =
+                false;
 
         main.post(
                 this::loadNextPlayable
@@ -5277,6 +5589,25 @@ public class TabletMainActivity extends Activity {
      * cette ancienne logique pouvait sauter toutes les questions
      * Problème / exclues n'ayant généré aucun attempt.
      */
+
+    /*
+     * ================================================================
+     * CGANDROID020 · UNBOUNDED_SESSION_REWIND001
+     * TRANSACTIONAL_ATTEMPT_ROLLBACK001
+     * LEARNING_ROLLBACK001
+     * CLOUD_HISTORY_RETRACT001
+     * ================================================================
+     *
+     * Chaque clic fait exactement UN pas vers l'arrière.
+     *
+     * Exemple :
+     * Q6 -> Q5 -> Q4 -> Q3 -> Q2
+     *
+     * Au moment où l'on quitte Q5 vers Q4, l'attempt Q5 est annulé.
+     * Lorsque Q2 est atteint, Q3/Q4/Q5 ne sont donc plus enregistrées.
+     *
+     * Aucune limite autre que le début de la session.
+     */
     private void returnToPreviousQuestion(
             CgQuestion forwardQuestion
     ) {
@@ -5295,46 +5626,97 @@ public class TabletMainActivity extends Activity {
             return;
         }
 
-        if (rewindAnchorQuestion != null) {
+        if (
+                sessionTrailIndex <= 0 ||
+                sessionTrail.isEmpty()
+        ) {
 
             Toast.makeText(
                     this,
-                    "Vous êtes déjà revenu d’une question.",
+                    "Début de la session atteint.",
                     Toast.LENGTH_SHORT
             ).show();
 
             return;
         }
 
-        if (previousDisplayedQuestion == null) {
+        CgSessionTrailEntry leaving =
+                sessionTrail.get(
+                        sessionTrailIndex
+                );
 
-            Toast.makeText(
-                    this,
-                    "Aucune question précédente.",
-                    Toast.LENGTH_SHORT
-            ).show();
+        boolean cloudRetractionQueued =
+                false;
 
-            return;
+
+        /*
+         * Si la question que l'on quitte avait déjà été répondue,
+         * elle passe maintenant dans la branche abandonnée.
+         */
+        if (
+                leaving.attempt != null
+        ) {
+
+            CgLocalAttempt removed =
+                    localEngine.rollbackAttempt(
+                            leaving.attempt.attemptId
+                    );
+
+            if (removed != null) {
+
+                game.rollbackAnswer(
+                        removed.correct
+                );
+
+                flags.retractHistoryAttempt(
+                        removed
+                );
+
+                leaving.attempt =
+                        null;
+
+                cloudRetractionQueued =
+                        true;
+            }
+
+        } else {
+
+            /*
+             * La question courante n'était pas répondue :
+             * elle doit simplement redevenir disponible.
+             *
+             * Une éventuelle action Problème/Exclusion reste stockée
+             * dans CgFlags et continuera donc à l'écarter du pool.
+             */
+            localEngine.deferQuestion(
+                    leaving.question
+            );
         }
 
-        rewindAnchorQuestion =
-                forwardQuestion;
 
-        rewindTargetAttempt =
-                previousDisplayedAttempt;
+        sessionTrailIndex--;
 
-        rewindViewOnly =
-                rewindTargetAttempt == null;
+        sessionRewinding =
+                true;
+
+        CgSessionTrailEntry target =
+                sessionTrail.get(
+                        sessionTrailIndex
+                );
 
         current =
-                previousDisplayedQuestion;
+                target.question;
 
         answering =
                 false;
 
         showQuestion(
-                previousDisplayedQuestion
+                target.question
         );
+
+        if (cloudRetractionQueued) {
+            flushOutboxAsync();
+        }
 
         Toast.makeText(
                 this,
@@ -5343,35 +5725,62 @@ public class TabletMainActivity extends Activity {
         ).show();
     }
 
-    private void clearRewindState() {
 
-        rewindAnchorQuestion =
-                null;
+    private CgSessionTrailEntry currentTrailEntry(
+            CgQuestion q
+    ) {
 
-        rewindTargetAttempt =
-                null;
+        if (
+                q == null ||
+                sessionTrailIndex < 0 ||
+                sessionTrailIndex >= sessionTrail.size()
+        ) {
+            return null;
+        }
 
-        rewindViewOnly =
-                false;
+        CgSessionTrailEntry entry =
+                sessionTrail.get(
+                        sessionTrailIndex
+                );
 
-        correctingPrevious =
-                false;
+        if (
+                entry.question == null ||
+                !safe(
+                        entry.question.id
+                ).equals(
+                        safe(q.id)
+                )
+        ) {
+            return null;
+        }
 
-        correctionResumeQuestion =
-                null;
+        return entry;
     }
 
 
-    private void clearSingleStepHistory() {
+    private void trimSessionTrailAfterCurrent() {
 
-        previousDisplayedQuestion =
-                null;
+        while (
+                sessionTrail.size()
+                        > sessionTrailIndex + 1
+        ) {
 
-        previousDisplayedAttempt =
-                null;
+            sessionTrail.remove(
+                    sessionTrail.size() - 1
+            );
+        }
+    }
 
-        lastAnsweredAttempt =
-                null;
+
+    private void clearSessionRewindTrail() {
+
+        sessionTrail.clear();
+
+        sessionTrailIndex =
+                -1;
+
+        sessionRewinding =
+                false;
     }
 
     private void showQuickGameStats() {
@@ -5449,17 +5858,10 @@ public class TabletMainActivity extends Activity {
         answering =
                 false;
 
-        correctingPrevious =
-                false;
-
-        correctionResumeQuestion =
-                null;
-
         nextBatchPrefetching =
                 false;
 
-        clearRewindState();
-        clearSingleStepHistory();
+        clearSessionRewindTrail();
 
         showHome();
 
@@ -6388,9 +6790,54 @@ final class CgFirestore {
 
 
                 /*
-                 * HISTORY_QR001 ne retient que les événements
-                 * réellement évaluables.
+                 * CGANDROID020 · CLOUD_HISTORY_RETRACT001
+                 *
+                 * La première occurrence d'un attempt_id est la plus
+                 * récente grâce à orderBy=client_played_at_ms desc.
+                 * Un tombstone neutralise donc toutes ses anciennes
+                 * versions/corrections.
                  */
+                String eventAttemptId =
+                        str(
+                                fields,
+                                "attempt_id"
+                        );
+
+                if (!eventAttemptId.isEmpty()) {
+
+                    if (
+                            seenAttemptIds.contains(
+                                    eventAttemptId
+                            )
+                    ) {
+                        continue;
+                    }
+
+                    seenAttemptIds.add(
+                            eventAttemptId
+                    );
+                }
+
+
+                String eventState =
+                        str(
+                                fields,
+                                "state"
+                        )
+                                .trim()
+                                .toLowerCase(
+                                        Locale.ROOT
+                                );
+
+                if (
+                        "retracted".equals(
+                                eventState
+                        )
+                ) {
+                    continue;
+                }
+
+
                 JSONObject correctField =
                         fields.optJSONObject(
                                 "is_correct"
@@ -6402,10 +6849,12 @@ final class CgFirestore {
                                 "booleanValue"
                         )
                 ) {
-
                     continue;
                 }
 
+
+                CgHistoryItem item =
+                        new CgHistoryItem();
 
                 CgHistoryItem item =
                         new CgHistoryItem();
@@ -6620,21 +7069,6 @@ final class CgFirestore {
                 }
 
 
-                if (!item.attemptId.isEmpty()) {
-
-                    if (
-                            seenAttemptIds.contains(
-                                    item.attemptId
-                            )
-                    ) {
-                        continue;
-                    }
-
-                    seenAttemptIds.add(
-                            item.attemptId
-                    );
-                }
-
                 out.add(item);
             }
 
@@ -6763,6 +7197,26 @@ final class CgFirestore {
 
     private static String enc(String value) { return Uri.encode(value == null ? "" : value, ""); }
 }
+
+
+/*
+ * CGANDROID020 · UNBOUNDED_SESSION_REWIND001
+ */
+final class CgSessionTrailEntry {
+
+    final CgQuestion question;
+
+    CgLocalAttempt attempt =
+            null;
+
+    CgSessionTrailEntry(
+            CgQuestion question
+    ) {
+        this.question =
+                question;
+    }
+}
+
 
 /*
  * CGANDROID004 · HISTORY_QR_MODEL001
@@ -6946,7 +7400,10 @@ final class CgFlags {
     void addT(CgQuestion q) {
         Set<String> existing = new HashSet<>(prefs.getStringSet(K_T, new HashSet<>()));
         existing.add(analogKey(q));
-        prefs.edit().putStringSet(K_T, existing).apply();
+        prefs.edit()
+                .putStringSet(K_T, existing)
+                .putLong(K_REMOTE_SYNC_AT, 0L)
+                .apply();
     }
 
     boolean isTExcluded(CgQuestion q) {
@@ -6992,9 +7449,11 @@ final class CgFlags {
                         K_P,
                         existing
                 )
+                .putLong(
+                        K_REMOTE_SYNC_AT,
+                        0L
+                )
                 .apply();
-    }
-
 
     boolean isProblem(
             CgQuestion q
@@ -7143,6 +7602,309 @@ final class CgFlags {
     }
 
 
+
+    /*
+     * ================================================================
+     * CGANDROID020 · EXCLUSION_STATE_SYNC001 / EXCLUSION_RESTORE001
+     * ================================================================
+     */
+
+    void restoreTKey(
+            String groupKey
+    ) {
+
+        if (
+                groupKey == null ||
+                groupKey.trim().isEmpty()
+        ) {
+            return;
+        }
+
+        Set<String> existing =
+                new HashSet<>(
+                        prefs.getStringSet(
+                                K_T,
+                                new HashSet<>()
+                        )
+                );
+
+        existing.remove(
+                groupKey
+        );
+
+        prefs.edit()
+                .putStringSet(
+                        K_T,
+                        existing
+                )
+                .putLong(
+                        K_REMOTE_SYNC_AT,
+                        0L
+                )
+                .apply();
+    }
+
+
+    /*
+     * Remplace l'état Cloud, puis rejoue les événements de l'outbox.
+     * Une action locale pas encore envoyée reste donc prioritaire.
+     */
+    void replaceTKeysFromRemote(
+            Set<String> remoteActive
+    ) {
+
+        Set<String> result =
+                new HashSet<>();
+
+        if (remoteActive != null) {
+            result.addAll(
+                    remoteActive
+            );
+        }
+
+
+        try {
+
+            JSONArray source =
+                    new JSONArray(
+                            prefs.getString(
+                                    K_OUTBOX,
+                                    "[]"
+                            )
+                    );
+
+            for (
+                    int i = 0;
+                    i < source.length();
+                    i++
+            ) {
+
+                JSONObject item =
+                        source.optJSONObject(i);
+
+                if (
+                        item == null ||
+                        !"analog_exclusions".equals(
+                                item.optString(
+                                        "collection",
+                                        ""
+                                )
+                        )
+                ) {
+                    continue;
+                }
+
+                JSONObject payload =
+                        item.optJSONObject(
+                                "payload"
+                        );
+
+                if (payload == null) {
+                    continue;
+                }
+
+                String key =
+                        payload.optString(
+                                "group_key",
+                                ""
+                        );
+
+                if (key.trim().isEmpty()) {
+                    continue;
+                }
+
+                String state =
+                        payload.optString(
+                                "state",
+                                ""
+                        )
+                                .trim()
+                                .toLowerCase(
+                                        Locale.ROOT
+                                );
+
+                if (
+                        "resolved".equals(state) ||
+                        "deleted".equals(state) ||
+                        "closed".equals(state)
+                ) {
+
+                    result.remove(
+                            key
+                    );
+
+                } else {
+
+                    result.add(
+                            key
+                    );
+                }
+            }
+
+        } catch (Exception ignored) { }
+
+
+        prefs.edit()
+                .putStringSet(
+                        K_T,
+                        result
+                )
+                .apply();
+    }
+
+
+    /*
+     * ================================================================
+     * CGANDROID020 · CLOUD_HISTORY_RETRACT001
+     * ================================================================
+     *
+     * - retire l'event original s'il est encore dans l'outbox ;
+     * - ajoute un tombstone "retracted".
+     *
+     * S'il avait déjà été envoyé, le tombstone neutralisera l'event
+     * lors de toutes les lectures CGANDROID020.
+     */
+    synchronized void retractHistoryAttempt(
+            CgLocalAttempt attempt
+    ) {
+
+        if (
+                attempt == null ||
+                attempt.attemptId == null ||
+                attempt.attemptId.trim().isEmpty()
+        ) {
+            return;
+        }
+
+        try {
+
+            JSONArray source =
+                    new JSONArray(
+                            prefs.getString(
+                                    K_OUTBOX,
+                                    "[]"
+                            )
+                    );
+
+            JSONArray remaining =
+                    new JSONArray();
+
+
+            for (
+                    int i = 0;
+                    i < source.length();
+                    i++
+            ) {
+
+                JSONObject item =
+                        source.optJSONObject(i);
+
+                if (item == null) {
+                    continue;
+                }
+
+                JSONObject payload =
+                        item.optJSONObject(
+                                "payload"
+                        );
+
+                boolean sameAttempt =
+                        "play_history".equals(
+                                item.optString(
+                                        "collection",
+                                        ""
+                                )
+                        )
+                                && payload != null
+                                && attempt.attemptId.equals(
+                                payload.optString(
+                                        "attempt_id",
+                                        ""
+                                )
+                        );
+
+                if (!sameAttempt) {
+
+                    remaining.put(
+                            item
+                    );
+                }
+            }
+
+
+            JSONObject tombstone =
+                    new JSONObject();
+
+            tombstone.put(
+                    "schema_version",
+                    4
+            );
+
+            tombstone.put(
+                    "attempt_id",
+                    attempt.attemptId
+            );
+
+            tombstone.put(
+                    "question_id",
+                    attempt.questionId
+            );
+
+            tombstone.put(
+                    "session_id",
+                    attempt.sessionId
+            );
+
+            tombstone.put(
+                    "seq",
+                    attempt.seq
+            );
+
+            tombstone.put(
+                    "client_played_at_ms",
+                    System.currentTimeMillis()
+            );
+
+            tombstone.put(
+                    "state",
+                    "retracted"
+            );
+
+            tombstone.put(
+                    "source",
+                    BuildConfig.CG_CHANNEL
+            );
+
+
+            JSONObject wrapper =
+                    new JSONObject();
+
+            wrapper.put(
+                    "collection",
+                    "play_history"
+            );
+
+            wrapper.put(
+                    "payload",
+                    tombstone
+            );
+
+            remaining.put(
+                    wrapper
+            );
+
+
+            prefs.edit()
+                    .putString(
+                            K_OUTBOX,
+                            remaining.toString()
+                    )
+                    .apply();
+
+        } catch (Exception ignored) { }
+    }
+
+
     synchronized void enqueue(String collection, JSONObject payload) {
         try {
             JSONArray a = new JSONArray(prefs.getString(K_OUTBOX, "[]"));
@@ -7283,6 +8045,8 @@ final class CgFlags {
 /* Reprise locale                                                             */
 /* ========================================================================== */
 
+}
+
 final class CgGameState {
     private static final String PREF = "cgandroid001_game";
     private final SharedPreferences prefs;
@@ -7384,6 +8148,49 @@ final class CgGameState {
                 .putInt("correct", correct() + (correct ? 1 : 0))
                 .putInt("consumed", consumed() + 1)
                 .putInt("position", position() + 1)
+                .apply();
+    }
+
+
+    // CGANDROID020 · TRANSACTIONAL_ATTEMPT_ROLLBACK001
+    void rollbackAnswer(
+            boolean wasCorrect
+    ) {
+
+        prefs.edit()
+                .putInt(
+                        "played",
+                        Math.max(
+                                0,
+                                played() - 1
+                        )
+                )
+                .putInt(
+                        "correct",
+                        Math.max(
+                                0,
+                                correct()
+                                        - (
+                                        wasCorrect
+                                                ? 1
+                                                : 0
+                                )
+                        )
+                )
+                .putInt(
+                        "consumed",
+                        Math.max(
+                                0,
+                                consumed() - 1
+                        )
+                )
+                .putInt(
+                        "position",
+                        Math.max(
+                                0,
+                                position() - 1
+                        )
+                )
                 .apply();
     }
 

@@ -402,6 +402,314 @@ final class CgLocalEngine extends SQLiteOpenHelper {
         }
     }
 
+
+    /*
+     * ================================================================
+     * CGANDROID020
+     * TRANSACTIONAL_ATTEMPT_ROLLBACK001 / LEARNING_ROLLBACK001
+     * ================================================================
+     *
+     * Annule réellement UNE tentative de la session :
+     * - attempts
+     * - learning
+     * - session_served
+     * - recent_themes
+     * - statistiques globales
+     *
+     * Les actions explicites Problème / Exclusion ne sont PAS annulées.
+     */
+    synchronized CgLocalAttempt rollbackAttempt(
+            String attemptId
+    ) {
+
+        if (
+                attemptId == null ||
+                attemptId.trim().isEmpty()
+        ) {
+            return null;
+        }
+
+        SQLiteDatabase db =
+                getWritableDatabase();
+
+        db.beginTransaction();
+
+        try {
+
+            Cursor c =
+                    db.query(
+                            "attempts",
+                            new String[]{
+                                    "attempt_id",
+                                    "session_id",
+                                    "seq",
+                                    "question_id",
+                                    "correct",
+                                    "revision",
+                                    "played_at"
+                            },
+                            "attempt_id=?",
+                            new String[]{
+                                    attemptId.trim()
+                            },
+                            null,
+                            null,
+                            null,
+                            "1"
+                    );
+
+            CgLocalAttempt removed =
+                    null;
+
+            try {
+
+                if (c.moveToFirst()) {
+
+                    removed =
+                            new CgLocalAttempt(
+                                    c.getString(0),
+                                    c.getString(1),
+                                    c.getInt(2),
+                                    c.getString(3),
+                                    c.getInt(4) != 0,
+                                    c.getInt(5),
+                                    c.getLong(6)
+                            );
+                }
+
+            } finally {
+
+                c.close();
+            }
+
+            if (removed == null) {
+                return null;
+            }
+
+
+            /*
+             * Inverse exact de recordAnswer().
+             *
+             * Une question servie dans la session était nécessairement
+             * non assimilée AVANT cette tentative.
+             */
+            LocalLearningState learning =
+                    readLearning(
+                            db,
+                            removed.questionId
+                    );
+
+            if (removed.correct) {
+
+                learning.mastered =
+                        false;
+
+            } else {
+
+                learning.failCount =
+                        Math.max(
+                                0,
+                                learning.failCount - 1
+                        );
+            }
+
+            if (
+                    learning.failCount == 0 &&
+                    !learning.mastered
+            ) {
+
+                db.delete(
+                        "learning",
+                        "question_id=?",
+                        new String[]{
+                                removed.questionId
+                        }
+                );
+
+            } else {
+
+                writeLearning(
+                        db,
+                        removed.questionId,
+                        learning
+                );
+            }
+
+
+            db.delete(
+                    "attempts",
+                    "attempt_id=?",
+                    new String[]{
+                            removed.attemptId
+                    }
+            );
+
+
+            /*
+             * La question annulée redevient disponible dans cette
+             * même session.
+             */
+            db.delete(
+                    "session_served",
+                    "session_id=? AND question_id=?",
+                    new String[]{
+                            removed.sessionId,
+                            removed.questionId
+                    }
+            );
+
+
+            /*
+             * Retire la dernière occurrence du thème dans le cooldown.
+             */
+            Cursor questionCursor =
+                    db.query(
+                            "questions",
+                            null,
+                            "id=?",
+                            new String[]{
+                                    removed.questionId
+                            },
+                            null,
+                            null,
+                            null,
+                            "1"
+                    );
+
+            CgQuestion question =
+                    null;
+
+            try {
+
+                if (questionCursor.moveToFirst()) {
+                    question =
+                            readQuestion(
+                                    questionCursor
+                            );
+                }
+
+            } finally {
+
+                questionCursor.close();
+            }
+
+            if (question != null) {
+
+                String key =
+                        themeKey(
+                                question
+                        );
+
+                Cursor themeCursor =
+                        db.rawQuery(
+                                "SELECT MAX(seq) "
+                                        + "FROM recent_themes "
+                                        + "WHERE theme_key=?",
+                                new String[]{
+                                        key
+                                }
+                        );
+
+                long lastSeq =
+                        0L;
+
+                try {
+
+                    if (
+                            themeCursor.moveToFirst() &&
+                            !themeCursor.isNull(0)
+                    ) {
+                        lastSeq =
+                                themeCursor.getLong(0);
+                    }
+
+                } finally {
+
+                    themeCursor.close();
+                }
+
+                if (lastSeq > 0L) {
+
+                    db.delete(
+                            "recent_themes",
+                            "seq=?",
+                            new String[]{
+                                    String.valueOf(
+                                            lastSeq
+                                    )
+                            }
+                    );
+                }
+            }
+
+
+            /*
+             * GLOBAL_HISTORY_STATS001 reste immédiatement cohérent.
+             */
+            if (
+                    globalStatsReady(
+                            db
+                    )
+            ) {
+
+                long total =
+                        Math.max(
+                                0L,
+                                parseLong(
+                                        meta(
+                                                db,
+                                                META_GLOBAL_TOTAL
+                                        )
+                                ) - 1L
+                        );
+
+                long success =
+                        Math.max(
+                                0L,
+                                parseLong(
+                                        meta(
+                                                db,
+                                                META_GLOBAL_SUCCESS
+                                        )
+                                )
+                                        - (
+                                        removed.correct
+                                                ? 1L
+                                                : 0L
+                                )
+                        );
+
+                success =
+                        Math.min(
+                                total,
+                                success
+                        );
+
+                putMeta(
+                        db,
+                        META_GLOBAL_TOTAL,
+                        String.valueOf(total)
+                );
+
+                putMeta(
+                        db,
+                        META_GLOBAL_SUCCESS,
+                        String.valueOf(success)
+                );
+            }
+
+
+            db.setTransactionSuccessful();
+
+            return removed;
+
+        } finally {
+
+            db.endTransaction();
+        }
+    }
+
+
     synchronized CgLocalAttempt previousAttempt(
             String sessionId,
             int beforeSeq
@@ -1323,16 +1631,6 @@ final class CgLocalEngine extends SQLiteOpenHelper {
                         continue;
                     }
 
-                    Boolean correct =
-                            boolNullable(
-                                    fields,
-                                    "is_correct"
-                            );
-
-                    if (correct == null) {
-                        continue;
-                    }
-
                     String attemptId =
                             str(
                                     fields,
@@ -1359,8 +1657,38 @@ final class CgLocalEngine extends SQLiteOpenHelper {
 
                     if (
                             !uniqueKey.isEmpty() &&
-                            !seenAttempts.add(uniqueKey)
+                            !seenAttempts.add(
+                                    uniqueKey
+                            )
                     ) {
+                        continue;
+                    }
+
+                    String eventState =
+                            str(
+                                    fields,
+                                    "state"
+                            )
+                                    .trim()
+                                    .toLowerCase(
+                                            java.util.Locale.ROOT
+                                    );
+
+                    if (
+                            "retracted".equals(
+                                    eventState
+                            )
+                    ) {
+                        continue;
+                    }
+
+                    Boolean correct =
+                            boolNullable(
+                                    fields,
+                                    "is_correct"
+                            );
+
+                    if (correct == null) {
                         continue;
                     }
 
@@ -1573,6 +1901,23 @@ final class CgLocalEngine extends SQLiteOpenHelper {
      * ================================================================
      */
 
+
+    /*
+     * ================================================================
+     * CGANDROID020 · EXCLUSION_STATE_SYNC001
+     * ================================================================
+     *
+     * analog_exclusions est un journal d'événements.
+     *
+     * Pour chaque group_key :
+     * - l'événement created_ms le plus récent gagne ;
+     * - pending/active = exclu ;
+     * - resolved/deleted/closed = réintégré.
+     *
+     * L'outbox locale est ensuite appliquée par CgFlags afin qu'une
+     * action pas encore synchronisée ne puisse pas être annulée par
+     * une ancienne valeur Cloud.
+     */
     synchronized void syncRemoteFlags(
             String token,
             String uid,
@@ -1583,14 +1928,20 @@ final class CgLocalEngine extends SQLiteOpenHelper {
             return;
         }
 
-        Set<String> analogKeys =
-                new HashSet<>();
+        Map<String, Long> analogAt =
+                new HashMap<>();
+
+        Map<String, String> analogState =
+                new HashMap<>();
 
         Set<String> problemIds =
                 new HashSet<>();
 
+
         /*
-         * Exclusions analogues.
+         * ------------------------------------------------------------
+         * Exclusions analogues : état le plus récent par group_key.
+         * ------------------------------------------------------------
          */
         String pageToken =
                 "";
@@ -1603,7 +1954,8 @@ final class CgLocalEngine extends SQLiteOpenHelper {
                             + (
                             pageToken.isEmpty()
                                     ? ""
-                                    : "&pageToken=" + enc(pageToken)
+                                    : "&pageToken="
+                                    + enc(pageToken)
                     );
 
             JSONObject response =
@@ -1643,24 +1995,6 @@ final class CgLocalEngine extends SQLiteOpenHelper {
                         continue;
                     }
 
-                    String state =
-                            str(
-                                    fields,
-                                    "state"
-                            )
-                                    .trim()
-                                    .toLowerCase(
-                                            java.util.Locale.ROOT
-                                    );
-
-                    if (
-                            "resolved".equals(state) ||
-                            "deleted".equals(state) ||
-                            "closed".equals(state)
-                    ) {
-                        continue;
-                    }
-
                     String key =
                             str(
                                     fields,
@@ -1682,8 +2016,47 @@ final class CgLocalEngine extends SQLiteOpenHelper {
                                 );
                     }
 
-                    if (!key.trim().isEmpty()) {
-                        analogKeys.add(key);
+                    if (key.trim().isEmpty()) {
+                        continue;
+                    }
+
+                    String state =
+                            str(
+                                    fields,
+                                    "state"
+                            )
+                                    .trim()
+                                    .toLowerCase(
+                                            java.util.Locale.ROOT
+                                    );
+
+                    long created =
+                            parseLong(
+                                    str(
+                                            fields,
+                                            "created_ms"
+                                    )
+                            );
+
+                    Long previous =
+                            analogAt.get(
+                                    key
+                            );
+
+                    if (
+                            previous == null ||
+                            created >= previous
+                    ) {
+
+                        analogAt.put(
+                                key,
+                                created
+                        );
+
+                        analogState.put(
+                                key,
+                                state
+                        );
                     }
                 }
             }
@@ -1699,8 +2072,39 @@ final class CgLocalEngine extends SQLiteOpenHelper {
             }
         }
 
+
+        Set<String> remoteActive =
+                new HashSet<>();
+
+        for (
+                Map.Entry<String, String> entry
+                        : analogState.entrySet()
+        ) {
+
+            String state =
+                    entry.getValue() == null
+                            ? ""
+                            : entry.getValue();
+
+            boolean resolved =
+                    "resolved".equals(state)
+                            || "deleted".equals(state)
+                            || "closed".equals(state);
+
+            if (!resolved) {
+
+                remoteActive.add(
+                        entry.getKey()
+                );
+            }
+        }
+
+
         /*
+         * ------------------------------------------------------------
          * Questions signalées Problème.
+         * Leur politique reste volontairement additive.
+         * ------------------------------------------------------------
          */
         pageToken =
                 "";
@@ -1713,7 +2117,8 @@ final class CgLocalEngine extends SQLiteOpenHelper {
                             + (
                             pageToken.isEmpty()
                                     ? ""
-                                    : "&pageToken=" + enc(pageToken)
+                                    : "&pageToken="
+                                    + enc(pageToken)
                     );
 
             JSONObject response =
@@ -1778,7 +2183,10 @@ final class CgLocalEngine extends SQLiteOpenHelper {
                             );
 
                     if (!id.trim().isEmpty()) {
-                        problemIds.add(id.trim());
+
+                        problemIds.add(
+                                id.trim()
+                        );
                     }
                 }
             }
@@ -1794,13 +2202,9 @@ final class CgLocalEngine extends SQLiteOpenHelper {
             }
         }
 
-        /*
-         * Merge et non remplacement :
-         * une exclusion encore présente dans l'outbox locale ne peut
-         * jamais disparaître pendant une synchronisation.
-         */
-        flags.mergeTKeys(
-                analogKeys
+
+        flags.replaceTKeysFromRemote(
+                remoteActive
         );
 
         flags.mergeProblemIds(
@@ -1809,7 +2213,6 @@ final class CgLocalEngine extends SQLiteOpenHelper {
 
         flags.markRemoteSyncNow();
     }
-
 
     private List<LocalQuestionRow> fetchQuestions(
             String token,
@@ -1960,14 +2363,53 @@ final class CgLocalEngine extends SQLiteOpenHelper {
                     JSONObject fields = doc.optJSONObject("fields");
                     if (fields == null) continue;
 
-                    Boolean correct = boolNullable(fields, "is_correct");
-                    if (correct == null) continue;
-
-                    String attemptId = str(fields, "attempt_id");
+                    String attemptId =
+                            str(
+                                    fields,
+                                    "attempt_id"
+                            );
 
                     if (!attemptId.isEmpty()) {
-                        if (seenAttempts.contains(attemptId)) continue;
-                        seenAttempts.add(attemptId);
+
+                        if (
+                                seenAttempts.contains(
+                                        attemptId
+                                )
+                        ) {
+                            continue;
+                        }
+
+                        seenAttempts.add(
+                                attemptId
+                        );
+                    }
+
+                    String eventState =
+                            str(
+                                    fields,
+                                    "state"
+                            )
+                                    .trim()
+                                    .toLowerCase(
+                                            java.util.Locale.ROOT
+                                    );
+
+                    if (
+                            "retracted".equals(
+                                    eventState
+                            )
+                    ) {
+                        continue;
+                    }
+
+                    Boolean correct =
+                            boolNullable(
+                                    fields,
+                                    "is_correct"
+                            );
+
+                    if (correct == null) {
+                        continue;
                     }
 
                     String questionId = str(fields, "question_id");
