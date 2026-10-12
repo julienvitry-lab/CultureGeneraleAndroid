@@ -7454,6 +7454,7 @@ final class CgFlags {
                         0L
                 )
                 .apply();
+    }
 
     boolean isProblem(
             CgQuestion q
@@ -8045,7 +8046,6 @@ final class CgFlags {
 /* Reprise locale                                                             */
 /* ========================================================================== */
 
-}
 
 final class CgGameState {
     private static final String PREF = "cgandroid001_game";
