@@ -1313,8 +1313,7 @@ public class TabletMainActivity extends Activity {
 
                 localEngine.clearLearning();
 
-                clearRewindState();
-                clearSingleStepHistory();
+                clearSessionRewindTrail();
 
                 historyItems.clear();
 
@@ -6852,9 +6851,6 @@ final class CgFirestore {
                     continue;
                 }
 
-
-                CgHistoryItem item =
-                        new CgHistoryItem();
 
                 CgHistoryItem item =
                         new CgHistoryItem();
