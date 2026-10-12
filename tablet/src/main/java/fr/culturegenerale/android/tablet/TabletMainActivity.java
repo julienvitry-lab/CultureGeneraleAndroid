@@ -168,18 +168,32 @@ public class TabletMainActivity extends Activity {
     private boolean answering = false;
     private String screen = "home";
 
-    // CGANDROID011 · IN_GAME_PREVIOUS_QUESTION001
+    // CGANDROID019 · SINGLE_STEP_BACK001
     private CgQuestion lastAnsweredQuestion = null;
     private boolean lastAnswerCorrect = false;
     private String lastAttemptId = "";
     private int lastAttemptRevision = 0;
+    private CgLocalAttempt lastAnsweredAttempt = null;
+
     private boolean correctingPrevious = false;
     private CgQuestion correctionResumeQuestion = null;
 
-    // CGANDROID014 · MULTI_STEP_REWIND001
+    /*
+     * Navigation réelle par QUESTION AFFICHÉE.
+     *
+     * previousDisplayedQuestion est strictement l'écran Question
+     * affiché immédiatement avant l'écran courant.
+     *
+     * Un clic ne peut donc jamais sauter plusieurs questions,
+     * même si certaines questions n'ont généré aucun attempt
+     * (Problème / exclusion).
+     */
+    private CgQuestion previousDisplayedQuestion = null;
+    private CgLocalAttempt previousDisplayedAttempt = null;
+
     private CgQuestion rewindAnchorQuestion = null;
     private CgLocalAttempt rewindTargetAttempt = null;
-    private int rewindDepth = 0;
+    private boolean rewindViewOnly = false;
 
     // CGANDROID011 · NEXT_GAME_ALL_DOMAIN_WARMUP001
     private static final long NEXT_GAME_WARM_TTL_MS = 30L * 60L * 1000L;
@@ -491,6 +505,11 @@ public class TabletMainActivity extends Activity {
             showMegathemes();
             return;
         }
+        if ("exclusions".equals(screen)) {
+            showMegathemes();
+            return;
+        }
+
         if ("megathemes".equals(screen)) {
             showHome();
             return;
@@ -680,11 +699,23 @@ public class TabletMainActivity extends Activity {
         historyFilter =
                 "all";
 
-
-        if (
+        boolean localHistoryReady =
                 localEngine != null &&
-                localEngine.historySeeded()
+                localEngine.historySeeded();
+
+        boolean globalStatsFresh =
+                localEngine != null &&
+                !localEngine.globalStatsNeedRefresh();
+
+        /*
+         * Cas courant :
+         * zéro appel Cloud, affichage immédiat.
+         */
+        if (
+                localHistoryReady &&
+                globalStatsFresh
         ) {
+
             historyItems.clear();
 
             historyItems.addAll(
@@ -697,7 +728,6 @@ public class TabletMainActivity extends Activity {
             return;
         }
 
-
         baseScreen();
 
         addTitle(
@@ -707,35 +737,55 @@ public class TabletMainActivity extends Activity {
         );
 
         addSub(
-                "Consolidation locale de l’historique…",
+                "Synchronisation des statistiques globales…",
                 16,
                 LIGHT_GREY
         );
 
         gap(20);
 
-
         io.submit(() -> {
+
             try {
+
                 String token =
                         auth.tokenSync();
 
+                /*
+                 * On essaie d'abord de vider l'outbox :
+                 * le scan global Cloud ne doit pas écraser un compteur local
+                 * avec une réponse encore non transmise.
+                 */
                 flags.flushOutboxSync(
                         firestore,
                         token,
                         auth.uid()
                 );
 
-                List<CgHistoryItem> cloud =
-                        firestore.listPlayHistorySync(
-                                token,
-                                auth.uid(),
-                                HISTORY_MAX_EVENTS
-                        );
+                if (!localEngine.historySeeded()) {
 
-                localEngine.importCloudHistory(
-                        cloud
-                );
+                    List<CgHistoryItem> cloud =
+                            firestore.listPlayHistorySync(
+                                    token,
+                                    auth.uid(),
+                                    HISTORY_MAX_EVENTS
+                            );
+
+                    localEngine.importCloudHistory(
+                            cloud
+                    );
+                }
+
+                if (
+                        localEngine.globalStatsNeedRefresh() &&
+                        flags.pendingHistoryCount() == 0
+                ) {
+
+                    localEngine.syncGlobalHistoryStats(
+                            token,
+                            auth.uid()
+                    );
+                }
 
                 List<CgHistoryItem> local =
                         localEngine.listLocalHistory(
@@ -743,12 +793,14 @@ public class TabletMainActivity extends Activity {
                         );
 
                 main.post(() -> {
+
                     if (!"history".equals(screen)) {
                         return;
                     }
 
                     historyItems.clear();
                     historyItems.addAll(local);
+
                     renderHistory();
                 });
 
@@ -760,15 +812,24 @@ public class TabletMainActivity extends Activity {
                         );
 
                 main.post(() -> {
+
                     if (!"history".equals(screen)) {
                         return;
                     }
 
+                    /*
+                     * Hors ligne :
+                     * l'ancien résumé global mémorisé reste utilisable.
+                     */
                     if (!local.isEmpty()) {
+
                         historyItems.clear();
                         historyItems.addAll(local);
+
                         renderHistory();
+
                     } else {
+
                         showHistoryError(
                                 ex.getMessage()
                         );
@@ -777,7 +838,6 @@ public class TabletMainActivity extends Activity {
             }
         });
     }
-
 
     private void renderHistory() {
 
@@ -800,26 +860,58 @@ public class TabletMainActivity extends Activity {
         gap(12);
 
 
-        int total = historyItems.size();
-        int success = 0;
+        // CGANDROID019 · GLOBAL_HISTORY_STATS001
+        CgGlobalHistoryStats globalStats =
+                localEngine == null
+                        ? null
+                        : localEngine.globalHistoryStats();
 
-        for (CgHistoryItem item : historyItems) {
+        boolean globalReady =
+                globalStats != null &&
+                globalStats.ready;
 
-            if (item.correct) {
-                success++;
+        int total =
+                globalReady
+                        ? globalStats.total
+                        : historyItems.size();
+
+        int success =
+                0;
+
+        if (globalReady) {
+
+            success =
+                    globalStats.success;
+
+        } else {
+
+            for (CgHistoryItem item : historyItems) {
+
+                if (item.correct) {
+                    success++;
+                }
             }
         }
 
         int failures =
-                total - success;
+                globalReady
+                        ? globalStats.failures()
+                        : total - success;
 
         int rate =
-                total <= 0
-                        ? 0
-                        : Math.round(
+                globalReady
+                        ? globalStats.rate()
+                        : (
+                        total <= 0
+                                ? 0
+                                : Math.round(
                                 success * 100f / total
-                        );
+                        )
+                );
 
+
+        /*
+         * Résumé global.
 
         /*
          * Résumé global.
@@ -890,6 +982,30 @@ public class TabletMainActivity extends Activity {
                 stats,
                 statsLp
         );
+
+        if (globalReady) {
+
+            TextView scope =
+                    text(
+                            "Totaux : historique complet · "
+                                    + "liste détaillée limitée aux "
+                                    + HISTORY_MAX_EVENTS
+                                    + " réponses les plus récentes.",
+                            12,
+                            LIGHT_GREY,
+                            Gravity.CENTER
+                    );
+
+            add(
+                    scope,
+                    -1,
+                    -2,
+                    dp(10),
+                    0,
+                    dp(10),
+                    dp(10)
+            );
+        }
 
 
         /*
@@ -1205,6 +1321,7 @@ public class TabletMainActivity extends Activity {
                 localEngine.clearLearning();
 
                 clearRewindState();
+                clearSingleStepHistory();
 
                 historyItems.clear();
 
@@ -2105,36 +2222,553 @@ public class TabletMainActivity extends Activity {
     }
 
 
+    /*
+     * ================================================================
+     * CGANDROID019 · AVAILABLE_COUNTS001
+     * CGANDROID019 · EXCLUSION_DIRECTORY001
+     * ================================================================
+     */
     private void showMegathemes() {
-        screen = "megathemes";
+
+        screen =
+                "megathemes";
+
         baseScreen();
 
-        addTitle("Choix du mégathème", 31, Color.WHITE);
+        addTitle(
+                "Choix du mégathème",
+                31,
+                Color.WHITE
+        );
+
         gap(8);
 
-        root.addView(domainRow(
-                domainButton("Animaux et Plantes", ANIMALS_GREEN, Color.WHITE, "Animaux et Plantes"),
-                domainButton("Culture Classique", CLASSIC_BLUE, Color.WHITE, "Culture Classique")));
+        final Map<String, Button> buttons =
+                new HashMap<>();
 
-        root.addView(domainRow(
-                domainButton("Culture Générale", GENERAL_GREEN, Color.BLACK, "Culture Générale"),
-                domainButton("Culture Moderne", MODERN_ORANGE, Color.BLACK, "Culture Moderne")));
+        Button animals =
+                domainButton(
+                        "Animaux et Plantes (…) ",
+                        ANIMALS_GREEN,
+                        Color.WHITE,
+                        "Animaux et Plantes"
+                );
 
-        root.addView(domainRow(
-                domainButton("Géographie", GEO_BLUE, Color.BLACK, "Géographie"),
-                domainButton("Histoire", HISTORY_BROWN, Color.WHITE, "Histoire")));
+        Button classic =
+                domainButton(
+                        "Culture Classique (…) ",
+                        CLASSIC_BLUE,
+                        Color.WHITE,
+                        "Culture Classique"
+                );
 
-        root.addView(domainRow(
-                domainButton("Sciences et Techniques", SCIENCE_YELLOW, Color.BLACK, "Sciences et Techniques"),
-                domainButton("Sport", SPORT_RED, Color.WHITE, "Sport")));
+        Button general =
+                domainButton(
+                        "Culture Générale (…) ",
+                        GENERAL_GREEN,
+                        Color.BLACK,
+                        "Culture Générale"
+                );
 
-        Button all = domainButton("Toutes les questions", Color.BLACK, Color.WHITE, "");
-        all.setBackground(roundedStroke(Color.BLACK, 14, Color.WHITE, 1));
-        add(all, -1, dp(78), 0, dp(5), 0, dp(8));
+        Button modern =
+                domainButton(
+                        "Culture Moderne (…) ",
+                        MODERN_ORANGE,
+                        Color.BLACK,
+                        "Culture Moderne"
+                );
 
-        Button back = button("Retour", GREY, 18);
-        add(back, -1, dp(54), 0, 0, 0, 0);
-        back.setOnClickListener(v -> showHome());
+        Button geography =
+                domainButton(
+                        "Géographie (…) ",
+                        GEO_BLUE,
+                        Color.BLACK,
+                        "Géographie"
+                );
+
+        Button history =
+                domainButton(
+                        "Histoire (…) ",
+                        HISTORY_BROWN,
+                        Color.WHITE,
+                        "Histoire"
+                );
+
+        Button sciences =
+                domainButton(
+                        "Sciences et Techniques (…) ",
+                        SCIENCE_YELLOW,
+                        Color.BLACK,
+                        "Sciences et Techniques"
+                );
+
+        Button sport =
+                domainButton(
+                        "Sport (…) ",
+                        SPORT_RED,
+                        Color.WHITE,
+                        "Sport"
+                );
+
+        buttons.put(
+                "Animaux et Plantes",
+                animals
+        );
+
+        buttons.put(
+                "Culture Classique",
+                classic
+        );
+
+        buttons.put(
+                "Culture Générale",
+                general
+        );
+
+        buttons.put(
+                "Culture Moderne",
+                modern
+        );
+
+        buttons.put(
+                "Géographie",
+                geography
+        );
+
+        buttons.put(
+                "Histoire",
+                history
+        );
+
+        buttons.put(
+                "Sciences et Techniques",
+                sciences
+        );
+
+        buttons.put(
+                "Sport",
+                sport
+        );
+
+        root.addView(
+                domainRow(
+                        animals,
+                        classic
+                )
+        );
+
+        root.addView(
+                domainRow(
+                        general,
+                        modern
+                )
+        );
+
+        root.addView(
+                domainRow(
+                        geography,
+                        history
+                )
+        );
+
+        root.addView(
+                domainRow(
+                        sciences,
+                        sport
+                )
+        );
+
+        Button all =
+                domainButton(
+                        "Toutes les questions (…) ",
+                        Color.BLACK,
+                        Color.WHITE,
+                        ""
+                );
+
+        all.setBackground(
+                roundedStroke(
+                        Color.BLACK,
+                        14,
+                        Color.WHITE,
+                        1
+                )
+        );
+
+        add(
+                all,
+                -1,
+                dp(78),
+                0,
+                dp(5),
+                0,
+                dp(8)
+        );
+
+        Button exclusions =
+                button(
+                        "Thèmes exclus ("
+                                + flags.exclusionCount()
+                                + ")",
+                        DARK,
+                        17
+                );
+
+        exclusions.setBackground(
+                roundedStroke(
+                        DARK,
+                        14,
+                        YELLOW,
+                        1
+                )
+        );
+
+        add(
+                exclusions,
+                -1,
+                dp(56),
+                0,
+                dp(4),
+                0,
+                dp(8)
+        );
+
+        exclusions.setOnClickListener(
+                v -> showExclusionDirectory()
+        );
+
+        Button back =
+                button(
+                        "Retour",
+                        GREY,
+                        18
+                );
+
+        add(
+                back,
+                -1,
+                dp(54),
+                0,
+                0,
+                0,
+                0
+        );
+
+        back.setOnClickListener(
+                v -> showHome()
+        );
+
+        /*
+         * Le comptage peut parcourir un grand catalogue :
+         * jamais sur le thread UI.
+         *
+         * On profite également de cette phase pour récupérer
+         * les exclusions / problèmes créés sur l'autre appareil.
+         */
+        if (
+                localEngine != null &&
+                localEngine.isReady(
+                        auth.uid()
+                )
+        ) {
+
+            io.submit(() -> {
+
+                try {
+
+                    if (
+                            isNetworkAvailable() &&
+                            flags.needsRemoteSync(
+                                    5L * 60L * 1000L
+                            )
+                    ) {
+
+                        String token =
+                                auth.tokenSync();
+
+                        localEngine.syncRemoteFlags(
+                                token,
+                                auth.uid(),
+                                flags
+                        );
+                    }
+
+                } catch (Exception ignored) {
+
+                    // Les exclusions déjà mémorisées localement
+                    // restent actives hors ligne.
+                }
+
+                final Map<String, Integer> counts =
+                        localEngine.availableCounts(
+                                flags
+                        );
+
+                main.post(() -> {
+
+                    if (!"megathemes".equals(screen)) {
+                        return;
+                    }
+
+                    setAvailableCount(
+                            animals,
+                            "Animaux et Plantes",
+                            counts.get(
+                                    "Animaux et Plantes"
+                            )
+                    );
+
+                    setAvailableCount(
+                            classic,
+                            "Culture Classique",
+                            counts.get(
+                                    "Culture Classique"
+                            )
+                    );
+
+                    setAvailableCount(
+                            general,
+                            "Culture Générale",
+                            counts.get(
+                                    "Culture Générale"
+                            )
+                    );
+
+                    setAvailableCount(
+                            modern,
+                            "Culture Moderne",
+                            counts.get(
+                                    "Culture Moderne"
+                            )
+                    );
+
+                    setAvailableCount(
+                            geography,
+                            "Géographie",
+                            counts.get(
+                                    "Géographie"
+                            )
+                    );
+
+                    setAvailableCount(
+                            history,
+                            "Histoire",
+                            counts.get(
+                                    "Histoire"
+                            )
+                    );
+
+                    setAvailableCount(
+                            sciences,
+                            "Sciences et Techniques",
+                            counts.get(
+                                    "Sciences et Techniques"
+                            )
+                    );
+
+                    setAvailableCount(
+                            sport,
+                            "Sport",
+                            counts.get(
+                                    "Sport"
+                            )
+                    );
+
+                    setAvailableCount(
+                            all,
+                            "Toutes les questions",
+                            counts.get(
+                                    "__ALL__"
+                            )
+                    );
+
+                    exclusions.setText(
+                            "Thèmes exclus ("
+                                    + flags.exclusionCount()
+                                    + ")"
+                    );
+                });
+            });
+        }
+    }
+
+
+    private void setAvailableCount(
+            Button button,
+            String label,
+            Integer count
+    ) {
+
+        if (button == null) {
+            return;
+        }
+
+        button.setText(
+                label
+                        + " ("
+                        + (
+                        count == null
+                                ? "…"
+                                : Math.max(
+                                0,
+                                count
+                        )
+                )
+                        + ")"
+        );
+    }
+
+
+    private void showExclusionDirectory() {
+
+        screen =
+                "exclusions";
+
+        baseScreen();
+
+        addTitle(
+                "Thèmes exclus",
+                30,
+                Color.WHITE
+        );
+
+        addSub(
+                "Groupes analogues exclus · "
+                        + "même thème + même question",
+                14,
+                LIGHT_GREY
+        );
+
+        gap(12);
+
+        List<String> entries =
+                flags.exclusionKeys();
+
+        if (entries.isEmpty()) {
+
+            TextView empty =
+                    cardText(
+                            "Aucun groupe analogue exclu.",
+                            17,
+                            DARK,
+                            Color.WHITE
+                    );
+
+            empty.setGravity(
+                    Gravity.CENTER
+            );
+
+            add(
+                    empty,
+                    -1,
+                    dp(90),
+                    dp(20),
+                    0,
+                    dp(20),
+                    dp(16)
+            );
+
+        } else {
+
+            StringBuilder text =
+                    new StringBuilder();
+
+            for (String key : entries) {
+
+                String value =
+                        key == null
+                                ? ""
+                                : key;
+
+                int split =
+                        value.indexOf(
+                                '\n'
+                        );
+
+                String theme =
+                        split >= 0
+                                ? value.substring(
+                                0,
+                                split
+                        )
+                                : value;
+
+                String question =
+                        split >= 0
+                                ? value.substring(
+                                split + 1
+                        )
+                                : "";
+
+                if (text.length() > 0) {
+                    text.append(
+                            "\n\n"
+                    );
+                }
+
+                text.append("• ");
+
+                text.append(
+                        theme.isEmpty()
+                                ? "(sans thème)"
+                                : theme
+                );
+
+                if (!question.isEmpty()) {
+                    text.append(
+                            "\n  "
+                    );
+
+                    text.append(
+                            question
+                    );
+                }
+            }
+
+            TextView list =
+                    cardText(
+                            text.toString(),
+                            15,
+                            DARK,
+                            Color.WHITE
+                    );
+
+            list.setGravity(
+                    Gravity.START
+                            | Gravity.CENTER_VERTICAL
+            );
+
+            add(
+                    list,
+                    -1,
+                    -2,
+                    dp(8),
+                    0,
+                    dp(8),
+                    dp(16)
+            );
+        }
+
+        Button back =
+                button(
+                        "Retour",
+                        BLUE,
+                        18
+                );
+
+        add(
+                back,
+                -1,
+                dp(56),
+                dp(80),
+                0,
+                dp(80),
+                0
+        );
+
+        back.setOnClickListener(
+                v -> showMegathemes()
+        );
     }
 
     private LinearLayout domainRow(Button left, Button right) {
@@ -2250,12 +2884,69 @@ public class TabletMainActivity extends Activity {
         Button b = button(label, bg, 21);
         b.setTextColor(fg);
         b.setBackground(roundedStroke(bg, 14, Color.WHITE, 1));
-        b.setOnClickListener(v -> {
-            selectedDomain = domain;
-            startEndlessPlay();
-        });
+        b.setOnClickListener(
+                v -> selectDomainAndStart(
+                        domain
+                )
+        );
         return b;
     }
+
+    // CGANDROID019 · SYNCED_EXCLUSIONS001
+    private void selectDomainAndStart(
+            String domain
+    ) {
+
+        if (
+                localEngine == null ||
+                !isNetworkAvailable() ||
+                !flags.needsRemoteSync(
+                        5L * 60L * 1000L
+                )
+        ) {
+
+            selectedDomain =
+                    domain;
+
+            startEndlessPlay();
+            return;
+        }
+
+        showLoading(
+                "Synchronisation des exclusions…"
+        );
+
+        io.submit(() -> {
+
+            try {
+
+                String token =
+                        auth.tokenSync();
+
+                localEngine.syncRemoteFlags(
+                        token,
+                        auth.uid(),
+                        flags
+                );
+
+            } catch (Exception ignored) {
+
+                /*
+                 * Une panne réseau ne bloque jamais une partie :
+                 * les exclusions déjà mémorisées localement restent actives.
+                 */
+            }
+
+            main.post(() -> {
+
+                selectedDomain =
+                        domain;
+
+                startEndlessPlay();
+            });
+        });
+    }
+
 
     private void showSizeSelection() {
         startEndlessPlay();
@@ -2387,6 +3078,7 @@ public class TabletMainActivity extends Activity {
                 null;
 
         clearRewindState();
+        clearSingleStepHistory();
 
         loadNextPlayable();
 
@@ -2431,6 +3123,9 @@ public class TabletMainActivity extends Activity {
 
         correctionResumeQuestion =
                 null;
+
+        clearRewindState();
+        clearSingleStepHistory();
 
         preloadQuestionIds(
                 batch.ids,
@@ -3219,7 +3914,10 @@ public class TabletMainActivity extends Activity {
             while (!localPrefetched.isEmpty()) {
                 CgQuestion candidate = localPrefetched.removeFirst();
                 // T exclusion may have changed after a candidate was reserved.
-                if (!flags.isTExcluded(candidate)) {
+                if (
+                        !flags.isTExcluded(candidate) &&
+                        !flags.isProblem(candidate)
+                ) {
                     q = candidate;
                     localNextRequested = false;
                     break;
@@ -3237,9 +3935,7 @@ public class TabletMainActivity extends Activity {
         }
 
         if (q != null) {
-            current = q;
-            answering = false;
-            showQuestion(q); // memory/disk cache is ready here
+            presentNewQuestion(q);
             return;
         }
         if (deferredPause) {
@@ -3260,6 +3956,57 @@ public class TabletMainActivity extends Activity {
         }
         pumpLocalImagePrefetch();
     }
+
+    /*
+     * CGANDROID019 · SINGLE_STEP_BACK001
+     *
+     * Historique de NAVIGATION, distinct de l'historique des réponses.
+     */
+    private void presentNewQuestion(
+            CgQuestion q
+    ) {
+
+        if (q == null) {
+            return;
+        }
+
+        if (
+                current != null &&
+                rewindAnchorQuestion == null &&
+                !safe(current.id).equals(
+                        safe(q.id)
+                )
+        ) {
+
+            previousDisplayedQuestion =
+                    current;
+
+            previousDisplayedAttempt =
+                    (
+                            lastAnsweredAttempt != null &&
+                            safe(
+                                    lastAnsweredAttempt.questionId
+                            ).equals(
+                                    safe(
+                                            current.id
+                                    )
+                            )
+                    )
+                            ? lastAnsweredAttempt
+                            : null;
+        }
+
+        current =
+                q;
+
+        answering =
+                false;
+
+        showQuestion(
+                q
+        );
+    }
+
 
     private void pumpLocalImagePrefetch() {
         final long epoch;
@@ -3703,6 +4450,34 @@ public class TabletMainActivity extends Activity {
                     responseMs
             );
 
+            CgLocalAttempt revisedAttempt =
+                    new CgLocalAttempt(
+                            target.attemptId,
+                            target.sessionId,
+                            target.seq,
+                            target.questionId,
+                            correct,
+                            newRevision,
+                            playedAtMs
+                    );
+
+            if (
+                    lastAnsweredAttempt != null &&
+                    safe(
+                            lastAnsweredAttempt.attemptId
+                    ).equals(
+                            safe(
+                                    target.attemptId
+                            )
+                    )
+            ) {
+                lastAnsweredAttempt =
+                        revisedAttempt;
+            }
+
+            previousDisplayedAttempt =
+                    revisedAttempt;
+
             flags.enqueue(
                     "play_history",
                     event
@@ -3733,6 +4508,38 @@ public class TabletMainActivity extends Activity {
             return;
         }
 
+        if (
+                rewindViewOnly &&
+                rewindAnchorQuestion != null
+        ) {
+
+            CgQuestion resume =
+                    rewindAnchorQuestion;
+
+            clearRewindState();
+
+            answering =
+                    false;
+
+            if (resume != null) {
+
+                current =
+                        resume;
+
+                showQuestion(
+                        resume
+                );
+            }
+
+            Toast.makeText(
+                    this,
+                    "Retour consultatif · aucune réponse ajoutée.",
+                    Toast.LENGTH_SHORT
+            ).show();
+
+            return;
+        }
+
         String attemptId =
                 UUID.randomUUID()
                         .toString();
@@ -3753,14 +4560,15 @@ public class TabletMainActivity extends Activity {
                 correct
         );
 
-        localEngine.recordAttempt(
-                game.sessionId(),
-                attemptId,
-                q.id,
-                correct,
-                playedAtMs,
-                responseMs
-        );
+        lastAnsweredAttempt =
+                localEngine.recordAttempt(
+                        game.sessionId(),
+                        attemptId,
+                        q.id,
+                        correct,
+                        playedAtMs,
+                        responseMs
+                );
 
         lastAnsweredQuestion =
                 q;
@@ -3902,6 +4710,10 @@ public class TabletMainActivity extends Activity {
     }
 
     private void reportProblem(CgQuestion q, Button button) {
+
+        // CGANDROID019 · PROBLEM_PERSIST001
+        flags.addProblem(q);
+
         JSONObject payload = new JSONObject();
         try {
             payload.put("question_id", q.id);
@@ -4304,7 +5116,7 @@ public class TabletMainActivity extends Activity {
 
         Button exclude =
                 actionBand(
-                        "Thème à exclure",
+                        "Exclure ce groupe",
                         YELLOW,
                         Color.BLACK
                 );
@@ -4454,114 +5266,113 @@ public class TabletMainActivity extends Activity {
     /*
      * CGANDROID011 · IN_GAME_PREVIOUS_QUESTION001
      */
+    /*
+     * ================================================================
+     * CGANDROID019 · SINGLE_STEP_BACK001
+     * ================================================================
+     *
+     * Un clic = exactement UN écran Question en arrière.
+     *
+     * On ne cherche plus "l'attempt précédent" dans SQLite :
+     * cette ancienne logique pouvait sauter toutes les questions
+     * Problème / exclues n'ayant généré aucun attempt.
+     */
     private void returnToPreviousQuestion(
             CgQuestion forwardQuestion
     ) {
 
         if (
                 game == null ||
-                !game.hasActive() ||
-                game.sessionId().isEmpty()
+                !game.hasActive()
         ) {
+
             Toast.makeText(
                     this,
                     "Aucune partie active.",
                     Toast.LENGTH_SHORT
             ).show();
+
             return;
         }
 
-        if (rewindAnchorQuestion == null) {
-            rewindAnchorQuestion =
-                    forwardQuestion;
-            rewindTargetAttempt =
-                    null;
-            rewindDepth =
-                    0;
-        }
+        if (rewindAnchorQuestion != null) {
 
-        int beforeSeq =
-                rewindTargetAttempt == null
-                        ? Integer.MAX_VALUE
-                        : rewindTargetAttempt.seq;
-
-        CgLocalAttempt previous =
-                localEngine.previousAttempt(
-                        game.sessionId(),
-                        beforeSeq
-                );
-
-        if (previous == null) {
             Toast.makeText(
                     this,
-                    "Début de la partie atteint.",
+                    "Vous êtes déjà revenu d’une question.",
                     Toast.LENGTH_SHORT
             ).show();
+
             return;
         }
 
-        CgQuestion previousQuestion =
-                localEngine.questionById(
-                        previous.questionId
-                );
+        if (previousDisplayedQuestion == null) {
 
-        if (previousQuestion == null) {
             Toast.makeText(
                     this,
-                    "Question précédente introuvable.",
+                    "Aucune question précédente.",
                     Toast.LENGTH_SHORT
             ).show();
+
             return;
         }
+
+        rewindAnchorQuestion =
+                forwardQuestion;
 
         rewindTargetAttempt =
-                previous;
+                previousDisplayedAttempt;
 
-        rewindDepth++;
-
-        correctingPrevious =
-                false;
-
-        correctionResumeQuestion =
-                null;
+        rewindViewOnly =
+                rewindTargetAttempt == null;
 
         current =
-                previousQuestion;
+                previousDisplayedQuestion;
 
         answering =
                 false;
 
         showQuestion(
-                previousQuestion
+                previousDisplayedQuestion
         );
 
         Toast.makeText(
                 this,
-                "Retour : "
-                        + rewindDepth
-                        + (
-                        rewindDepth == 1
-                                ? " question en arrière"
-                                : " questions en arrière"
-                ),
+                "Retour : 1 question en arrière",
                 Toast.LENGTH_SHORT
         ).show();
     }
 
-
     private void clearRewindState() {
+
         rewindAnchorQuestion =
                 null;
+
         rewindTargetAttempt =
                 null;
-        rewindDepth =
-                0;
+
+        rewindViewOnly =
+                false;
+
         correctingPrevious =
                 false;
+
         correctionResumeQuestion =
                 null;
     }
 
+
+    private void clearSingleStepHistory() {
+
+        previousDisplayedQuestion =
+                null;
+
+        previousDisplayedAttempt =
+                null;
+
+        lastAnsweredAttempt =
+                null;
+    }
 
     private void showQuickGameStats() {
         int played = game.played();
@@ -4648,6 +5459,7 @@ public class TabletMainActivity extends Activity {
                 false;
 
         clearRewindState();
+        clearSingleStepHistory();
 
         showHome();
 
@@ -6085,6 +6897,15 @@ final class CgQuestion {
 final class CgFlags {
     private static final String PREF = "cgandroid001_flags";
     private static final String K_T = "analog_t_keys";
+
+    // CGANDROID019 · PROBLEM_PERSIST001
+    private static final String K_P =
+            "problem_question_ids";
+
+    // CGANDROID019 · SYNCED_EXCLUSIONS001
+    private static final String K_REMOTE_SYNC_AT =
+            "remote_flag_sync_at";
+
     private static final String K_OUTBOX = "outbox";
     private final SharedPreferences prefs;
 
@@ -6129,9 +6950,198 @@ final class CgFlags {
     }
 
     boolean isTExcluded(CgQuestion q) {
-        Set<String> set = prefs.getStringSet(K_T, new HashSet<>());
-        return set.contains(analogKey(q));
+        Set<String> set =
+                prefs.getStringSet(
+                        K_T,
+                        new HashSet<>()
+                );
+
+        return set.contains(
+                analogKey(q)
+        );
     }
+
+
+    // CGANDROID019 · PROBLEM_PERSIST001
+    void addProblem(
+            CgQuestion q
+    ) {
+
+        if (
+                q == null ||
+                q.id == null ||
+                q.id.trim().isEmpty()
+        ) {
+            return;
+        }
+
+        Set<String> existing =
+                new HashSet<>(
+                        prefs.getStringSet(
+                                K_P,
+                                new HashSet<>()
+                        )
+                );
+
+        existing.add(
+                q.id.trim()
+        );
+
+        prefs.edit()
+                .putStringSet(
+                        K_P,
+                        existing
+                )
+                .apply();
+    }
+
+
+    boolean isProblem(
+            CgQuestion q
+    ) {
+
+        if (
+                q == null ||
+                q.id == null
+        ) {
+            return false;
+        }
+
+        Set<String> set =
+                prefs.getStringSet(
+                        K_P,
+                        new HashSet<>()
+                );
+
+        return set.contains(
+                q.id.trim()
+        );
+    }
+
+
+    // CGANDROID019 · SYNCED_EXCLUSIONS001
+    void mergeTKeys(
+            Set<String> incoming
+    ) {
+
+        if (
+                incoming == null ||
+                incoming.isEmpty()
+        ) {
+            return;
+        }
+
+        Set<String> existing =
+                new HashSet<>(
+                        prefs.getStringSet(
+                                K_T,
+                                new HashSet<>()
+                        )
+                );
+
+        existing.addAll(
+                incoming
+        );
+
+        prefs.edit()
+                .putStringSet(
+                        K_T,
+                        existing
+                )
+                .apply();
+    }
+
+
+    void mergeProblemIds(
+            Set<String> incoming
+    ) {
+
+        if (
+                incoming == null ||
+                incoming.isEmpty()
+        ) {
+            return;
+        }
+
+        Set<String> existing =
+                new HashSet<>(
+                        prefs.getStringSet(
+                                K_P,
+                                new HashSet<>()
+                        )
+                );
+
+        existing.addAll(
+                incoming
+        );
+
+        prefs.edit()
+                .putStringSet(
+                        K_P,
+                        existing
+                )
+                .apply();
+    }
+
+
+    int exclusionCount() {
+
+        return prefs.getStringSet(
+                K_T,
+                new HashSet<>()
+        ).size();
+    }
+
+
+    List<String> exclusionKeys() {
+
+        List<String> out =
+                new ArrayList<>(
+                        prefs.getStringSet(
+                                K_T,
+                                new HashSet<>()
+                        )
+                );
+
+        Collections.sort(
+                out
+        );
+
+        return out;
+    }
+
+
+    void markRemoteSyncNow() {
+
+        prefs.edit()
+                .putLong(
+                        K_REMOTE_SYNC_AT,
+                        System.currentTimeMillis()
+                )
+                .apply();
+    }
+
+
+    boolean needsRemoteSync(
+            long maxAgeMs
+    ) {
+
+        long at =
+                prefs.getLong(
+                        K_REMOTE_SYNC_AT,
+                        0L
+                );
+
+        return (
+                at <= 0L ||
+                System.currentTimeMillis() - at
+                        >= Math.max(
+                        0L,
+                        maxAgeMs
+                )
+        );
+    }
+
 
     synchronized void enqueue(String collection, JSONObject payload) {
         try {

@@ -39,11 +39,36 @@ final class CgLocalEngine extends SQLiteOpenHelper {
     private static final String META_SESSION = "current_session";
     private static final String META_HISTORY_SEEDED = "history_seeded";
 
+    // CGANDROID019 · GLOBAL_HISTORY_STATS001
+    private static final String META_GLOBAL_TOTAL =
+            "cgandroid019_global_history_total";
+
+    private static final String META_GLOBAL_SUCCESS =
+            "cgandroid019_global_history_success";
+
+    private static final String META_GLOBAL_STATS_READY =
+            "cgandroid019_global_history_ready";
+
+    private static final String META_GLOBAL_STATS_AT =
+            "cgandroid019_global_history_at";
+
+    /*
+     * Un rescan complet du Cloud n'est PAS effectué à chaque ouverture.
+     * Les compteurs sont ensuite entretenus localement.
+     */
+    private static final long GLOBAL_STATS_REFRESH_MS =
+            24L * 60L * 60L * 1000L;
+
     // CGANDROID016 · LOCAL_CATALOG_REPAIR001
     private static final String META_CATALOG_REPAIR = "cgandroid016_catalog_repair";
     private static final String CATALOG_REPAIR_VERSION = "1";
 
     private final Random random = new Random();
+
+    // Valeurs produites gratuitement pendant le scan d'apprentissage
+    // déjà réalisé au bootstrap.
+    private int lastHistoryScanTotal = 0;
+    private int lastHistoryScanSuccess = 0;
 
     CgLocalEngine(Context context) {
         super(context.getApplicationContext(), DB_NAME, null, DB_VERSION);
@@ -269,6 +294,12 @@ final class CgLocalEngine extends SQLiteOpenHelper {
                 SQLiteDatabase.CONFLICT_REPLACE
         );
 
+        // CGANDROID019 · GLOBAL_HISTORY_STATS001
+        adjustGlobalStatsForNewAttempt(
+                db,
+                correct
+        );
+
         return new CgLocalAttempt(
                 attemptId,
                 safe(sessionId),
@@ -295,20 +326,81 @@ final class CgLocalEngine extends SQLiteOpenHelper {
             return;
         }
 
-        ContentValues cv = new ContentValues();
+        SQLiteDatabase db =
+                getWritableDatabase();
+
+        Boolean oldCorrect =
+                null;
+
+        Cursor previous =
+                db.query(
+                        "attempts",
+                        new String[]{"correct"},
+                        "attempt_id=?",
+                        new String[]{attemptId},
+                        null,
+                        null,
+                        null,
+                        "1"
+                );
+
+        try {
+            if (previous.moveToFirst()) {
+                oldCorrect =
+                        previous.getInt(0) != 0;
+            }
+        } finally {
+            previous.close();
+        }
+
+        ContentValues cv =
+                new ContentValues();
+
         cv.put("correct", correct ? 1 : 0);
         cv.put("revision", Math.max(1, revision));
         cv.put("played_at", playedAtMs);
         cv.put("response_ms", Math.max(0L, responseMs));
 
-        getWritableDatabase().update(
-                "attempts",
-                cv,
-                "attempt_id=?",
-                new String[]{attemptId}
-        );
-    }
+        int changed =
+                db.update(
+                        "attempts",
+                        cv,
+                        "attempt_id=?",
+                        new String[]{attemptId}
+                );
 
+        // CGANDROID019 · GLOBAL_HISTORY_STATS001
+        if (
+                changed > 0 &&
+                oldCorrect != null &&
+                oldCorrect != correct &&
+                globalStatsReady(db)
+        ) {
+            long success =
+                    parseLong(
+                            meta(
+                                    db,
+                                    META_GLOBAL_SUCCESS
+                            )
+                    );
+
+            success +=
+                    correct
+                            ? 1L
+                            : -1L;
+
+            putMeta(
+                    db,
+                    META_GLOBAL_SUCCESS,
+                    String.valueOf(
+                            Math.max(
+                                    0L,
+                                    success
+                            )
+                    )
+            );
+        }
+    }
 
     synchronized CgLocalAttempt previousAttempt(
             String sessionId,
@@ -572,6 +664,31 @@ final class CgLocalEngine extends SQLiteOpenHelper {
                 writeLearning(db, e.getKey(), e.getValue());
             }
 
+            // CGANDROID019 · GLOBAL_HISTORY_STATS001
+            putMeta(
+                    db,
+                    META_GLOBAL_TOTAL,
+                    String.valueOf(lastHistoryScanTotal)
+            );
+
+            putMeta(
+                    db,
+                    META_GLOBAL_SUCCESS,
+                    String.valueOf(lastHistoryScanSuccess)
+            );
+
+            putMeta(
+                    db,
+                    META_GLOBAL_STATS_READY,
+                    "1"
+            );
+
+            putMeta(
+                    db,
+                    META_GLOBAL_STATS_AT,
+                    String.valueOf(System.currentTimeMillis())
+            );
+
             putMeta(db, META_UID, uid);
             putMeta(db, META_READY, "1");
             putMeta(db, META_SYNC_AT, String.valueOf(System.currentTimeMillis()));
@@ -685,7 +802,15 @@ final class CgLocalEngine extends SQLiteOpenHelper {
                     continue;
                 }
 
-                if (flags != null && flags.isTExcluded(q)) continue;
+                if (
+                        flags != null &&
+                        (
+                                flags.isTExcluded(q) ||
+                                flags.isProblem(q)
+                        )
+                ) {
+                    continue;
+                }
 
                 int fail = c.getInt(c.getColumnIndexOrThrow("local_fail"));
 
@@ -904,6 +1029,17 @@ final class CgLocalEngine extends SQLiteOpenHelper {
             db.delete("attempts", null, null);
             putMeta(db, META_SESSION, "");
             putMeta(db, META_HISTORY_SEEDED, "1");
+
+            // CGANDROID019 · GLOBAL_HISTORY_STATS001
+            putMeta(db, META_GLOBAL_TOTAL, "0");
+            putMeta(db, META_GLOBAL_SUCCESS, "0");
+            putMeta(db, META_GLOBAL_STATS_READY, "1");
+            putMeta(
+                    db,
+                    META_GLOBAL_STATS_AT,
+                    String.valueOf(System.currentTimeMillis())
+            );
+
             db.setTransactionSuccessful();
         } finally {
             db.endTransaction();
@@ -971,6 +1107,709 @@ final class CgLocalEngine extends SQLiteOpenHelper {
             );
         }
     }
+
+
+    /*
+     * ================================================================
+     * CGANDROID019 · GLOBAL_HISTORY_STATS001
+     * ================================================================
+     */
+
+    synchronized CgGlobalHistoryStats globalHistoryStats() {
+
+        SQLiteDatabase db =
+                getReadableDatabase();
+
+        boolean ready =
+                globalStatsReady(db);
+
+        int total =
+                (int) Math.max(
+                        0L,
+                        parseLong(
+                                meta(
+                                        db,
+                                        META_GLOBAL_TOTAL
+                                )
+                        )
+                );
+
+        int success =
+                (int) Math.max(
+                        0L,
+                        parseLong(
+                                meta(
+                                        db,
+                                        META_GLOBAL_SUCCESS
+                                )
+                        )
+                );
+
+        success =
+                Math.min(
+                        total,
+                        success
+                );
+
+        long syncedAt =
+                parseLong(
+                        meta(
+                                db,
+                                META_GLOBAL_STATS_AT
+                        )
+                );
+
+        return new CgGlobalHistoryStats(
+                total,
+                success,
+                ready,
+                syncedAt
+        );
+    }
+
+
+    synchronized boolean globalStatsNeedRefresh() {
+
+        SQLiteDatabase db =
+                getReadableDatabase();
+
+        if (!globalStatsReady(db)) {
+            return true;
+        }
+
+        long at =
+                parseLong(
+                        meta(
+                                db,
+                                META_GLOBAL_STATS_AT
+                        )
+                );
+
+        return (
+                at <= 0L ||
+                System.currentTimeMillis() - at
+                        >= GLOBAL_STATS_REFRESH_MS
+        );
+    }
+
+
+    private boolean globalStatsReady(
+            SQLiteDatabase db
+    ) {
+        return "1".equals(
+                meta(
+                        db,
+                        META_GLOBAL_STATS_READY
+                )
+        );
+    }
+
+
+    private void adjustGlobalStatsForNewAttempt(
+            SQLiteDatabase db,
+            boolean correct
+    ) {
+
+        if (!globalStatsReady(db)) {
+            return;
+        }
+
+        long total =
+                parseLong(
+                        meta(
+                                db,
+                                META_GLOBAL_TOTAL
+                        )
+                );
+
+        long success =
+                parseLong(
+                        meta(
+                                db,
+                                META_GLOBAL_SUCCESS
+                        )
+                );
+
+        total++;
+
+        if (correct) {
+            success++;
+        }
+
+        putMeta(
+                db,
+                META_GLOBAL_TOTAL,
+                String.valueOf(total)
+        );
+
+        putMeta(
+                db,
+                META_GLOBAL_SUCCESS,
+                String.valueOf(success)
+        );
+    }
+
+
+    /*
+     * Pour une base déjà existante avant CGANDROID019 :
+     * un seul scan Cloud construit les deux compteurs.
+     *
+     * Les documents de correction partageant attempt_id sont
+     * dédupliqués : seule la révision la plus récente compte.
+     */
+    synchronized void syncGlobalHistoryStats(
+            String token,
+            String uid
+    ) throws Exception {
+
+        int total =
+                0;
+
+        int success =
+                0;
+
+        Set<String> seenAttempts =
+                new HashSet<>();
+
+        String pageToken =
+                "";
+
+        for (;;) {
+
+            String url =
+                    firestoreBase(uid)
+                            + "/play_history?pageSize=1000"
+                            + "&orderBy=client_played_at_ms%20desc"
+                            + (
+                            pageToken.isEmpty()
+                                    ? ""
+                                    : "&pageToken=" + enc(pageToken)
+                    );
+
+            JSONObject response =
+                    CgHttp.json(
+                            "GET",
+                            url,
+                            token,
+                            null
+                    );
+
+            JSONArray docs =
+                    response.optJSONArray(
+                            "documents"
+                    );
+
+            if (docs != null) {
+
+                for (
+                        int i = 0;
+                        i < docs.length();
+                        i++
+                ) {
+
+                    JSONObject doc =
+                            docs.optJSONObject(i);
+
+                    if (doc == null) {
+                        continue;
+                    }
+
+                    JSONObject fields =
+                            doc.optJSONObject(
+                                    "fields"
+                            );
+
+                    if (fields == null) {
+                        continue;
+                    }
+
+                    Boolean correct =
+                            boolNullable(
+                                    fields,
+                                    "is_correct"
+                            );
+
+                    if (correct == null) {
+                        continue;
+                    }
+
+                    String attemptId =
+                            str(
+                                    fields,
+                                    "attempt_id"
+                            );
+
+                    String uniqueKey;
+
+                    if (!attemptId.isEmpty()) {
+
+                        uniqueKey =
+                                "a:"
+                                        + attemptId;
+
+                    } else {
+
+                        uniqueKey =
+                                "d:"
+                                        + doc.optString(
+                                        "name",
+                                        ""
+                                );
+                    }
+
+                    if (
+                            !uniqueKey.isEmpty() &&
+                            !seenAttempts.add(uniqueKey)
+                    ) {
+                        continue;
+                    }
+
+                    String questionId =
+                            str(
+                                    fields,
+                                    "question_id"
+                            );
+
+                    if (questionId.isEmpty()) {
+
+                        JSONObject snap =
+                                mapFields(
+                                        fields,
+                                        "question_snapshot"
+                                );
+
+                        if (snap != null) {
+                            questionId =
+                                    str(
+                                            snap,
+                                            "question_id"
+                                    );
+                        }
+                    }
+
+                    if (questionId.isEmpty()) {
+                        questionId =
+                                numericString(
+                                        fields,
+                                        "question_row_number"
+                                );
+                    }
+
+                    if (questionId.isEmpty()) {
+                        continue;
+                    }
+
+                    total++;
+
+                    if (correct) {
+                        success++;
+                    }
+                }
+            }
+
+            pageToken =
+                    response.optString(
+                            "nextPageToken",
+                            ""
+                    );
+
+            if (pageToken.isEmpty()) {
+                break;
+            }
+        }
+
+        SQLiteDatabase db =
+                getWritableDatabase();
+
+        db.beginTransaction();
+
+        try {
+
+            putMeta(
+                    db,
+                    META_GLOBAL_TOTAL,
+                    String.valueOf(total)
+            );
+
+            putMeta(
+                    db,
+                    META_GLOBAL_SUCCESS,
+                    String.valueOf(success)
+            );
+
+            putMeta(
+                    db,
+                    META_GLOBAL_STATS_READY,
+                    "1"
+            );
+
+            putMeta(
+                    db,
+                    META_GLOBAL_STATS_AT,
+                    String.valueOf(System.currentTimeMillis())
+            );
+
+            db.setTransactionSuccessful();
+
+        } finally {
+
+            db.endTransaction();
+        }
+    }
+
+
+    /*
+     * ================================================================
+     * CGANDROID019 · AVAILABLE_COUNTS001
+     * ================================================================
+     *
+     * Disponible =
+     * - question jamais posée
+     * - OU question posée mais non assimilée
+     *
+     * Sont retirés :
+     * - assimilées ;
+     * - status X ;
+     * - groupes analogues exclus ;
+     * - questions signalées Problème.
+     */
+    synchronized Map<String, Integer> availableCounts(
+            CgFlags flags
+    ) {
+
+        Map<String, Integer> out =
+                new HashMap<>();
+
+        int all =
+                0;
+
+        Cursor c =
+                getReadableDatabase()
+                        .rawQuery(
+                                "SELECT "
+                                        + "q.id,"
+                                        + "q.megatheme,"
+                                        + "q.theme,"
+                                        + "q.question_text "
+                                        + "FROM questions q "
+                                        + "LEFT JOIN learning l "
+                                        + "ON l.question_id=q.id "
+                                        + "WHERE q.excluded_x=0 "
+                                        + "AND COALESCE(l.mastered,0)=0",
+                                null
+                        );
+
+        try {
+
+            while (c.moveToNext()) {
+
+                CgQuestion q =
+                        new CgQuestion();
+
+                q.id =
+                        safe(
+                                c.getString(0)
+                        );
+
+                q.megatheme =
+                        safe(
+                                c.getString(1)
+                        );
+
+                q.theme =
+                        safe(
+                                c.getString(2)
+                        );
+
+                q.question =
+                        safe(
+                                c.getString(3)
+                        );
+
+                if (
+                        q.id.isEmpty() ||
+                        (
+                                flags != null &&
+                                (
+                                        flags.isTExcluded(q) ||
+                                        flags.isProblem(q)
+                                )
+                        )
+                ) {
+                    continue;
+                }
+
+                all++;
+
+                if (!q.megatheme.isEmpty()) {
+
+                    out.put(
+                            q.megatheme,
+                            out.getOrDefault(
+                                    q.megatheme,
+                                    0
+                            ) + 1
+                    );
+                }
+            }
+
+        } finally {
+
+            c.close();
+        }
+
+        out.put(
+                "__ALL__",
+                all
+        );
+
+        return out;
+    }
+
+
+    /*
+     * ================================================================
+     * CGANDROID019 · SYNCED_EXCLUSIONS001 / PROBLEM_PERSIST001
+     * ================================================================
+     */
+
+    synchronized void syncRemoteFlags(
+            String token,
+            String uid,
+            CgFlags flags
+    ) throws Exception {
+
+        if (flags == null) {
+            return;
+        }
+
+        Set<String> analogKeys =
+                new HashSet<>();
+
+        Set<String> problemIds =
+                new HashSet<>();
+
+        /*
+         * Exclusions analogues.
+         */
+        String pageToken =
+                "";
+
+        for (;;) {
+
+            String url =
+                    firestoreBase(uid)
+                            + "/analog_exclusions?pageSize=1000"
+                            + (
+                            pageToken.isEmpty()
+                                    ? ""
+                                    : "&pageToken=" + enc(pageToken)
+                    );
+
+            JSONObject response =
+                    CgHttp.json(
+                            "GET",
+                            url,
+                            token,
+                            null
+                    );
+
+            JSONArray docs =
+                    response.optJSONArray(
+                            "documents"
+                    );
+
+            if (docs != null) {
+
+                for (
+                        int i = 0;
+                        i < docs.length();
+                        i++
+                ) {
+
+                    JSONObject doc =
+                            docs.optJSONObject(i);
+
+                    if (doc == null) {
+                        continue;
+                    }
+
+                    JSONObject fields =
+                            doc.optJSONObject(
+                                    "fields"
+                            );
+
+                    if (fields == null) {
+                        continue;
+                    }
+
+                    String state =
+                            str(
+                                    fields,
+                                    "state"
+                            )
+                                    .trim()
+                                    .toLowerCase(
+                                            java.util.Locale.ROOT
+                                    );
+
+                    if (
+                            "resolved".equals(state) ||
+                            "deleted".equals(state) ||
+                            "closed".equals(state)
+                    ) {
+                        continue;
+                    }
+
+                    String key =
+                            str(
+                                    fields,
+                                    "group_key"
+                            );
+
+                    if (key.isEmpty()) {
+
+                        key =
+                                CgFlags.analogKey(
+                                        str(
+                                                fields,
+                                                "theme"
+                                        ),
+                                        str(
+                                                fields,
+                                                "question"
+                                        )
+                                );
+                    }
+
+                    if (!key.trim().isEmpty()) {
+                        analogKeys.add(key);
+                    }
+                }
+            }
+
+            pageToken =
+                    response.optString(
+                            "nextPageToken",
+                            ""
+                    );
+
+            if (pageToken.isEmpty()) {
+                break;
+            }
+        }
+
+        /*
+         * Questions signalées Problème.
+         */
+        pageToken =
+                "";
+
+        for (;;) {
+
+            String url =
+                    firestoreBase(uid)
+                            + "/problem_reports?pageSize=1000"
+                            + (
+                            pageToken.isEmpty()
+                                    ? ""
+                                    : "&pageToken=" + enc(pageToken)
+                    );
+
+            JSONObject response =
+                    CgHttp.json(
+                            "GET",
+                            url,
+                            token,
+                            null
+                    );
+
+            JSONArray docs =
+                    response.optJSONArray(
+                            "documents"
+                    );
+
+            if (docs != null) {
+
+                for (
+                        int i = 0;
+                        i < docs.length();
+                        i++
+                ) {
+
+                    JSONObject doc =
+                            docs.optJSONObject(i);
+
+                    if (doc == null) {
+                        continue;
+                    }
+
+                    JSONObject fields =
+                            doc.optJSONObject(
+                                    "fields"
+                            );
+
+                    if (fields == null) {
+                        continue;
+                    }
+
+                    String state =
+                            str(
+                                    fields,
+                                    "state"
+                            )
+                                    .trim()
+                                    .toLowerCase(
+                                            java.util.Locale.ROOT
+                                    );
+
+                    if (
+                            "resolved".equals(state) ||
+                            "deleted".equals(state) ||
+                            "closed".equals(state)
+                    ) {
+                        continue;
+                    }
+
+                    String id =
+                            str(
+                                    fields,
+                                    "question_id"
+                            );
+
+                    if (!id.trim().isEmpty()) {
+                        problemIds.add(id.trim());
+                    }
+                }
+            }
+
+            pageToken =
+                    response.optString(
+                            "nextPageToken",
+                            ""
+                    );
+
+            if (pageToken.isEmpty()) {
+                break;
+            }
+        }
+
+        /*
+         * Merge et non remplacement :
+         * une exclusion encore présente dans l'outbox locale ne peut
+         * jamais disparaître pendant une synchronisation.
+         */
+        flags.mergeTKeys(
+                analogKeys
+        );
+
+        flags.mergeProblemIds(
+                problemIds
+        );
+
+        flags.markRemoteSyncNow();
+    }
+
 
     private List<LocalQuestionRow> fetchQuestions(
             String token,
@@ -1092,6 +1931,11 @@ final class CgLocalEngine extends SQLiteOpenHelper {
     ) throws Exception {
         Map<String, LocalLearningState> out = new HashMap<>();
         Set<String> seenAttempts = new HashSet<>();
+
+        // CGANDROID019 · GLOBAL_HISTORY_STATS001
+        lastHistoryScanTotal = 0;
+        lastHistoryScanSuccess = 0;
+
         String pageToken = "";
 
         for (;;) {
@@ -1143,6 +1987,14 @@ final class CgLocalEngine extends SQLiteOpenHelper {
                     }
 
                     if (questionId.isEmpty()) continue;
+
+                    // L'ordre Cloud est décroissant : pour un attempt_id,
+                    // la première révision rencontrée est la version actuelle.
+                    lastHistoryScanTotal++;
+
+                    if (correct) {
+                        lastHistoryScanSuccess++;
+                    }
 
                     LocalLearningState state = out.get(questionId);
 
@@ -1539,5 +2391,62 @@ final class CgLocalAttempt {
         this.correct = correct;
         this.revision = Math.max(1, revision);
         this.playedAtMs = playedAtMs;
+    }
+}
+
+/*
+ * CGANDROID019 · GLOBAL_HISTORY_STATS001
+ */
+final class CgGlobalHistoryStats {
+
+    final int total;
+    final int success;
+    final boolean ready;
+    final long syncedAtMs;
+
+    CgGlobalHistoryStats(
+            int total,
+            int success,
+            boolean ready,
+            long syncedAtMs
+    ) {
+        this.total =
+                Math.max(
+                        0,
+                        total
+                );
+
+        this.success =
+                Math.max(
+                        0,
+                        Math.min(
+                                this.total,
+                                success
+                        )
+                );
+
+        this.ready =
+                ready;
+
+        this.syncedAtMs =
+                Math.max(
+                        0L,
+                        syncedAtMs
+                );
+    }
+
+    int failures() {
+        return Math.max(
+                0,
+                total - success
+        );
+    }
+
+    int rate() {
+        return total <= 0
+                ? 0
+                : Math.round(
+                        success * 100f / total
+                );
     }
 }
