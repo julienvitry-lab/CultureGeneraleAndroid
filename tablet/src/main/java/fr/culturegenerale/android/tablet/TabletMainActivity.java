@@ -1607,7 +1607,7 @@ public class TabletMainActivity extends Activity {
 
         card.setBackground(
                 roundedStroke(
-                        DARK,
+                        item.correct ? GREEN : RED,
                         14,
                         GREY,
                         1
@@ -1790,14 +1790,20 @@ public class TabletMainActivity extends Activity {
                                 selected.questionId
                         );
 
-        if (
-                catalogQuestion != null &&
-                catalogQuestion.hasImage()
-        ) {
-
-            addHistoryImage(
-                    catalogQuestion
-            );
+        if (catalogQuestion != null) {
+            if (catalogQuestion.hasImage()) {
+                addHistoryImage(catalogQuestion);
+            } else if (catalogQuestion.detail != null &&
+                    !catalogQuestion.detail.trim().isEmpty()) {
+                TextView detailCard = cardText(
+                        catalogQuestion.detail.trim(),
+                        18,
+                        DARK,
+                        Color.WHITE
+                );
+                detailCard.setGravity(Gravity.CENTER);
+                add(detailCard, -1, -2, dp(20), 0, dp(20), dp(12));
+            }
         }
 
 
@@ -1839,8 +1845,8 @@ public class TabletMainActivity extends Activity {
                                 ? "Dernier passage : ✓ Réussite"
                                 : "Dernier passage : ✕ Échec",
                         17,
-                        DARK,
-                        lastColor
+                        lastColor,
+                        Color.WHITE
                 );
 
         lastResult.setGravity(
@@ -2008,13 +2014,13 @@ public class TabletMainActivity extends Activity {
                                             : "✕ Échec"
                             ),
                             17,
-                            resultColor,
+                            Color.WHITE,
                             Gravity.CENTER
                     );
 
             attempt.setBackground(
                     roundedStroke(
-                            DARK,
+                            resultColor,
                             12,
                             resultColor,
                             1
@@ -2594,9 +2600,7 @@ public class TabletMainActivity extends Activity {
          */
         if (
                 localEngine != null &&
-                localEngine.isReady(
-                        auth.uid()
-                )
+                localEngine.catalogSize() > 0
         ) {
 
             io.submit(() -> {
