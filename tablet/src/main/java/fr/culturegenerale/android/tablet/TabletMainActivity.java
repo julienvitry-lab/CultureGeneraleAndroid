@@ -844,11 +844,7 @@ public class TabletMainActivity extends Activity {
                 Color.WHITE
         );
 
-        addSub(
-                "Apprentissage par question / réponse",
-                16,
-                LIGHT_GREY
-        );
+        // FIX13 : sous-titre superflu supprimé.
 
         gap(12);
 
@@ -978,26 +974,7 @@ public class TabletMainActivity extends Activity {
 
         if (globalReady) {
 
-            TextView scope =
-                    text(
-                            "Totaux : historique complet · "
-                                    + "liste détaillée limitée aux "
-                                    + HISTORY_MAX_EVENTS
-                                    + " réponses les plus récentes.",
-                            12,
-                            LIGHT_GREY,
-                            Gravity.CENTER
-                    );
-
-            add(
-                    scope,
-                    -1,
-                    -2,
-                    dp(10),
-                    0,
-                    dp(10),
-                    dp(10)
-            );
+            // FIX13 : mention technique des totaux masquée.
         }
 
 
@@ -1635,7 +1612,7 @@ public class TabletMainActivity extends Activity {
                 text(
                         top,
                         14,
-                        LIGHT_GREY,
+                        Color.BLACK,
                         Gravity.LEFT
                 );
 
@@ -1655,7 +1632,7 @@ public class TabletMainActivity extends Activity {
                                 "(sans thème)"
                         ),
                         15,
-                        YELLOW,
+                        Color.WHITE,
                         Gravity.LEFT
                 );
 
@@ -1709,6 +1686,28 @@ public class TabletMainActivity extends Activity {
      * CGANDROID020 · RICH_HISTORY_DETAIL001 / HISTORY_IMAGE001
      * ================================================================
      */
+    private int historyDomainColor(String domain) {
+        switch (domain) {
+            case "Animaux et Plantes": return ANIMALS_GREEN;
+            case "Culture Classique": return CLASSIC_BLUE;
+            case "Culture Générale": return GENERAL_GREEN;
+            case "Culture Moderne": return MODERN_ORANGE;
+            case "Géographie": return GEO_BLUE;
+            case "Histoire": return HISTORY_BROWN;
+            case "Sciences et Techniques": return SCIENCE_YELLOW;
+            case "Sport": return SPORT_RED;
+            default: return DARK;
+        }
+    }
+
+    private int historyDomainTextColor(String domain) {
+        return domain.equals("Culture Générale") ||
+                domain.equals("Culture Moderne") ||
+                domain.equals("Géographie") ||
+                domain.equals("Sciences et Techniques")
+                ? Color.BLACK : Color.WHITE;
+    }
+
     private void showHistoryDetail(
             CgHistoryItem selected
     ) {
@@ -1718,41 +1717,21 @@ public class TabletMainActivity extends Activity {
 
         baseScreen();
 
-        addTitle(
-                "Historique de la question",
-                28,
-                Color.WHITE
-        );
-
-
-        String subtitle =
-                safeHistoryText(
-                        selected.domain,
-                        ""
-                );
-
-        String theme =
-                safeHistoryText(
-                        selected.theme,
-                        ""
-                );
-
-        if (!theme.isEmpty()) {
-
-            subtitle +=
-                    subtitle.isEmpty()
-                            ? theme
-                            : " · " + theme;
+        // FIX13 : bandeaux du détail calqués sur les couleurs du jeu.
+        String domain = safeHistoryText(selected.domain, "");
+        String themeName = safeHistoryText(selected.theme, "");
+        int domainColor = historyDomainColor(domain);
+        if (!domain.isEmpty()) {
+            TextView domainBand = cardText(domain, 21, domainColor,
+                    historyDomainTextColor(domain));
+            domainBand.setGravity(Gravity.CENTER);
+            add(domainBand, -1, -2, dp(20), dp(4), dp(20), dp(12));
         }
-
-        addSub(
-                subtitle,
-                15,
-                LIGHT_GREY
-        );
-
-        gap(10);
-
+        if (!themeName.isEmpty()) {
+            TextView themeBand = cardText(themeName, 19, GREEN, Color.WHITE);
+            themeBand.setGravity(Gravity.CENTER);
+            add(themeBand, -1, -2, dp(20), 0, dp(20), dp(12));
+        }
 
         TextView question =
                 cardText(
@@ -1761,8 +1740,8 @@ public class TabletMainActivity extends Activity {
                                 "Question indisponible"
                         ),
                         21,
-                        DARK,
-                        Color.WHITE
+                        YELLOW,
+                        Color.BLACK
                 );
 
         question.setGravity(
@@ -1798,7 +1777,7 @@ public class TabletMainActivity extends Activity {
                 TextView detailCard = cardText(
                         catalogQuestion.detail.trim(),
                         18,
-                        DARK,
+                        RED,
                         Color.WHITE
                 );
                 detailCard.setGravity(Gravity.CENTER);
@@ -1809,13 +1788,12 @@ public class TabletMainActivity extends Activity {
 
         TextView answer =
                 cardText(
-                        "Réponse\n\n"
-                                + safeHistoryText(
+                        safeHistoryText(
                                 selected.correctAnswer,
                                 "—"
                         ),
                         22,
-                        DARK,
+                        Color.BLACK,
                         Color.WHITE
                 );
 
@@ -3997,21 +3975,7 @@ public class TabletMainActivity extends Activity {
         );
 
 
-        TextView answerLabel =
-                text(
-                        "Réponse",
-                        18,
-                        LIGHT_GREY,
-                        Gravity.CENTER
-                );
-
-        center.addView(
-                answerLabel,
-                new LinearLayout.LayoutParams(
-                        -1,
-                        -2
-                )
-        );
+        // FIX13 : afficher uniquement le texte de la réponse.
 
 
         TextView answer =
@@ -5436,13 +5400,6 @@ public class TabletMainActivity extends Activity {
                         Color.BLACK
                 );
 
-        Button menu =
-                actionBand(
-                        "Menu",
-                        BLUE,
-                        Color.WHITE
-                );
-
         Button back =
                 actionBand(
                         "Retour en arrière",
@@ -5458,7 +5415,6 @@ public class TabletMainActivity extends Activity {
                 );
 
         addActionBand(panel, problem);
-        addActionBand(panel, menu);
         addActionBand(panel, back);
         addActionBand(panel, exclude);
         addActionBand(panel, end);
@@ -5476,11 +5432,6 @@ public class TabletMainActivity extends Activity {
         exclude.setOnClickListener(v -> {
             screenFrame.removeView(overlay);
             confirmAnalogExclusion(q);
-        });
-
-        menu.setOnClickListener(v -> {
-            screenFrame.removeView(overlay);
-            showHome();
         });
 
         back.setOnClickListener(v -> {
