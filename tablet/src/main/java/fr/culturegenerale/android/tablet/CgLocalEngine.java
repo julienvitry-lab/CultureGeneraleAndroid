@@ -1801,6 +1801,38 @@ final class CgLocalEngine extends SQLiteOpenHelper {
      * - groupes analogues exclus ;
      * - questions signalées Problème.
      */
+
+    // CGANDROID022 · REVISION_ORDERED001
+    // Snapshot of the same remaining-question population as availableCounts().
+    // No attempt, learning update, or session-served row is ever written.
+    synchronized List<String> revisionIds(String domain, CgFlags flags) {
+        boolean all = "Toutes les questions".equals(domain);
+        List<String> ids = new ArrayList<>();
+        String sql = "SELECT q.id,q.megatheme,q.theme,q.question_text "
+                + "FROM questions q LEFT JOIN learning l ON l.question_id=q.id "
+                + "WHERE q.excluded_x=0 AND COALESCE(l.mastered,0)=0 "
+                + (all ? "" : "AND q.megatheme=? ")
+                + "ORDER BY q.megatheme COLLATE NOCASE, q.theme COLLATE NOCASE, "
+                + "CASE WHEN q.id NOT GLOB '*[^0-9]*' THEN CAST(q.id AS INTEGER) END, "
+                + "q.id COLLATE BINARY";
+        Cursor c = getReadableDatabase().rawQuery(sql, all ? null : new String[]{domain});
+        try {
+            while (c.moveToNext()) {
+                CgQuestion q = new CgQuestion();
+                q.id = safe(c.getString(0));
+                q.megatheme = safe(c.getString(1));
+                q.theme = safe(c.getString(2));
+                q.question = safe(c.getString(3));
+                if (q.id.isEmpty() || (flags != null &&
+                        (flags.isTExcluded(q) || flags.isProblem(q)))) continue;
+                ids.add(q.id);
+            }
+        } finally {
+            c.close();
+        }
+        return ids;
+    }
+
     synchronized Map<String, Integer> availableCounts(
             CgFlags flags
     ) {

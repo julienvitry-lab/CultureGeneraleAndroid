@@ -129,6 +129,12 @@ public class TabletMainActivity extends Activity {
 
     private String selectedDomain = "";
 
+    // CGANDROID022 · ordered read-only revision session.
+    private String revisionDomain = "";
+    private List<String> revisionIds = new ArrayList<>();
+    private int revisionPosition = 0;
+    private int revisionGeneration = 0;
+
     private CgQuestion current;
     private long currentShownAtMs = 0L;
     private final List<Button> answerButtons = new ArrayList<>();
@@ -484,6 +490,9 @@ public class TabletMainActivity extends Activity {
     public void onBackPressed() {
         if(progressTransferBusy) return;
         if("progress_transfer".equals(screen)) { showHome(); return; }
+        if ("revision_question".equals(screen)) { showRevisionStart(); return; }
+        if ("revision_start".equals(screen) || "revision_loading".equals(screen)) { showRevisionDomains(); return; }
+        if ("revision_domains".equals(screen)) { leaveRevision(); return; }
 
         // CGANDROID004 · HISTORY_NAVIGATION001
         if ("history_detail".equals(screen)) {
@@ -731,6 +740,10 @@ public class TabletMainActivity extends Activity {
 
         TextView helper = text("Jouer sans limite de nombre de questions", 15, LIGHT_GREY, Gravity.CENTER);
         add(helper, -1, -2, dp(40), 0, dp(40), dp(30));
+
+        Button revision = button("Révision", GREEN, 24);
+        add(revision, -1, dp(66), dp(180), 0, dp(180), dp(18));
+        revision.setOnClickListener(v -> showRevisionDomains());
 
         // CGANDROID004 · HISTORY_HOME_ENTRY001
         Button history = button("Historique", DARK, 21);
@@ -2476,6 +2489,212 @@ public class TabletMainActivity extends Activity {
      * CGANDROID019 · EXCLUSION_DIRECTORY001
      * ================================================================
      */
+
+    // CGANDROID022 · REVISION_ORDERED001
+    private void leaveRevision() {
+        revisionGeneration++;
+        revisionIds = new ArrayList<>();
+        revisionDomain = "";
+        revisionPosition = 0;
+        showHome();
+    }
+
+    private void showRevisionDomains() {
+        stopLocalImagePrefetch();
+        final int generation = ++revisionGeneration;
+        revisionIds = new ArrayList<>();
+        revisionDomain = "";
+        revisionPosition = 0;
+        screen = "revision_domains";
+        baseScreen();
+        addTitle("Révision", 32, Color.WHITE);
+        addSub("Choix du mégathème · hors ligne", 18, LIGHT_GREY);
+        TextView loading = text("Calcul des questions restantes…", 16, Color.WHITE, Gravity.CENTER);
+        add(loading, -1, -2, 0, dp(12), 0, dp(12));
+        Button back = button("Retour", DARK, 18);
+        add(back, -1, dp(52), 0, 0, 0, 0);
+        back.setOnClickListener(v -> leaveRevision());
+
+        io.execute(() -> {
+            try {
+                final Map<String, Integer> counts = localEngine.availableCounts(flags);
+                main.post(() -> {
+                    if (!"revision_domains".equals(screen) || generation != revisionGeneration) return;
+                    baseScreen();
+                    addTitle("Révision", 32, Color.WHITE);
+                    addSub("Choisir un mégathème", 18, LIGHT_GREY);
+                    int[] colors = {ANIMALS_GREEN, CLASSIC_BLUE, GENERAL_GREEN, MODERN_ORANGE,
+                            GEO_BLUE, HISTORY_BROWN, SCIENCE_YELLOW, SPORT_RED, DARK};
+                    for (int i = 0; i < DOMAINS.length; i++) {
+                        final String domain = DOMAINS[i];
+                        int n = counts.getOrDefault("Toutes les questions".equals(domain) ? "__ALL__" : domain, 0);
+                        Button b = button(domain + " (" + n + ")", colors[i], 20);
+                        if (i == 2 || i == 3 || i == 4 || i == 6) b.setTextColor(Color.BLACK);
+                        b.setEnabled(n > 0);
+                        b.setAlpha(n > 0 ? 1f : .45f);
+                        add(b, -1, dp(58), 0, 0, 0, dp(7));
+                        b.setOnClickListener(v -> loadRevisionDomain(domain));
+                    }
+                    Button returnButton = button("Retour", DARK, 18);
+                    add(returnButton, -1, dp(52), 0, dp(8), 0, 0);
+                    returnButton.setOnClickListener(v -> leaveRevision());
+                });
+            } catch (Exception ex) {
+                main.post(() -> {
+                    if ("revision_domains".equals(screen) && generation == revisionGeneration)
+                        loading.setText("Impossible de lire les questions locales.");
+                });
+            }
+        });
+    }
+
+    private void loadRevisionDomain(String domain) {
+        final int generation = ++revisionGeneration;
+        revisionDomain = domain;
+        revisionPosition = 0;
+        screen = "revision_loading";
+        baseScreen();
+        addTitle(domain, 28, Color.WHITE);
+        TextView loading = text("Préparation de la liste ordonnée…", 17, Color.WHITE, Gravity.CENTER);
+        add(loading, -1, -2, 0, dp(16), 0, dp(16));
+        Button back = button("Retour", DARK, 18);
+        add(back, -1, dp(52), 0, 0, 0, 0);
+        back.setOnClickListener(v -> showRevisionDomains());
+        io.execute(() -> {
+            try {
+                final List<String> ids = localEngine.revisionIds(domain, flags);
+                main.post(() -> {
+                    if (!"revision_loading".equals(screen) || generation != revisionGeneration) return;
+                    revisionIds = ids;
+                    showRevisionStart();
+                });
+            } catch (Exception ex) {
+                main.post(() -> {
+                    if ("revision_loading".equals(screen) && generation == revisionGeneration)
+                        loading.setText("Impossible de préparer cette liste.");
+                });
+            }
+        });
+    }
+
+    private void showRevisionStart() {
+        screen = "revision_start";
+        baseScreen();
+        addTitle("Révision · " + revisionDomain, 28, Color.WHITE);
+        final int size = revisionIds.size();
+        addSub(size + " questions restantes", 21, Color.WHITE);
+        addSub("Ordre fixe : thème, puis identifiant de la question.", 15, LIGHT_GREY);
+        if (size > 0) {
+            gap(20);
+            addSub("Numéro de départ (1 à " + size + ")", 18, Color.WHITE);
+            EditText number = edit("1 à " + size, InputType.TYPE_CLASS_NUMBER);
+            number.setText(String.valueOf(revisionPosition + 1));
+            number.setSelectAllOnFocus(true);
+            number.setGravity(Gravity.CENTER);
+            add(number, -1, dp(58), dp(100), 0, dp(100), dp(12));
+            Button start = button("Démarrer la révision", GREEN, 22);
+            add(start, -1, dp(64), 0, 0, 0, dp(12));
+            start.setOnClickListener(v -> {
+                try {
+                    int requested = Integer.parseInt(number.getText().toString().trim());
+                    if (requested < 1 || requested > size) throw new NumberFormatException();
+                    android.view.inputmethod.InputMethodManager keyboard =
+                            (android.view.inputmethod.InputMethodManager)
+                            getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+                    if (keyboard != null) keyboard.hideSoftInputFromWindow(number.getWindowToken(), 0);
+                    showRevisionQuestion(requested - 1);
+                } catch (NumberFormatException ex) {
+                    number.setError("Saisir un nombre entre 1 et " + size);
+                }
+            });
+        } else {
+            addSub("Aucune question à réviser dans ce mégathème.", 18, Color.WHITE);
+        }
+        Button back = button("Changer de mégathème", DARK, 18);
+        add(back, -1, dp(52), 0, dp(8), 0, 0);
+        back.setOnClickListener(v -> showRevisionDomains());
+    }
+
+    private void showRevisionQuestion(int position) {
+        if (position < 0 || position >= revisionIds.size()) return;
+        revisionPosition = position;
+        screen = "revision_question";
+        baseScreen();
+        addTitle("Révision · " + revisionDomain, 24, Color.WHITE);
+
+        // The two navigation buttons are always at opposite edges.
+        LinearLayout nav = new LinearLayout(this);
+        nav.setOrientation(LinearLayout.HORIZONTAL);
+        nav.setGravity(Gravity.CENTER_VERTICAL);
+        Button previous = button("◀", BLUE, 26);
+        previous.setContentDescription("Question précédente");
+        previous.setEnabled(position > 0);
+        previous.setAlpha(position > 0 ? 1f : .35f);
+        previous.setOnClickListener(v -> showRevisionQuestion(position - 1));
+        nav.addView(previous, new LinearLayout.LayoutParams(dp(62), dp(58)));
+        TextView index = text((position + 1) + " / " + revisionIds.size(), 22, Color.WHITE, Gravity.CENTER);
+        nav.addView(index, new LinearLayout.LayoutParams(0, dp(58), 1f));
+        Button next = button("▶", BLUE, 26);
+        next.setContentDescription("Question suivante");
+        next.setEnabled(position + 1 < revisionIds.size());
+        next.setAlpha(position + 1 < revisionIds.size() ? 1f : .35f);
+        next.setOnClickListener(v -> showRevisionQuestion(position + 1));
+        nav.addView(next, new LinearLayout.LayoutParams(dp(62), dp(58)));
+        add(nav, -1, -2, 0, dp(6), 0, dp(12));
+
+        CgQuestion q = null;
+        try {
+            q = localEngine.questionById(revisionIds.get(position));
+        } catch (Exception ignored) {
+            // A failed read must not silently skip or renumber a question.
+        }
+        if (q == null) {
+            addSub("Question indisponible dans la base locale.", 18, Color.WHITE);
+        } else {
+            addSub(q.theme, 17, LIGHT_GREY);
+            TextView question = cardText(q.question, 25, YELLOW, Color.BLACK);
+            question.setGravity(Gravity.CENTER);
+            question.setMinHeight(dp(100));
+            add(question, -1, -2, 0, 0, 0, dp(10));
+            if (!q.hasImage() && q.detail != null && !q.detail.trim().isEmpty()) {
+                TextView detail = cardText(q.detail, 20, DARK, Color.WHITE);
+                detail.setGravity(Gravity.CENTER);
+                add(detail, -1, -2, 0, 0, 0, dp(10));
+            }
+            if (q.hasImage()) {
+                try {
+                    ensureImageCacheForCurrentUser();
+                    Bitmap cached;
+                    synchronized (imageCache) { cached = imageCache.get(q.imageFile); }
+                    if (cached == null && imageDiskCache != null) cached = imageDiskCache.get(q.imageFile);
+                    if (cached != null) {
+                        ImageView image = new ImageView(this);
+                        image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                        image.setImageBitmap(cached);
+                        add(image, -1, dp(isPhoneProfile() ? 220 : 270), 0, 0, 0, dp(10));
+                    } else {
+                        addSub("Image non disponible hors ligne", 15, LIGHT_GREY);
+                    }
+                } catch (Exception ignored) {
+                    addSub("Image non disponible hors ligne", 15, LIGHT_GREY);
+                }
+            }
+            String answer = q.resolvedAnswer();
+            TextView solution = cardText(answer.isEmpty() ? "Réponse indisponible" : answer,
+                    25, GREEN, Color.WHITE);
+            solution.setGravity(Gravity.CENTER);
+            solution.setMinHeight(dp(75));
+            addSub("Réponse", 17, LIGHT_GREY);
+            add(solution, -1, -2, 0, 0, 0, dp(12));
+        }
+        Button jump = button("Aller à un autre numéro", DARK, 18);
+        add(jump, -1, dp(52), 0, dp(6), 0, dp(8));
+        jump.setOnClickListener(v -> showRevisionStart());
+        Button back = button("Terminer la révision", DARK, 18);
+        add(back, -1, dp(52), 0, 0, 0, 0);
+        back.setOnClickListener(v -> leaveRevision());
+    }
+
     private void showMegathemes() {
 
         screen =
