@@ -344,6 +344,13 @@ public class TabletMainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        try { CgProgressTransfer.recover(this); }
+        catch(Exception e) {
+            new AlertDialog.Builder(this).setTitle("Récupération locale nécessaire")
+                .setMessage("Sauvegarde conservée : "+e.getMessage()).setCancelable(false)
+                .setPositiveButton("Fermer",(d,w)->finish()).show();
+            return;
+        }
 
         detectDeviceProfile();
 
@@ -391,6 +398,7 @@ public class TabletMainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (progressTransferBusy) return;
 
         if (
                 auth != null &&
@@ -415,6 +423,7 @@ public class TabletMainActivity extends Activity {
                 public void run() {
 
                     if (
+                            !progressTransferBusy &&
                             auth != null &&
                             flags != null &&
                             auth.hasRefreshToken() &&
@@ -473,6 +482,8 @@ public class TabletMainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if(progressTransferBusy) return;
+        if("progress_transfer".equals(screen)) { showHome(); return; }
 
         // CGANDROID004 · HISTORY_NAVIGATION001
         if ("history_detail".equals(screen)) {
@@ -576,6 +587,132 @@ public class TabletMainActivity extends Activity {
         });
     }
 
+    // CGANDROID021 · LOCAL_PROGRESS_TRANSFER001
+    private static final int CG021_EXPORT = 2101, CG021_IMPORT = 2102, CG021_BACKUP = 2103;
+    private boolean progressTransferBusy = false;
+
+    private boolean progressIoIdle() {
+        if (!(io instanceof java.util.concurrent.ThreadPoolExecutor)) return false;
+        java.util.concurrent.ThreadPoolExecutor pool = (java.util.concurrent.ThreadPoolExecutor) io;
+        return !localCatalogRefreshRunning && !outboxFlushRunning
+                && pool.getActiveCount() == 0 && pool.getQueue().isEmpty();
+    }
+
+    private void showProgressTransfer() {
+        screen = "progress_transfer";
+        baseScreen();
+        addTitle("Transfert de progression", 30, Color.WHITE);
+        addSub("Tablette → téléphone · ZIP · sans Cloud", 16, LIGHT_GREY);
+        addSub("Active le mode avion et coupe le Wi-Fi avant le transfert. Même compte sur les deux appareils.", 15, LIGHT_GREY);
+        Button export = button("Exporter ma progression", BLUE, 19);
+        add(export,-1,dp(62),dp(18),dp(8),dp(18),dp(8));
+        export.setOnClickListener(v -> requestProgressDocument(CG021_EXPORT));
+        Button restore = button("Importer une progression", DARK, 19);
+        add(restore,-1,dp(62),dp(18),0,dp(18),dp(8));
+        restore.setOnClickListener(v -> requestProgressDocument(CG021_IMPORT));
+        Button backup = button("Exporter la sauvegarde avant import", DARK, 16);
+        add(backup,-1,dp(60),dp(18),0,dp(18),dp(8));
+        backup.setOnClickListener(v -> requestProgressDocument(CG021_BACKUP));
+        Button back = button("Retour", DARK, 18);
+        add(back,-1,dp(54),dp(18),0,dp(18),dp(8));
+        back.setOnClickListener(v -> showHome());
+    }
+
+    private void requestProgressDocument(int request) {
+        if (progressTransferBusy) return;
+        if (isNetworkAvailable()) {
+            Toast.makeText(this,"Coupe Internet (mode avion et Wi-Fi) avant le transfert.",Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!progressIoIdle()) {
+            Toast.makeText(this,"Une opération est encore en cours. Réessaie dans quelques secondes.",Toast.LENGTH_LONG).show();
+            return;
+        }
+        android.content.Intent intent = new android.content.Intent(request == CG021_IMPORT
+                ? android.content.Intent.ACTION_OPEN_DOCUMENT : android.content.Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(android.content.Intent.CATEGORY_OPENABLE);
+        intent.setType(request == CG021_IMPORT ? "*/*" : "application/zip");
+        if (request != CG021_IMPORT) {
+            String date = new SimpleDateFormat("yyyyMMdd_HHmmss",Locale.ROOT).format(new Date());
+            intent.putExtra(android.content.Intent.EXTRA_TITLE,
+                    (request == CG021_BACKUP ? "CG_AVANT_IMPORT_" : "CG_PROGRESSION_")+date+".zip");
+        }
+        progressTransferBusy = true;
+        try { startActivityForResult(intent,request); }
+        catch(Exception e) { progressTransferBusy=false; Toast.makeText(this,"Sélecteur de fichiers indisponible.",Toast.LENGTH_LONG).show(); }
+    }
+
+    @Override
+    protected void onActivityResult(int request,int result,android.content.Intent data) {
+        super.onActivityResult(request,result,data);
+        if(request != CG021_EXPORT && request != CG021_IMPORT && request != CG021_BACKUP) return;
+        if(result != RESULT_OK || data == null || data.getData() == null) {
+            progressTransferBusy=false; showProgressTransfer(); return;
+        }
+        if(isNetworkAvailable() || !progressIoIdle()) {
+            progressTransferBusy=false; showProgressTransfer();
+            Toast.makeText(this,"Coupe Internet et attends la fin des opérations, puis réessaie.",Toast.LENGTH_LONG).show();
+            return;
+        }
+        progressTransferBusy=true;
+        final Uri uri=data.getData();
+        if(request==CG021_IMPORT) {
+            new AlertDialog.Builder(this).setTitle("Remplacer cette progression ?")
+                    .setMessage("La progression du fichier remplacera celle de cet appareil (historique, apprentissage et exclusions). Une sauvegarde de l'état actuel sera conservée.")
+                    .setNegativeButton("Annuler",(d,w)->{progressTransferBusy=false;showProgressTransfer();})
+                    .setPositiveButton("Importer",(d,w)->runProgressTransfer(request,uri))
+                    .setOnCancelListener(d->{progressTransferBusy=false;showProgressTransfer();}).show();
+        } else runProgressTransfer(request,uri);
+    }
+
+    private void runProgressTransfer(int request,Uri uri) {
+        if(isNetworkAvailable() || !progressIoIdle()) {
+            progressTransferBusy=false; showProgressTransfer();
+            Toast.makeText(this,"Transfert annulé : connexion active ou opération en cours.",Toast.LENGTH_LONG).show();
+            return;
+        }
+        screen="progress_transfer";
+        baseScreen();
+        addTitle("Transfert en cours…",26,Color.WHITE);
+        addSub("Ne ferme pas l'application.",16,LIGHT_GREY);
+        io.submit(()->{
+            String message;
+            boolean recoveryRequired=false;
+            try {
+                if(request==CG021_IMPORT) {
+                    try(InputStream in=getContentResolver().openInputStream(uri)) {
+                        if(in==null) throw new java.io.IOException("Fichier illisible");
+                        CgProgressTransfer.importProgress(this,localEngine,auth.uid(),in);
+                    }
+                    message="Progression importée. Sauvegarde précédente conservée.";
+                } else {
+                    try(OutputStream out=getContentResolver().openOutputStream(uri,"wt")) {
+                        if(out==null) throw new java.io.IOException("Fichier inaccessible");
+                        if(request==CG021_BACKUP) CgProgressTransfer.exportLastBackup(this,auth.uid(),out);
+                        else CgProgressTransfer.export(this,localEngine,auth.uid(),out);
+                    }
+                    message="Archive ZIP enregistrée.";
+                }
+            } catch(Exception e) {
+                message="Transfert non terminé : "+(e.getMessage()==null?e.getClass().getSimpleName():e.getMessage());
+                recoveryRequired=new java.io.File(getFilesDir(),"cgandroid021_backups/restore.pending").exists();
+            }
+            final String report=message;
+            final boolean restart=recoveryRequired || request==CG021_IMPORT;
+            main.post(()->{
+                progressTransferBusy=false;
+                if(restart) {
+                    new AlertDialog.Builder(this).setTitle("Transfert terminé")
+                        .setMessage(report+"\nRelance l'application pour recharger les données.")
+                        .setCancelable(false).setPositiveButton("Fermer",(d,w)->finish()).show();
+                } else {
+                    showProgressTransfer();
+                    new AlertDialog.Builder(this).setMessage(report).setPositiveButton("OK",null).show();
+                }
+            });
+        });
+    }
+
     private void showHome() {
         stopLocalImagePrefetch();
         screen = "home";
@@ -610,6 +747,9 @@ public class TabletMainActivity extends Activity {
                 );
 
         add(historyHelper, -1, -2, dp(30), 0, dp(30), 0);
+        Button transfer = button("Transfert de progression", DARK, 18);
+        add(transfer,-1,dp(58),dp(30),dp(12),dp(30),dp(10));
+        transfer.setOnClickListener(v -> showProgressTransfer());
 
         scheduleLocalCatalogRefresh();
 }
@@ -634,6 +774,7 @@ public class TabletMainActivity extends Activity {
     private void refreshLocalCatalogInBackground() {
 
         if (
+                progressTransferBusy ||
                 localCatalogRefreshRunning ||
                 !"home".equals(screen) ||
                 localEngine == null ||
@@ -5042,6 +5183,7 @@ public class TabletMainActivity extends Activity {
     private void flushOutboxAsync() {
 
         if (
+                progressTransferBusy ||
                 outboxFlushRunning ||
                 !isNetworkAvailable()
         ) {
