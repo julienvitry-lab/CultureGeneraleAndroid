@@ -136,6 +136,12 @@ public class TabletMainActivity extends Activity {
     private List<String> revisionIds = new ArrayList<>();
     private int revisionPosition = 0;
     private int revisionGeneration = 0;
+    private volatile long revisionImageEpoch = 0;
+    private boolean revisionPrefetchRunning = false;
+    private long revisionPrefetchRequested = -1;
+    private volatile CgLocalImageLibrary localImageLibrary;
+    private static final int CG026_IMAGE_FOLDER = 2601;
+    private static final String CG026_IMAGE_PREFS = "cg026_image_library";
     private boolean revisionAnswerShown = false;
     private View revisionNavigateButton, revisionFinishButton;
     private TextView revisionAnswerCard;
@@ -165,7 +171,7 @@ public class TabletMainActivity extends Activity {
     private boolean localPrefetchExhausted = false;
     private boolean localNextRequested = false;
     private static final int LOCAL_PREFETCH_AHEAD = 4;
-    private final Map<String, Long> imageFetchFailedAt = new HashMap<>();
+    private final Map<String, Long> imageFetchFailedAt = Collections.synchronizedMap(new HashMap<>());
 
     // CGANDROID015 · OFFLINE_PLAY001 / DEFER_MISSING_IMAGES001
     private final Set<String> offlineDeferredQuestionIds =
@@ -387,6 +393,7 @@ public class TabletMainActivity extends Activity {
         flags = new CgFlags(this);
         game = new CgGameState(this);
         localEngine = new CgLocalEngine(this);
+        restoreLocalImageLibrary();
 
         // OUTBOX_RESUME001 : retente silencieusement les réponses
         // en attente lorsque le réseau revient.
@@ -401,6 +408,7 @@ public class TabletMainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        revisionImageEpoch++;
         main.removeCallbacks(
                 outboxResumeTick
         );
@@ -498,7 +506,7 @@ public class TabletMainActivity extends Activity {
     public void onBackPressed() {
         if(progressTransferBusy) return;
         if("progress_transfer".equals(screen)) { showHome(); return; }
-        if ("revision_question".equals(screen)) { showRevisionStart(); return; }
+        if ("revision_question".equals(screen) || "revision_image_loading".equals(screen)) { showRevisionStart(); return; }
         if ("revision_start".equals(screen) || "revision_loading".equals(screen)) { showRevisionDomains(); return; }
         if ("revision_domains".equals(screen)) { leaveRevision(); return; }
 
@@ -662,6 +670,32 @@ public class TabletMainActivity extends Activity {
     @Override
     protected void onActivityResult(int request,int result,android.content.Intent data) {
         super.onActivityResult(request,result,data);
+        if (request == CG026_IMAGE_FOLDER) {
+            if (result == RESULT_OK && data != null && data.getData() != null) {
+                try {
+                    Uri uri = data.getData();
+                    getContentResolver().takePersistableUriPermission(uri,
+                            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    getSharedPreferences(CG026_IMAGE_PREFS, MODE_PRIVATE).edit()
+                            .putString("tree", uri.toString()).apply();
+                    CgLocalImageLibrary library = new CgLocalImageLibrary(this, uri, true);
+                    localImageLibrary = library;
+                    imageFetchFailedAt.clear();
+                    Toast.makeText(this, "Indexation des images en arrière-plan…", Toast.LENGTH_LONG).show();
+                    io.execute(() -> {
+                        String resultText = library.warm();
+                        main.post(() -> {
+                            if (!isFinishing() && !isDestroyed() && localImageLibrary == library)
+                                new AlertDialog.Builder(this).setTitle("Bibliothèque d’images")
+                                    .setMessage(resultText).setPositiveButton("OK", null).show();
+                        });
+                    });
+                } catch (Exception e) {
+                    Toast.makeText(this, "Autorisation du dossier non accordée.", Toast.LENGTH_LONG).show();
+                }
+            }
+            return;
+        }
         if(request != CG021_EXPORT && request != CG021_IMPORT && request != CG021_BACKUP) return;
         if(result != RESULT_OK || data == null || data.getData() == null) {
             progressTransferBusy=false; showProgressTransfer(); return;
@@ -730,7 +764,35 @@ public class TabletMainActivity extends Activity {
         });
     }
 
+    private void restoreLocalImageLibrary() {
+        String saved = getSharedPreferences(CG026_IMAGE_PREFS, MODE_PRIVATE).getString("tree", "");
+        if (saved == null || saved.isEmpty()) return;
+        Uri uri = Uri.parse(saved);
+        for (android.content.UriPermission grant : getContentResolver().getPersistedUriPermissions()) {
+            if (uri.equals(grant.getUri()) && grant.isReadPermission()) {
+                CgLocalImageLibrary library = new CgLocalImageLibrary(this, uri, false);
+                localImageLibrary = library;
+                io.execute(library::warm);
+                break;
+            }
+        }
+    }
+
+    private void chooseLocalImageFolder() {
+        new AlertDialog.Builder(this).setTitle("Bibliothèque d’images hors ligne")
+                .setMessage("Sélectionne le dossier Culture Générale (celui qui contient Images et questions_base.sqlite). L’application ne modifiera aucun de ces fichiers.")
+                .setNegativeButton("Annuler", null)
+                .setPositiveButton("Choisir", (d,w) -> {
+                    android.content.Intent picker = new android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT_TREE);
+                    picker.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                            | android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+                    try { startActivityForResult(picker, CG026_IMAGE_FOLDER); }
+                    catch (Exception e) { Toast.makeText(this, "Sélecteur de dossier indisponible.", Toast.LENGTH_LONG).show(); }
+                }).show();
+    }
+
     private void showHome() {
+        revisionImageEpoch++;
         stopLocalImagePrefetch();
         screen = "home";
         current = null;
@@ -771,6 +833,10 @@ public class TabletMainActivity extends Activity {
         Button transfer = button("Transfert de progression", DARK, 18);
         add(transfer,-1,dp(58),dp(30),dp(12),dp(30),dp(10));
         transfer.setOnClickListener(v -> showProgressTransfer());
+
+        Button images = button("Bibliothèque d’images", DARK, 18);
+        add(images, -1, dp(58), dp(30), dp(4), dp(30), dp(10));
+        images.setOnClickListener(v -> chooseLocalImageFolder());
 
         scheduleLocalCatalogRefresh();
 }
@@ -2257,9 +2323,7 @@ public class TabletMainActivity extends Activity {
         io.submit(() -> {
 
             boolean ready =
-                    prepareImageSync(
-                            q.imageFile
-                    );
+                    prepareImageSync(q);
 
             main.post(() -> {
 
@@ -2500,6 +2564,7 @@ public class TabletMainActivity extends Activity {
 
     // CGANDROID022 · REVISION_ORDERED001
     private void leaveRevision() {
+        revisionImageEpoch++;
         revisionGeneration++;
         revisionIds = new ArrayList<>();
         revisionDomain = "";
@@ -2512,6 +2577,7 @@ public class TabletMainActivity extends Activity {
     }
 
     private void showRevisionDomains() {
+        revisionImageEpoch++;
         stopLocalImagePrefetch();
         final int generation = ++revisionGeneration;
         revisionIds = new ArrayList<>();
@@ -2590,6 +2656,7 @@ public class TabletMainActivity extends Activity {
     }
 
     private void showRevisionStart() {
+        revisionImageEpoch++;
         screen = "revision_start";
         revisionAnswerCard = null;
         revisionScroll = null;
@@ -2600,6 +2667,11 @@ public class TabletMainActivity extends Activity {
         final int size = revisionIds.size();
         addSub(size + " questions restantes", 21, Color.WHITE);
         addSub("Ordre alphabétique : thème, puis texte de la question.", 15, LIGHT_GREY);
+        if (localImageLibrary == null) {
+            Button images = button("Choisir ma bibliothèque d’images", DARK, 18);
+            add(images, -1, dp(52), 0, dp(8), 0, dp(8));
+            images.setOnClickListener(v -> chooseLocalImageFolder());
+        }
         if (size > 0) {
             gap(20);
             addSub("Numéro de départ (1 à " + size + ")", 18, Color.WHITE);
@@ -2722,8 +2794,95 @@ public class TabletMainActivity extends Activity {
         showRevisionQuestion(position, false);
     }
 
+    // CGANDROID026 · REVISION_IMAGE_AHEAD001
+    private Bitmap revisionCachedImage(CgQuestion q) {
+        if (q == null || !q.hasImage()) return null;
+        synchronized (imageCache) { return imageCache.get(q.imageFile); }
+    }
+
     private void showRevisionQuestion(int position, boolean revealAnswer) {
         if (position < 0 || position >= revisionIds.size()) return;
+        final long request = ++revisionImageEpoch;
+        revisionPosition = position;
+        ensureImageCacheForCurrentUser();
+        CgQuestion question = null;
+        try { question = localEngine.questionById(revisionIds.get(position)); }
+        catch (Exception ignored) { }
+        final CgQuestion q = question;
+        Bitmap ready = revisionCachedImage(q);
+        if (q == null || !q.hasImage() || ready != null) {
+            renderRevisionQuestion(position, revealAnswer, q, ready);
+            requestRevisionPrefetch(request);
+            return;
+        }
+
+        // First entry/jump or very fast navigation: prepare before showing
+        // the question; no empty question with a spinner or delayed image.
+        screen = "revision_image_loading";
+        revisionAnswerCard = null;
+        revisionScroll = null;
+        baseScreen();
+        addTitle("Préparation de l’image…", 25, Color.WHITE);
+        Button navigate = button("Naviguer", DARK, 25);
+        add(navigate, -1, dp(52), 0, dp(8), 0, dp(8));
+        navigate.setOnClickListener(v -> showRevisionStart());
+        Button finish = button("Terminer", DARK, 25);
+        add(finish, -1, dp(52), 0, 0, 0, 0);
+        finish.setOnClickListener(v -> leaveRevision());
+        io.execute(() -> {
+            if (request != revisionImageEpoch) return;
+            Bitmap prepared = null;
+            try {
+                prepareImageSync(q);
+                prepared = revisionCachedImage(q);
+            } catch (Exception ignored) { }
+            final Bitmap result = prepared;
+            main.post(() -> {
+                if (request != revisionImageEpoch || !"revision_image_loading".equals(screen)) return;
+                renderRevisionQuestion(position, revealAnswer, q, result);
+                requestRevisionPrefetch(request);
+            });
+        });
+    }
+
+    private void requestRevisionPrefetch(long request) {
+        revisionPrefetchRequested = request;
+        if (revisionPrefetchRunning || request != revisionImageEpoch
+                || !"revision_question".equals(screen)) return;
+        revisionPrefetchRunning = true;
+        final int position = revisionPosition;
+        final List<String> ids = revisionIds;
+        io.execute(() -> {
+            // Look past text-only questions; prepare the four nearest images
+            // ahead and two behind, rather than four arbitrary questions.
+            int ahead = 0, behind = 0;
+            try {
+                for (int distance = 1; distance <= 40 && (ahead < 4 || behind < 2); distance++) {
+                    if (request != revisionImageEpoch || Thread.currentThread().isInterrupted()) break;
+                    for (int direction : new int[]{1, -1}) {
+                        if (request != revisionImageEpoch) break;
+                        if ((direction == 1 && ahead >= 4) || (direction == -1 && behind >= 2)) continue;
+                        int index = position + direction * distance;
+                        if (index < 0 || index >= ids.size()) continue;
+                        CgQuestion next = localEngine.questionById(ids.get(index));
+                        if (next == null || !next.hasImage()) continue;
+                        if (direction == 1) ahead++; else behind++;
+                        prepareImageSync(next);
+                    }
+                }
+            } catch (Exception e) {
+                android.util.Log.w("CGANDROID026", "Revision image prefetch", e);
+            } finally {
+                main.post(() -> {
+                    revisionPrefetchRunning = false;
+                    if (revisionPrefetchRequested != request && revisionPrefetchRequested == revisionImageEpoch
+                            && "revision_question".equals(screen)) requestRevisionPrefetch(revisionPrefetchRequested);
+                });
+            }
+        });
+    }
+
+    private void renderRevisionQuestion(int position, boolean revealAnswer, CgQuestion q, Bitmap prepared) {
         revisionPosition = position;
         revisionAnswerShown = revealAnswer;
         revisionAnswerCard = null;
@@ -2761,12 +2920,6 @@ public class TabletMainActivity extends Activity {
         actions.addView(back, new LinearLayout.LayoutParams(0, dp(52), 1f));
         header.addView(actions, new LinearLayout.LayoutParams(-1, -2));
 
-        CgQuestion q = null;
-        try {
-            q = localEngine.questionById(revisionIds.get(position));
-        } catch (Exception ignored) {
-            // A failed read must not silently skip or renumber a question.
-        }
         if (q == null) {
             addSub("Question indisponible dans la base locale.", 18, Color.WHITE);
         } else {
@@ -2794,10 +2947,7 @@ public class TabletMainActivity extends Activity {
 
             if (q.hasImage()) {
                 try {
-                    ensureImageCacheForCurrentUser();
-                    Bitmap cached;
-                    synchronized (imageCache) { cached = imageCache.get(q.imageFile); }
-                    if (cached == null && imageDiskCache != null) cached = imageDiskCache.get(q.imageFile);
+                    Bitmap cached = prepared;
                     if (cached != null) {
                         ImageView image = new ImageView(this);
                         image.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -2809,10 +2959,10 @@ public class TabletMainActivity extends Activity {
                         root.addView(image, new LinearLayout.LayoutParams(-1,
                                 dp(isPhoneProfile() ? 160 : 180), 1f));
                     } else {
-                        addSub("Image non disponible hors ligne", 15, LIGHT_GREY);
+                        addSub(localImageLibrary == null ? "Image absente du cache · bibliothèque locale à configurer" : "Image introuvable dans la bibliothèque et le cache", 15, LIGHT_GREY);
                     }
                 } catch (Exception ignored) {
-                    addSub("Image non disponible hors ligne", 15, LIGHT_GREY);
+                    addSub("Image illisible ou indisponible", 15, LIGHT_GREY);
                 }
             }
             if (revealAnswer) setRevisionReveal(true);
@@ -4790,9 +4940,7 @@ public class TabletMainActivity extends Activity {
                     }
                     if (
                             upcoming.hasImage() &&
-                            !prepareImageSync(
-                                    upcoming.imageFile
-                            )
+                            !prepareImageSync(upcoming)
                     ) {
 
                         localEngine.deferQuestion(
@@ -4844,10 +4992,18 @@ public class TabletMainActivity extends Activity {
     }
 
     /** One download shared by the selector; memory -> disk -> network. */
-    private boolean prepareImageSync(String imageId) {
+    private boolean prepareImageSync(CgQuestion question) {
+        String imageId = question.imageFile;
         if (imageId == null || imageId.trim().isEmpty()) return true;
         synchronized (imageCache) {
             if (imageCache.containsKey(imageId)) return true;
+        }
+        // CGANDROID026 · LOCAL_IMAGE_LIBRARY001 — no network for locally available media.
+        CgLocalImageLibrary library = localImageLibrary;
+        Bitmap fromLocal = library == null ? null : library.load(question.id, imageId);
+        if (fromLocal != null) {
+            synchronized (imageCache) { imageCache.put(imageId, fromLocal); }
+            return true;
         }
         Bitmap fromDisk = imageDiskCache == null ? null : imageDiskCache.get(imageId);
         if (fromDisk != null) {
