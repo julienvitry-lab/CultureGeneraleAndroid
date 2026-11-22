@@ -104,18 +104,19 @@ final class CgProgressTransfer {
             try(Cursor q=db.rawQuery("SELECT COUNT(*) FROM questions",null)) { if(!q.moveToFirst() || q.getLong(0)==0) throw new IOException("Catalogue vide"); return q.getLong(0); }
         }
     }
-    private static void ensureNoJournal(File f) throws IOException {
-        for(String suffix:new String[]{"-wal","-journal"}) {
-            File aux=new File(f.getPath()+suffix); if(aux.exists() && aux.length()!=0) throw new IOException("Journal SQLite encore actif ; réessaie");
-        }
-    }
     private static void snapshot(Context c,CgLocalEngine engine,String uid,File dir) throws Exception {
         synchronized(engine) {
             SQLiteDatabase db=engine.getWritableDatabase();
-            try (Cursor q=db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)",null)) { if(q.moveToFirst() && q.getInt(0)!=0) throw new IOException("SQLite occupée ; réessaie"); }
-            engine.close();
-            File src=c.getDatabasePath(DB); ensureNoJournal(src);
-            copyFile(src,new File(dir,DB_ENTRY),DB_LIMIT);
+            File snap=new File(dir,DB_ENTRY);
+            if(snap.exists()) throw new IOException("Instantané déjà présent");
+            // FIX1: SQLite produces a transactionally consistent standalone copy.
+            // A PERSIST rollback journal may be nonempty even when no write is active.
+            try {
+                db.execSQL("VACUUM INTO ?",new Object[]{snap.getAbsolutePath()});
+                if(!snap.isFile() || snap.length()==0 || snap.length()>DB_LIMIT)
+                    throw new IOException("Instantané SQLite invalide");
+                try(RandomAccessFile f=new RandomAccessFile(snap,"rw")){ f.getFD().sync(); }
+            } finally { engine.close(); }
             atomicWrite(new File(dir,PREF_ENTRY),capturePrefs(c,uid).toString().getBytes(StandardCharsets.UTF_8));
         }
         validate(c,dir,uid);

@@ -10,8 +10,8 @@ android {
         applicationId 'fr.culturegenerale.android'
         minSdk 23
         targetSdk 35
-        versionCode 967
-        versionName '9.6.7-cgandroid021-universal'
+        versionCode 968
+        versionName '9.6.8-cgandroid021-fix1-universal'
 
         buildConfigField 'String', 'FIREBASE_API_KEY', '"AIzaSyBHAVR_Td-VozN7MzMyZqJ046h1T_ggRDc"'
         buildConfigField 'String', 'FIREBASE_PROJECT_ID', '"culturegeneralesync"'
