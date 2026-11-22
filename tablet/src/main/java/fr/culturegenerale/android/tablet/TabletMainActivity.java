@@ -18,7 +18,9 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.AdapterView;
@@ -134,6 +136,12 @@ public class TabletMainActivity extends Activity {
     private List<String> revisionIds = new ArrayList<>();
     private int revisionPosition = 0;
     private int revisionGeneration = 0;
+    private boolean revisionAnswerShown = false;
+    private View revisionNavigateButton, revisionFinishButton;
+    private TextView revisionAnswerCard;
+    private ScrollView revisionScroll;
+    private FrameLayout revisionTapFrame;
+    private float revisionTapX, revisionTapY;
 
     private CgQuestion current;
     private long currentShownAtMs = 0L;
@@ -2496,6 +2504,10 @@ public class TabletMainActivity extends Activity {
         revisionIds = new ArrayList<>();
         revisionDomain = "";
         revisionPosition = 0;
+        revisionAnswerCard = null;
+        revisionScroll = null;
+        revisionNavigateButton = null;
+        revisionFinishButton = null;
         showHome();
     }
 
@@ -2579,6 +2591,10 @@ public class TabletMainActivity extends Activity {
 
     private void showRevisionStart() {
         screen = "revision_start";
+        revisionAnswerCard = null;
+        revisionScroll = null;
+        revisionNavigateButton = null;
+        revisionFinishButton = null;
         baseScreen();
         addTitle("Révision · " + revisionDomain, 28, Color.WHITE);
         final int size = revisionIds.size();
@@ -2615,62 +2631,135 @@ public class TabletMainActivity extends Activity {
         back.setOnClickListener(v -> showRevisionDomains());
     }
 
+    // CGANDROID024 · REVISION_TWO_STEP_TOUCH001
+    // A tap moves one step, in either direction. A drag remains a normal scroll.
+    private void moveRevision(boolean forward) {
+        if (!"revision_question".equals(screen)) return;
+        if (forward) {
+            if (!revisionAnswerShown) setRevisionReveal(true);
+            else if (revisionPosition + 1 < revisionIds.size())
+                showRevisionQuestion(revisionPosition + 1, false);
+        } else {
+            if (revisionAnswerShown) setRevisionReveal(false);
+            else if (revisionPosition > 0) showRevisionQuestion(revisionPosition - 1, true);
+        }
+    }
+
+    // CGANDROID025 · REVISION_STABLE_IMAGE001
+    // INVISIBLE keeps the answer's measured space without displaying it.
+    // Revealing the answer never rebuilds the question or changes the image size.
+    private void setRevisionReveal(boolean reveal) {
+        revisionAnswerShown = reveal;
+        TextView answer = revisionAnswerCard;
+        ScrollView scroll = revisionScroll;
+        if (answer == null) return;
+        answer.setVisibility(reveal ? View.VISIBLE : View.INVISIBLE);
+        if (reveal && scroll != null) {
+            scroll.post(() -> {
+                if (revisionAnswerCard != answer || !revisionAnswerShown
+                        || !"revision_question".equals(screen)) return;
+                int top = scroll.getScrollY();
+                int bottom = top + scroll.getHeight();
+                if (answer.getTop() < top)
+                    scroll.smoothScrollTo(0, Math.max(0, answer.getTop()));
+                else if (answer.getBottom() > bottom)
+                    scroll.smoothScrollTo(0, Math.max(0, Math.min(answer.getTop(),
+                            answer.getBottom() - scroll.getHeight())));
+            });
+        }
+    }
+
+    private boolean revisionButtonAt(View v, float x, float y) {
+        if (v == null || !v.isShown()) return false;
+        int[] xy = new int[2];
+        v.getLocationOnScreen(xy);
+        return x >= xy[0] && x < xy[0] + v.getWidth()
+                && y >= xy[1] && y < xy[1] + v.getHeight();
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        if (!"revision_question".equals(screen)) {
+            revisionTapFrame = null;
+            return super.dispatchTouchEvent(event);
+        }
+        float x = event.getRawX(), y = event.getRawY();
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            revisionTapX = x;
+            revisionTapY = y;
+            revisionTapFrame = revisionButtonAt(revisionNavigateButton, x, y)
+                    || revisionButtonAt(revisionFinishButton, x, y) ? null : screenFrame;
+        } else if (action == MotionEvent.ACTION_MOVE) {
+            int slop = ViewConfiguration.get(this).getScaledTouchSlop();
+            if (Math.abs(x - revisionTapX) > slop || Math.abs(y - revisionTapY) > slop)
+                revisionTapFrame = null;
+        } else if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_POINTER_DOWN) {
+            revisionTapFrame = null;
+        } else if (action == MotionEvent.ACTION_UP) {
+            FrameLayout frame = revisionTapFrame;
+            revisionTapFrame = null;
+            int slop = ViewConfiguration.get(this).getScaledTouchSlop();
+            boolean tap = frame != null && frame == screenFrame
+                    && Math.abs(x - revisionTapX) <= slop && Math.abs(y - revisionTapY) <= slop
+                    && event.getEventTime() - event.getDownTime() < ViewConfiguration.getLongPressTimeout()
+                    && !revisionButtonAt(revisionNavigateButton, x, y)
+                    && !revisionButtonAt(revisionFinishButton, x, y);
+            boolean handled = super.dispatchTouchEvent(event);
+            if (tap && frame == screenFrame && "revision_question".equals(screen)) {
+                int[] xy = new int[2];
+                frame.getLocationOnScreen(xy);
+                moveRevision(x >= xy[0] + frame.getWidth() / 2f);
+                return true;
+            }
+            return handled;
+        }
+        boolean handled = super.dispatchTouchEvent(event);
+        return handled || revisionTapFrame != null;
+    }
+
     private void showRevisionQuestion(int position) {
+        showRevisionQuestion(position, false);
+    }
+
+    private void showRevisionQuestion(int position, boolean revealAnswer) {
         if (position < 0 || position >= revisionIds.size()) return;
         revisionPosition = position;
+        revisionAnswerShown = revealAnswer;
+        revisionAnswerCard = null;
         screen = "revision_question";
         baseScreen();
 
-        // CGANDROID023 · REVISION_FIXED_FOOTER001
-        // Keep the footer outside the scrollable content on both device profiles.
+        // CGANDROID025 · REVISION_FIXED_HEADER001
+        // Keep the two buttons above the scrollable content on both profiles.
         ScrollView scroll = (ScrollView) screenFrame.getChildAt(0);
+        revisionScroll = scroll;
         screenFrame.removeView(scroll);
         LinearLayout column = new LinearLayout(this);
         column.setOrientation(LinearLayout.VERTICAL);
         column.setBackgroundColor(Color.BLACK);
         screenFrame.addView(column, new FrameLayout.LayoutParams(-1, -1));
-        column.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
-
-        LinearLayout footer = new LinearLayout(this);
-        footer.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.VERTICAL);
         int side = dp(isPhoneProfile() ? 9 : 14);
-        footer.setPadding(side, dp(4), side, dp(10));
-        footer.setBackgroundColor(Color.BLACK);
-        column.addView(footer, new LinearLayout.LayoutParams(-1, -2));
+        header.setPadding(side, dp(4), side, dp(4));
+        header.setBackgroundColor(Color.BLACK);
+        column.addView(header, new LinearLayout.LayoutParams(-1, -2));
+        column.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
         Button jump = button("Naviguer", DARK, 25);
+        revisionNavigateButton = jump;
         jump.setOnClickListener(v -> showRevisionStart());
         LinearLayout.LayoutParams jumpParams = new LinearLayout.LayoutParams(0, dp(52), 1f);
         jumpParams.rightMargin = dp(5);
         actions.addView(jump, jumpParams);
         Button back = button("Terminer", DARK, 25);
+        revisionFinishButton = back;
         back.setOnClickListener(v -> leaveRevision());
         actions.addView(back, new LinearLayout.LayoutParams(0, dp(52), 1f));
-        footer.addView(actions, new LinearLayout.LayoutParams(-1, -2));
-
-        // The two navigation buttons are always at opposite edges.
-        LinearLayout nav = new LinearLayout(this);
-        nav.setOrientation(LinearLayout.HORIZONTAL);
-        nav.setGravity(Gravity.CENTER_VERTICAL);
-        Button previous = button("◀", BLUE, 26);
-        previous.setContentDescription("Question précédente");
-        previous.setEnabled(position > 0);
-        previous.setAlpha(position > 0 ? 1f : .35f);
-        previous.setOnClickListener(v -> showRevisionQuestion(position - 1));
-        nav.addView(previous, new LinearLayout.LayoutParams(dp(62), dp(58)));
-        TextView index = text((position + 1) + " / " + revisionIds.size(), 25, Color.WHITE, Gravity.CENTER);
-        nav.addView(index, new LinearLayout.LayoutParams(0, dp(58), 1f));
-        Button next = button("▶", BLUE, 26);
-        next.setContentDescription("Question suivante");
-        next.setEnabled(position + 1 < revisionIds.size());
-        next.setAlpha(position + 1 < revisionIds.size() ? 1f : .35f);
-        next.setOnClickListener(v -> showRevisionQuestion(position + 1));
-        nav.addView(next, new LinearLayout.LayoutParams(dp(62), dp(58)));
-        LinearLayout.LayoutParams navParams = new LinearLayout.LayoutParams(-1, -2);
-        navParams.topMargin = dp(10);
-        footer.addView(nav, navParams);
+        header.addView(actions, new LinearLayout.LayoutParams(-1, -2));
 
         CgQuestion q = null;
         try {
@@ -2693,6 +2782,16 @@ public class TabletMainActivity extends Activity {
                 detail.setGravity(Gravity.CENTER);
                 add(detail, -1, -2, 0, 0, 0, dp(10));
             }
+            String answer = q.resolvedAnswer();
+            TextView solution = cardText(answer.isEmpty() ? "Réponse indisponible" : answer,
+                    25, GREEN, Color.WHITE);
+            solution.setBackground(roundedStroke(GREEN, 14, Color.WHITE, 2));
+            solution.setGravity(Gravity.CENTER);
+            solution.setMinHeight(dp(75));
+            revisionAnswerCard = solution;
+            solution.setVisibility(revealAnswer ? View.VISIBLE : View.INVISIBLE);
+            add(solution, -1, -2, 0, 0, 0, dp(8));
+
             if (q.hasImage()) {
                 try {
                     ensureImageCacheForCurrentUser();
@@ -2702,14 +2801,13 @@ public class TabletMainActivity extends Activity {
                     if (cached != null) {
                         ImageView image = new ImageView(this);
                         image.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                        image.setAdjustViewBounds(true);
-                        image.setMaxHeight(Math.max(dp(120), getResources().getDisplayMetrics().heightPixels * 3 / 5));
                         image.setImageBitmap(cached);
-                        add(image, -1, -2, 0, 0, 0, dp(10));
-                        scroll.post(() -> {
-                            image.setMaxHeight(Math.max(dp(100), scroll.getHeight() - dp(20)));
-                            image.requestLayout();
-                        });
+                        // ScrollView.fillViewport expands the weighted image slot
+                        // to occupy all remaining height, with a usable minimum
+                        // for unusually long question/answer text. FIT_CENTER
+                        // preserves the original bitmap aspect ratio.
+                        root.addView(image, new LinearLayout.LayoutParams(-1,
+                                dp(isPhoneProfile() ? 160 : 180), 1f));
                     } else {
                         addSub("Image non disponible hors ligne", 15, LIGHT_GREY);
                     }
@@ -2717,13 +2815,7 @@ public class TabletMainActivity extends Activity {
                     addSub("Image non disponible hors ligne", 15, LIGHT_GREY);
                 }
             }
-            String answer = q.resolvedAnswer();
-            TextView solution = cardText(answer.isEmpty() ? "Réponse indisponible" : answer,
-                    25, GREEN, Color.WHITE);
-            solution.setBackground(roundedStroke(GREEN, 14, Color.WHITE, 2));
-            solution.setGravity(Gravity.CENTER);
-            solution.setMinHeight(dp(75));
-            add(solution, -1, -2, 0, 0, 0, dp(12));
+            if (revealAnswer) setRevisionReveal(true);
         }
     }
 
