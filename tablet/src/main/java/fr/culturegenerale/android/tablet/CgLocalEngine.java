@@ -1300,6 +1300,24 @@ final class CgLocalEngine extends SQLiteOpenHelper {
         writeLearning(db, questionId, state);
     }
 
+    // CGANDROID027 · REVISION_ASSIMILATE001
+    // Same mastered flag used by game, revision and remaining counts;
+    // no fabricated play attempt, no score change, no deletion of question.
+    synchronized void assimilateRevisionQuestion(String questionId) {
+        if (questionId == null || questionId.trim().isEmpty())
+            throw new IllegalArgumentException("Identifiant de question absent");
+        SQLiteDatabase db = getWritableDatabase();
+        LocalLearningState state = readLearning(db, questionId);
+        if (state.mastered) return;
+        ContentValues cv = new ContentValues();
+        cv.put("question_id", questionId);
+        cv.put("fail_count", Math.max(0, state.failCount));
+        cv.put("mastered", 1);
+        cv.put("updated_at", System.currentTimeMillis());
+        if (db.insertWithOnConflict("learning", null, cv, SQLiteDatabase.CONFLICT_REPLACE) == -1)
+            throw new IllegalStateException("Impossible d'enregistrer l'assimilation");
+    }
+
     synchronized void reviseAnswer(
             String questionId,
             boolean oldCorrect,
@@ -1804,7 +1822,8 @@ final class CgLocalEngine extends SQLiteOpenHelper {
 
     // CGANDROID022 · REVISION_ORDERED001
     // Snapshot of the same remaining-question population as availableCounts().
-    // No attempt, learning update, or session-served row is ever written.
+    // Building the snapshot never writes an attempt or learning state.
+    // Only an explicit tap on Assimiler records mastery.
     synchronized List<String> revisionIds(String domain, CgFlags flags) {
         boolean all = "Toutes les questions".equals(domain);
         List<String> ids = new ArrayList<>();

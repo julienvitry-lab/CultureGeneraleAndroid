@@ -131,7 +131,7 @@ public class TabletMainActivity extends Activity {
 
     private String selectedDomain = "";
 
-    // CGANDROID022 · ordered read-only revision session.
+    // CGANDROID022 · ordered revision session; only explicit assimilation writes learning.
     private String revisionDomain = "";
     private List<String> revisionIds = new ArrayList<>();
     private int revisionPosition = 0;
@@ -144,6 +144,8 @@ public class TabletMainActivity extends Activity {
     private static final String CG026_IMAGE_PREFS = "cg026_image_library";
     private boolean revisionAnswerShown = false;
     private View revisionNavigateButton, revisionFinishButton;
+    private Button revisionAssimilateButton;
+    private boolean revisionAssimilationInProgress = false;
     private TextView revisionAnswerCard;
     private ScrollView revisionScroll;
     private FrameLayout revisionTapFrame;
@@ -504,6 +506,7 @@ public class TabletMainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (revisionAssimilationInProgress) return;
         if(progressTransferBusy) return;
         if("progress_transfer".equals(screen)) { showHome(); return; }
         if ("revision_question".equals(screen) || "revision_image_loading".equals(screen)) { showRevisionStart(); return; }
@@ -2573,6 +2576,7 @@ public class TabletMainActivity extends Activity {
         revisionScroll = null;
         revisionNavigateButton = null;
         revisionFinishButton = null;
+        revisionAssimilateButton = null;
         showHome();
     }
 
@@ -2662,6 +2666,7 @@ public class TabletMainActivity extends Activity {
         revisionScroll = null;
         revisionNavigateButton = null;
         revisionFinishButton = null;
+        revisionAssimilateButton = null;
         baseScreen();
         addTitle("Révision · " + revisionDomain, 28, Color.WHITE);
         final int size = revisionIds.size();
@@ -2706,7 +2711,7 @@ public class TabletMainActivity extends Activity {
     // CGANDROID024 · REVISION_TWO_STEP_TOUCH001
     // A tap moves one step, in either direction. A drag remains a normal scroll.
     private void moveRevision(boolean forward) {
-        if (!"revision_question".equals(screen)) return;
+        if (!"revision_question".equals(screen) || revisionAssimilationInProgress) return;
         if (forward) {
             if (!revisionAnswerShown) setRevisionReveal(true);
             else if (revisionPosition + 1 < revisionIds.size())
@@ -2726,6 +2731,8 @@ public class TabletMainActivity extends Activity {
         ScrollView scroll = revisionScroll;
         if (answer == null) return;
         answer.setVisibility(reveal ? View.VISIBLE : View.INVISIBLE);
+        if (revisionAssimilateButton != null)
+            revisionAssimilateButton.setVisibility(reveal ? View.VISIBLE : View.INVISIBLE);
         if (reveal && scroll != null) {
             scroll.post(() -> {
                 if (revisionAnswerCard != answer || !revisionAnswerShown
@@ -2755,13 +2762,18 @@ public class TabletMainActivity extends Activity {
             revisionTapFrame = null;
             return super.dispatchTouchEvent(event);
         }
+        if (revisionAssimilationInProgress) {
+            revisionTapFrame = null;
+            return true;
+        }
         float x = event.getRawX(), y = event.getRawY();
         int action = event.getActionMasked();
         if (action == MotionEvent.ACTION_DOWN) {
             revisionTapX = x;
             revisionTapY = y;
             revisionTapFrame = revisionButtonAt(revisionNavigateButton, x, y)
-                    || revisionButtonAt(revisionFinishButton, x, y) ? null : screenFrame;
+                    || revisionButtonAt(revisionFinishButton, x, y)
+                    || revisionButtonAt(revisionAssimilateButton, x, y) ? null : screenFrame;
         } else if (action == MotionEvent.ACTION_MOVE) {
             int slop = ViewConfiguration.get(this).getScaledTouchSlop();
             if (Math.abs(x - revisionTapX) > slop || Math.abs(y - revisionTapY) > slop)
@@ -2776,7 +2788,8 @@ public class TabletMainActivity extends Activity {
                     && Math.abs(x - revisionTapX) <= slop && Math.abs(y - revisionTapY) <= slop
                     && event.getEventTime() - event.getDownTime() < ViewConfiguration.getLongPressTimeout()
                     && !revisionButtonAt(revisionNavigateButton, x, y)
-                    && !revisionButtonAt(revisionFinishButton, x, y);
+                    && !revisionButtonAt(revisionFinishButton, x, y)
+                    && !revisionButtonAt(revisionAssimilateButton, x, y);
             boolean handled = super.dispatchTouchEvent(event);
             if (tap && frame == screenFrame && "revision_question".equals(screen)) {
                 int[] xy = new int[2];
@@ -2820,6 +2833,7 @@ public class TabletMainActivity extends Activity {
         // the question; no empty question with a spinner or delayed image.
         screen = "revision_image_loading";
         revisionAnswerCard = null;
+        revisionAssimilateButton = null;
         revisionScroll = null;
         baseScreen();
         addTitle("Préparation de l’image…", 25, Color.WHITE);
@@ -2886,6 +2900,7 @@ public class TabletMainActivity extends Activity {
         revisionPosition = position;
         revisionAnswerShown = revealAnswer;
         revisionAnswerCard = null;
+        revisionAssimilateButton = null;
         screen = "revision_question";
         baseScreen();
 
@@ -2965,8 +2980,71 @@ public class TabletMainActivity extends Activity {
                     addSub("Image illisible ou indisponible", 15, LIGHT_GREY);
                 }
             }
+            // CGANDROID027 · REVISION_ASSIMILATE001
+            // A fixed footer is outside the scroll area, visible only with
+            // the answer. Reserve its space in both stages to keep images stable.
+            if (!answer.isEmpty()) {
+                LinearLayout footer = new LinearLayout(this);
+                footer.setOrientation(LinearLayout.VERTICAL);
+                footer.setPadding(side, dp(4), side, dp(5));
+                footer.setBackgroundColor(Color.BLACK);
+                column.addView(footer, new LinearLayout.LayoutParams(-1, -2));
+                Button assimilate = button("Assimiler", GREEN, 25);
+                assimilate.setBackground(roundedStroke(GREEN, 14, Color.WHITE, 2));
+                revisionAssimilateButton = assimilate;
+                assimilate.setVisibility(revealAnswer ? View.VISIBLE : View.INVISIBLE);
+                footer.addView(assimilate, new LinearLayout.LayoutParams(-1, dp(54)));
+                assimilate.setOnClickListener(v -> assimilateRevisionQuestion(q));
+            }
             if (revealAnswer) setRevisionReveal(true);
         }
+    }
+
+    private void assimilateRevisionQuestion(CgQuestion q) {
+        if (revisionAssimilationInProgress || !revisionAnswerShown
+                || !"revision_question".equals(screen) || q == null || q.resolvedAnswer().isEmpty()
+                || revisionPosition < 0 || revisionPosition >= revisionIds.size()
+                || !q.id.equals(revisionIds.get(revisionPosition))) return;
+        final int position = revisionPosition;
+        final long epoch = revisionImageEpoch;
+        revisionAssimilationInProgress = true;
+        if (revisionAssimilateButton != null) revisionAssimilateButton.setEnabled(false);
+        if (revisionNavigateButton != null) revisionNavigateButton.setEnabled(false);
+        if (revisionFinishButton != null) revisionFinishButton.setEnabled(false);
+        io.execute(() -> {
+            boolean saved = false;
+            try {
+                localEngine.assimilateRevisionQuestion(q.id);
+                saved = true;
+            } catch (Exception e) {
+                android.util.Log.w("CGANDROID027", "Revision assimilation", e);
+            }
+            final boolean committed = saved;
+            main.post(() -> {
+                revisionAssimilationInProgress = false;
+                if (isFinishing() || isDestroyed() || epoch != revisionImageEpoch
+                        || !"revision_question".equals(screen)) return;
+                if (revisionNavigateButton != null) revisionNavigateButton.setEnabled(true);
+                if (revisionFinishButton != null) revisionFinishButton.setEnabled(true);
+                if (revisionAssimilateButton != null) revisionAssimilateButton.setEnabled(true);
+                if (!committed) {
+                    Toast.makeText(this, "Assimilation non enregistrée. Réessaie.", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                // Replace, rather than mutate, the list the prefetch worker
+                // may still be reading. The next item keeps the current index.
+                List<String> remaining = new ArrayList<>(revisionIds);
+                remaining.remove(position);
+                revisionIds = remaining;
+                Toast.makeText(this, "Question assimilée.", Toast.LENGTH_SHORT).show();
+                if (position < remaining.size()) {
+                    showRevisionQuestion(position, false);
+                } else {
+                    revisionPosition = Math.max(0, remaining.size() - 1);
+                    showRevisionStart();
+                }
+            });
+        });
     }
 
     private void showMegathemes() {
