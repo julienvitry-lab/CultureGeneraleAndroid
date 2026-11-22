@@ -1812,8 +1812,9 @@ final class CgLocalEngine extends SQLiteOpenHelper {
                 + "FROM questions q LEFT JOIN learning l ON l.question_id=q.id "
                 + "WHERE q.excluded_x=0 AND COALESCE(l.mastered,0)=0 "
                 + (all ? "" : "AND q.megatheme=? ")
-                + "ORDER BY q.megatheme COLLATE NOCASE, q.theme COLLATE NOCASE, "
-                + "CASE WHEN q.id NOT GLOB '*[^0-9]*' THEN CAST(q.id AS INTEGER) END, "
+                // LOCALIZED follows Android's language collation, including French accents.
+                + "ORDER BY q.theme COLLATE LOCALIZED, q.question_text COLLATE LOCALIZED, "
+                + "q.detail COLLATE LOCALIZED, "
                 + "q.id COLLATE BINARY";
         Cursor c = getReadableDatabase().rawQuery(sql, all ? null : new String[]{domain});
         try {

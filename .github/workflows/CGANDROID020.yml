@@ -1,4 +1,4 @@
-name: CGANDROID022 - Universal APK
+name: CGANDROID023 - Universal APK
 
 on:
   workflow_dispatch:
@@ -58,11 +58,11 @@ jobs:
             tablet/build.gradle
 
           grep -Fq \
-            "versionCode 969" \
+            "versionCode 970" \
             tablet/build.gradle
 
           grep -Fq \
-            "versionName '9.6.9-cgandroid022-universal'" \
+            "versionName '9.7.0-cgandroid023-universal'" \
             tablet/build.gradle
 
           grep -Fq \
@@ -118,6 +118,8 @@ jobs:
 
           grep -Fq 'REVISION_ORDERED001' "$MAIN"
           grep -Fq 'REVISION_ORDERED001' "$ENGINE"
+          grep -Fq 'REVISION_FIXED_FOOTER001' "$MAIN"
+          grep -Fq 'q.theme COLLATE LOCALIZED, q.question_text COLLATE LOCALIZED' "$ENGINE"
           grep -Fq 'Button revision = button("Révision"' "$MAIN"
           grep -Fq 'AVAILABLE_COUNTS_LOCAL_FIRST001' "$MAIN"
           grep -Fq 'UNBOUNDED_SESSION_REWIND001' "$MAIN"
@@ -263,11 +265,11 @@ jobs:
             --ks-key-alias "$ANDROID_KEY_ALIAS" \
             --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
             --key-pass env:ANDROID_KEY_PASSWORD \
-            --out CultureGenerale-Universelle-CGANDROID022.apk \
+            --out CultureGenerale-Universelle-CGANDROID023.apk \
             universal-aligned-unsigned.apk
 
           test -s \
-            CultureGenerale-Universelle-CGANDROID022.apk
+            CultureGenerale-Universelle-CGANDROID023.apk
 
           echo "✓ zipalign + SIGN001"
 
@@ -275,7 +277,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          APK="CultureGenerale-Universelle-CGANDROID022.apk"
+          APK="CultureGenerale-Universelle-CGANDROID023.apk"
 
           APKSIGNER="$(
             find "$ANDROID_HOME/build-tools" \
@@ -324,7 +326,7 @@ jobs:
             universal-badging.txt
 
           grep -Fq \
-            "versionCode='969'" \
+            "versionCode='970'" \
             universal-badging.txt
 
           grep -Fq \
@@ -336,14 +338,14 @@ jobs:
             | tee universal-sha256.txt
 
           {
-            echo "CGANDROID022"
+            echo "CGANDROID023"
             echo "artifact=universal"
             echo "source_module=tablet-modern"
             echo "legacy_module=retired"
             echo "applicationId=fr.culturegenerale.android"
             echo "launcher=fr.culturegenerale.android.tablet.TabletMainActivity"
-            echo "versionCode=969"
-            echo "versionName=9.6.9-cgandroid022-universal"
+            echo "versionCode=970"
+            echo "versionName=9.7.0-cgandroid023-universal"
             echo "phone=<600dp portrait"
             echo "tablet=>=600dp landscape"
             echo "signing=SIGN001"
@@ -355,9 +357,9 @@ jobs:
       - name: Publier APK universel
         uses: actions/upload-artifact@v4
         with:
-          name: CultureGenerale-Universelle-CGANDROID022
+          name: CultureGenerale-Universelle-CGANDROID023
           path: |
-            CultureGenerale-Universelle-CGANDROID022.apk
+            CultureGenerale-Universelle-CGANDROID023.apk
             universal-sha256.txt
             universal-signature.txt
             universal-badging.txt

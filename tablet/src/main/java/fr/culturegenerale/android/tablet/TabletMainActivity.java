@@ -2583,7 +2583,7 @@ public class TabletMainActivity extends Activity {
         addTitle("Révision · " + revisionDomain, 28, Color.WHITE);
         final int size = revisionIds.size();
         addSub(size + " questions restantes", 21, Color.WHITE);
-        addSub("Ordre fixe : thème, puis identifiant de la question.", 15, LIGHT_GREY);
+        addSub("Ordre alphabétique : thème, puis texte de la question.", 15, LIGHT_GREY);
         if (size > 0) {
             gap(20);
             addSub("Numéro de départ (1 à " + size + ")", 18, Color.WHITE);
@@ -2620,7 +2620,35 @@ public class TabletMainActivity extends Activity {
         revisionPosition = position;
         screen = "revision_question";
         baseScreen();
-        addTitle("Révision · " + revisionDomain, 24, Color.WHITE);
+
+        // CGANDROID023 · REVISION_FIXED_FOOTER001
+        // Keep the footer outside the scrollable content on both device profiles.
+        ScrollView scroll = (ScrollView) screenFrame.getChildAt(0);
+        screenFrame.removeView(scroll);
+        LinearLayout column = new LinearLayout(this);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.setBackgroundColor(Color.BLACK);
+        screenFrame.addView(column, new FrameLayout.LayoutParams(-1, -1));
+        column.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        LinearLayout footer = new LinearLayout(this);
+        footer.setOrientation(LinearLayout.VERTICAL);
+        int side = dp(isPhoneProfile() ? 9 : 14);
+        footer.setPadding(side, dp(4), side, dp(10));
+        footer.setBackgroundColor(Color.BLACK);
+        column.addView(footer, new LinearLayout.LayoutParams(-1, -2));
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        Button jump = button("Naviguer", DARK, 25);
+        jump.setOnClickListener(v -> showRevisionStart());
+        LinearLayout.LayoutParams jumpParams = new LinearLayout.LayoutParams(0, dp(52), 1f);
+        jumpParams.rightMargin = dp(5);
+        actions.addView(jump, jumpParams);
+        Button back = button("Terminer", DARK, 25);
+        back.setOnClickListener(v -> leaveRevision());
+        actions.addView(back, new LinearLayout.LayoutParams(0, dp(52), 1f));
+        footer.addView(actions, new LinearLayout.LayoutParams(-1, -2));
 
         // The two navigation buttons are always at opposite edges.
         LinearLayout nav = new LinearLayout(this);
@@ -2632,7 +2660,7 @@ public class TabletMainActivity extends Activity {
         previous.setAlpha(position > 0 ? 1f : .35f);
         previous.setOnClickListener(v -> showRevisionQuestion(position - 1));
         nav.addView(previous, new LinearLayout.LayoutParams(dp(62), dp(58)));
-        TextView index = text((position + 1) + " / " + revisionIds.size(), 22, Color.WHITE, Gravity.CENTER);
+        TextView index = text((position + 1) + " / " + revisionIds.size(), 25, Color.WHITE, Gravity.CENTER);
         nav.addView(index, new LinearLayout.LayoutParams(0, dp(58), 1f));
         Button next = button("▶", BLUE, 26);
         next.setContentDescription("Question suivante");
@@ -2640,7 +2668,9 @@ public class TabletMainActivity extends Activity {
         next.setAlpha(position + 1 < revisionIds.size() ? 1f : .35f);
         next.setOnClickListener(v -> showRevisionQuestion(position + 1));
         nav.addView(next, new LinearLayout.LayoutParams(dp(62), dp(58)));
-        add(nav, -1, -2, 0, dp(6), 0, dp(12));
+        LinearLayout.LayoutParams navParams = new LinearLayout.LayoutParams(-1, -2);
+        navParams.topMargin = dp(10);
+        footer.addView(nav, navParams);
 
         CgQuestion q = null;
         try {
@@ -2651,13 +2681,15 @@ public class TabletMainActivity extends Activity {
         if (q == null) {
             addSub("Question indisponible dans la base locale.", 18, Color.WHITE);
         } else {
-            addSub(q.theme, 17, LIGHT_GREY);
+            addSub(q.theme, 20, LIGHT_GREY);
             TextView question = cardText(q.question, 25, YELLOW, Color.BLACK);
+            question.setBackground(roundedStroke(YELLOW, 14, Color.WHITE, 2));
             question.setGravity(Gravity.CENTER);
             question.setMinHeight(dp(100));
             add(question, -1, -2, 0, 0, 0, dp(10));
             if (!q.hasImage() && q.detail != null && !q.detail.trim().isEmpty()) {
-                TextView detail = cardText(q.detail, 20, DARK, Color.WHITE);
+                TextView detail = cardText(q.detail, 25, RED, Color.WHITE);
+                detail.setBackground(roundedStroke(RED, 14, Color.WHITE, 2));
                 detail.setGravity(Gravity.CENTER);
                 add(detail, -1, -2, 0, 0, 0, dp(10));
             }
@@ -2670,8 +2702,14 @@ public class TabletMainActivity extends Activity {
                     if (cached != null) {
                         ImageView image = new ImageView(this);
                         image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                        image.setAdjustViewBounds(true);
+                        image.setMaxHeight(Math.max(dp(120), getResources().getDisplayMetrics().heightPixels * 3 / 5));
                         image.setImageBitmap(cached);
-                        add(image, -1, dp(isPhoneProfile() ? 220 : 270), 0, 0, 0, dp(10));
+                        add(image, -1, -2, 0, 0, 0, dp(10));
+                        scroll.post(() -> {
+                            image.setMaxHeight(Math.max(dp(100), scroll.getHeight() - dp(20)));
+                            image.requestLayout();
+                        });
                     } else {
                         addSub("Image non disponible hors ligne", 15, LIGHT_GREY);
                     }
@@ -2682,17 +2720,11 @@ public class TabletMainActivity extends Activity {
             String answer = q.resolvedAnswer();
             TextView solution = cardText(answer.isEmpty() ? "Réponse indisponible" : answer,
                     25, GREEN, Color.WHITE);
+            solution.setBackground(roundedStroke(GREEN, 14, Color.WHITE, 2));
             solution.setGravity(Gravity.CENTER);
             solution.setMinHeight(dp(75));
-            addSub("Réponse", 17, LIGHT_GREY);
             add(solution, -1, -2, 0, 0, 0, dp(12));
         }
-        Button jump = button("Aller à un autre numéro", DARK, 18);
-        add(jump, -1, dp(52), 0, dp(6), 0, dp(8));
-        jump.setOnClickListener(v -> showRevisionStart());
-        Button back = button("Terminer la révision", DARK, 18);
-        add(back, -1, dp(52), 0, 0, 0, 0);
-        back.setOnClickListener(v -> leaveRevision());
     }
 
     private void showMegathemes() {
